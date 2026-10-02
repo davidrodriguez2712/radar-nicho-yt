@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     youtube_quota_per_week: int = Field(default=0, ge=0, le=100_000)
     youtube_quota_per_month: int = Field(default=0, ge=0, le=1_000_000)
     youtube_maximum_videos: int = Field(default=100, ge=1, le=200)
+    youtube_search_quota_per_run: int = Field(default=100, ge=0, le=10_000)
+    youtube_search_quota_per_week: int = Field(default=100, ge=0, le=100_000)
+    youtube_search_quota_per_month: int = Field(default=300, ge=0, le=1_000_000)
+    youtube_detail_quota_per_run: int = Field(default=100, ge=0, le=10_000)
+    youtube_detail_quota_per_week: int = Field(default=500, ge=0, le=100_000)
+    youtube_detail_quota_per_month: int = Field(default=2000, ge=0, le=1_000_000)
     llm_enabled: bool = False
     llm_api_key: SecretStr | None = None
     llm_configuration: LLMConfiguration | None = None
