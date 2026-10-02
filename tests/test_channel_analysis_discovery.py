@@ -1,16 +1,26 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 import pytest
 from sqlalchemy import Engine
 
 from nicheradar.discovery.channel_analysis import (
     channel_view_rate,
+    discover_comparables,
     parse_channel_input,
     resolve_channel,
 )
 from nicheradar.domain.profile import CreatorProfile, VideoFormat
-from nicheradar.integrations.contracts import Operation, ProviderError, Video
+from nicheradar.integrations.contracts import (
+    Batch,
+    Channel,
+    Coverage,
+    Operation,
+    Provenance,
+    ProviderError,
+    Video,
+)
 from nicheradar.integrations.synthetic import SyntheticProvider
 from nicheradar.services.gateway import Gateway
 from tests.test_persistence import NOW, seed_evidence
@@ -133,3 +143,58 @@ def test_channel_view_rate_none_when_no_usable_video() -> None:
         ),
     )
     assert channel_view_rate(videos, NOW) is None
+
+
+class _FakeGateway:
+    def __init__(self, channels: tuple[Channel, ...], *, raises: ProviderError | None = None):
+        self._channels = channels
+        self._raises = raises
+
+    async def fetch(
+        self, operation: Any, parameters: Any, now: datetime
+    ) -> tuple[Batch, str, datetime]:
+        if self._raises:
+            raise self._raises
+
+        return (
+            Batch(
+                provenance=Provenance(
+                    provider="fake", operation=operation, auth_scope="x", fetched_at=now
+                ),
+                coverage=Coverage(returned=len(self._channels), selection_method="fake"),
+                costs=(),
+                channels=self._channels,
+            ),
+            "fake-request-id",
+            now,
+        )
+
+
+def test_discover_comparables_dedupes_and_excludes_target() -> None:
+    target = Channel(id="UC_target", title="Target")
+    youtube_results = (target, Channel(id="UC_a", title="A"), Channel(id="UC_b", title="B"))
+    vidiq_results = (Channel(id="UC_b", title="B"), Channel(id="UC_c", title="C"))
+    comparables = asyncio.run(
+        discover_comparables(
+            cast(Gateway, _FakeGateway(youtube_results)),
+            cast(Gateway, _FakeGateway(vidiq_results)),
+            target,
+            datetime.now(UTC),
+        )
+    )
+    ids = {channel.id for channel in comparables}
+    assert ids == {"UC_a", "UC_b", "UC_c"}  # target excluded, UC_b not duplicated
+
+
+def test_discover_comparables_degrades_when_vidiq_budget_exhausted() -> None:
+    target = Channel(id="UC_target", title="Target")
+    youtube_results = (Channel(id="UC_a", title="A"),)
+    comparables = asyncio.run(
+        discover_comparables(
+            cast(Gateway, _FakeGateway(youtube_results)),
+            cast(Gateway, _FakeGateway((), raises=ProviderError("run_budget_exhausted"))),
+            target,
+            datetime.now(UTC),
+        )
+    )
+    assert {channel.id for channel in comparables} == {"UC_a"}  # did not raise
