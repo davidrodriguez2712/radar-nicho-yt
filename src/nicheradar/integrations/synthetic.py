@@ -78,6 +78,21 @@ class SyntheticProvider:
         if operation == Operation.SEARCH and parameters.get("type") == "video":
             operation = Operation.CHANNEL_VIDEOS  # falls through to the generic video fixture below
         if operation in {Operation.CHANNEL_SEARCH, Operation.CHANNELS, Operation.SEARCH}:
+            # A recognizable sentinel for a deterministic "not found" result -- the generic
+            # fixture below always returns channels, so callers resolving a single channel by
+            # handle/id (e.g. channel_analysis.resolve_channel) need a way to exercise a
+            # zero-result response without depending on real YouTube data.
+            if parameters.get("forHandle") == "__none__" or parameters.get("id") == "__none__":
+                return Batch(
+                    **common,
+                    channels=(),
+                    coverage=Coverage(
+                        returned=0,
+                        reported_total=0,
+                        complete=True,
+                        selection_method="synthetic_stratified",
+                    ),
+                )
             channels = tuple(
                 Channel(
                     id=f"synthetic:{family}:channel-{index}",
