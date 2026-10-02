@@ -7,8 +7,12 @@ seed-family catalog.
 import re
 from datetime import datetime
 from statistics import median
+from typing import Any
 
+from nicheradar.domain.production import EstimateRange
 from nicheradar.integrations.contracts import Channel, Operation, ProviderError, Video
+from nicheradar.scoring.advertising import AdvertisingBenchmark
+from nicheradar.scoring.profit import estimate_profit
 from nicheradar.services.gateway import Gateway
 
 _HANDLE = re.compile(r"@([A-Za-z0-9_.-]+)")
@@ -98,3 +102,40 @@ async def discover_comparables(
 
     found.pop(target.id, None)
     return tuple(found.values())[:max_comparables]
+
+
+def compute_comparison(
+    target_videos: tuple[Video, ...],
+    target: Channel,
+    comparable_videos: dict[str, tuple[Video, ...]],
+    now: datetime,
+    *,
+    videos_per_month: int | None = None,
+    advertising: AdvertisingBenchmark | None = None,
+    monthly_cost_usd: EstimateRange | None = None,
+) -> dict[str, Any]:
+    target_rate = channel_view_rate(target_videos, now)
+    rates = [
+        rate
+        for videos in comparable_videos.values()
+        if (rate := channel_view_rate(videos, now)) is not None
+    ]
+    best = max(rates) if rates else None
+    worst = min(rates) if rates else None
+    position = "unknown"
+    if target_rate is not None and best is not None and worst is not None:
+        position = "above" if target_rate > best else "below" if target_rate < worst else "within"
+    profit = estimate_profit(
+        best_channel_views_per_day=best,
+        worst_channel_views_per_day=worst,
+        videos_per_month=videos_per_month,
+        advertising=advertising,
+        monthly_cost_usd=monthly_cost_usd,
+    )
+    return {
+        "target_view_rate": target_rate,
+        "comparable_best": best,
+        "comparable_worst": worst,
+        "target_position": position,
+        "profit": profit.model_dump(mode="json"),
+    }

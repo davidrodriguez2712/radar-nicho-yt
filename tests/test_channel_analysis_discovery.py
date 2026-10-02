@@ -198,3 +198,69 @@ def test_discover_comparables_degrades_when_vidiq_budget_exhausted() -> None:
         )
     )
     assert {channel.id for channel in comparables} == {"UC_a"}  # did not raise
+
+
+def test_compute_comparison_positions_target_against_real_comparables() -> None:
+    from nicheradar.discovery.channel_analysis import compute_comparison
+
+    target_videos = (
+        Video(
+            id="t1",
+            channel_id="target",
+            title="t",
+            published_at=NOW - timedelta(days=10),
+            views=500,
+            format=VideoFormat.LONG,
+        ),
+    )
+    comparable_videos: dict[str, tuple[Video, ...]] = {
+        "UC_a": (
+            Video(
+                id="a1",
+                channel_id="UC_a",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=100,
+                format=VideoFormat.LONG,
+            ),
+        ),
+        "UC_b": (
+            Video(
+                id="b1",
+                channel_id="UC_b",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=2000,
+                format=VideoFormat.LONG,
+            ),
+        ),
+    }
+    result = compute_comparison(
+        target_videos, Channel(id="target", title="Target"), comparable_videos, NOW
+    )
+    assert result["target_view_rate"] == 50.0
+    assert result["comparable_worst"] == 10.0
+    assert result["comparable_best"] == 200.0
+    assert result["target_position"] == "within"
+    assert result["profit"]["status"] == "incomplete"  # no videos_per_month/advertising/cost given
+
+
+def test_compute_comparison_handles_zero_comparables_without_crashing() -> None:
+    from nicheradar.discovery.channel_analysis import compute_comparison
+
+    target_videos = (
+        Video(
+            id="t1",
+            channel_id="target",
+            title="t",
+            published_at=NOW - timedelta(days=10),
+            views=500,
+            format=VideoFormat.LONG,
+        ),
+    )
+    result = compute_comparison(target_videos, Channel(id="target", title="Target"), {}, NOW)
+    assert result["comparable_best"] is None
+    assert result["comparable_worst"] is None
+    assert result["target_position"] == "unknown"
+    assert result["profit"]["status"] == "incomplete"
+    assert "channel_view_rate" in result["profit"]["missing"]
