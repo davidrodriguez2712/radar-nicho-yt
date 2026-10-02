@@ -3,7 +3,7 @@
 import json
 import secrets
 from collections import Counter
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
 from uuid import uuid4
@@ -882,6 +882,70 @@ def render_configuration(config: Settings) -> None:
                 config, "PUT", "/profile", body={"profile": profile, "expected_version": version}
             )
             st.success("Límites guardados. Esto no habilita proveedores reales.")
+    st.subheader("Benchmark publicitario para análisis de canal")
+    st.caption(
+        "Opcional. Si lo dejas vacío, la ganancia estimada de los análisis de canal "
+        "queda 'incompleta' con la razón exacta — nunca se inventa un RPM."
+    )
+    existing_benchmark = profile.get("channel_analysis_advertising")
+    with st.form("channel-analysis-advertising"):
+        enabled = st.checkbox(
+            "Declarar un benchmark publicitario", value=existing_benchmark is not None
+        )
+        version_input = st.text_input(
+            "Versión/fecha de la estimación",
+            value=(existing_benchmark or {}).get("version", ""),
+        )
+        source = st.text_input(
+            "Fuente de la estimación",
+            value=(existing_benchmark or {}).get("source", ""),
+        )
+        rate_low = st.number_input(
+            "RPM mínimo (USD por 1000 vistas)",
+            min_value=0.0,
+            value=float((existing_benchmark or {}).get("rate", {}).get("low", 0.0)),
+        )
+        rate_high = st.number_input(
+            "RPM máximo (USD por 1000 vistas)",
+            min_value=0.0,
+            value=float((existing_benchmark or {}).get("rate", {}).get("high", 0.0)),
+        )
+        audience_key = st.text_input(
+            "Audiencia (clave libre)",
+            value=(existing_benchmark or {}).get("audience_key", "general"),
+        )
+        assumptions = st.text_area(
+            "Supuestos declarados",
+            value=(existing_benchmark or {}).get("assumptions", ""),
+        )
+        if st.form_submit_button("Guardar benchmark"):
+            benchmark_payload = None
+            if enabled:
+                now_iso = datetime.now(UTC).isoformat()
+                benchmark_payload = {
+                    "version": version_input or "sin-version",
+                    "source": source or "owner_declared",
+                    "origin": "manual_assumption",
+                    "format": "long",
+                    "language": "es",
+                    "audience_key": audience_key or "general",
+                    "unit": "usd_ads_per_1000_views",
+                    "rate": {"low": rate_low, "high": rate_high},
+                    "revenue_scope": "youtube_ads_only_after_revenue_share",
+                    "assumptions": assumptions or "Sin supuestos declarados explícitamente.",
+                    "observed_at": now_iso,
+                    "valid_until": (datetime.now(UTC) + timedelta(days=180)).isoformat(),
+                }
+            api_request(
+                config,
+                "PUT",
+                "/profile",
+                body={
+                    "profile": profile | {"channel_analysis_advertising": benchmark_payload},
+                    "expected_version": version,
+                },
+            )
+            st.success("Benchmark actualizado.")
     render_default_recipes(config)
 
 

@@ -152,6 +152,7 @@ def test_dashboard_navigation_and_operation(
     assert not app.exception
     assert backend.get("/api/v1/profile").json()["weekly_hours"] == "18.0"
     assert backend.get("/api/v1/profile").json()["selected_refresh_hours"] == 48
+    assert any("Benchmark publicitario" in item.value for item in app.subheader)
     app.radio[0].set_value("Escenarios").run()
     next(
         button for button in app.button if button.label == "Calcular y guardar escenario"
