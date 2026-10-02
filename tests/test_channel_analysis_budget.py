@@ -7,10 +7,16 @@ from sqlalchemy import Connection, insert
 
 from nicheradar.config import Settings
 from nicheradar.domain.profile import CreatorProfile, initial_catalog
-from nicheradar.integrations.contracts import Cost, ProviderError
+from nicheradar.integrations.contracts import Cost, Operation, ProviderError
 from nicheradar.repositories.core import insert_record, seed_profile
 from nicheradar.repositories.schema import credit_balances
 from nicheradar.services.budget import Limits, reserve
+from nicheradar.services.channel_analysis_providers import (
+    channel_analysis_vidiq_limits,
+    channel_analysis_vidiq_tariffs,
+    channel_analysis_youtube_limits,
+    channel_analysis_youtube_tariffs,
+)
 from tests.test_persistence import NOW
 
 
@@ -92,3 +98,38 @@ def test_channel_analysis_trigger_uses_its_own_run_cap(db: Connection) -> None:
 
     analysis_request = _prepared_request(db, profile_id, "channel_analysis")
     reserve(db, analysis_request, profile_id, costs, limits, NOW)  # 30 <= 50: must not raise
+
+
+def test_channel_analysis_tariffs_cover_every_operation_used() -> None:
+    youtube = channel_analysis_youtube_tariffs()
+    for op in (
+        Operation.CHANNELS,
+        Operation.UPLOADS,
+        Operation.VIDEOS,
+        Operation.SEARCH,
+        Operation.COMMENT_THREADS,
+        Operation.VIDEO_CATEGORIES,
+    ):
+        assert op in youtube
+    assert youtube[Operation.SEARCH][0].maximum == 100
+    assert youtube[Operation.VIDEOS][0].maximum == 1
+
+    vidiq = channel_analysis_vidiq_tariffs()
+    for op in (
+        Operation.CHANNEL_SEARCH,
+        Operation.CHANNEL_VIDEOS,
+        Operation.OUTLIERS,
+        Operation.KEYWORDS,
+    ):
+        assert op in vidiq
+    assert vidiq[Operation.CHANNEL_SEARCH][0].maximum == 5
+
+
+def test_channel_analysis_limits_use_configured_values() -> None:
+    settings = Settings()
+    yt_limits = channel_analysis_youtube_limits(settings)
+    assert yt_limits["youtube_search_quota"].run == 100
+    assert yt_limits["youtube_detail_quota"].run == 100
+    profile = CreatorProfile()
+    vidiq_limits = channel_analysis_vidiq_limits(profile)
+    assert vidiq_limits["vidiq_credit"].run == 50
