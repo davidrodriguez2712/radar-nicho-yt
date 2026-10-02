@@ -1,7 +1,7 @@
 from decimal import Decimal
 from enum import StrEnum
 from importlib.resources import files
-from typing import Self
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -34,6 +34,7 @@ class CreatorProfile(BaseModel):
     credits_per_week: int = Field(default=25, ge=0)
     credits_per_cycle: int = Field(default=100, ge=0)
     channel_analysis_credits_per_run: int = Field(default=50, ge=0)
+    channel_analysis_advertising: dict[str, Any] | None = None
     exploration_share: Decimal = Field(default=Decimal("0.25"), gt=0, le=1)
     small_channel_subscribers: int = Field(default=50_000, gt=0)
     selected_refresh_hours: int = Field(default=24, ge=1)
