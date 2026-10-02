@@ -23,8 +23,8 @@ from tests.test_persistence import NOW
 def test_new_budget_fields_have_conservative_defaults() -> None:
     settings = Settings()
     assert settings.youtube_search_quota_per_run == 100
-    assert settings.youtube_search_quota_per_week == 100
-    assert settings.youtube_search_quota_per_month == 300
+    assert settings.youtube_search_quota_per_week == 700
+    assert settings.youtube_search_quota_per_month == 3000
     assert settings.youtube_detail_quota_per_run == 100
     assert settings.youtube_detail_quota_per_week == 500
     assert settings.youtube_detail_quota_per_month == 2000

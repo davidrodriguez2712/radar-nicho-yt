@@ -95,9 +95,14 @@ la lista de insumos faltantes.
 
 | Operación | Costo por llamada | Tope por análisis | Tope semanal | Tope mensual |
 |---|---|---|---|---|
-| YouTube `search.list` (`youtube_search_quota`) | 100 unidades | 100 (`youtube_search_quota_per_run`, 1 llamada) | 100 (`youtube_search_quota_per_week`) | 300 (`youtube_search_quota_per_month`) |
+| YouTube `search.list` (`youtube_search_quota`) | 100 unidades | 100 (`youtube_search_quota_per_run`, 1 llamada) | 700 (`youtube_search_quota_per_week`) | 3000 (`youtube_search_quota_per_month`) |
 | YouTube `channels.list`/`playlistItems.list`/`videos.list`/`commentThreads.list`/`videoCategories.list` (`youtube_detail_quota`) | 1 unidad | 100 (`youtube_detail_quota_per_run`) | 500 (`youtube_detail_quota_per_week`) | 2000 (`youtube_detail_quota_per_month`) |
 | vidIQ `channel_search`/`channel_videos`/`outliers`/`keyword_research` (`vidiq_credit`) | 5 créditos planos | 50 (`CreatorProfile.channel_analysis_credits_per_run`) | `credits_per_week` del perfil (25 por defecto) | `credits_per_cycle` del perfil (100 por defecto) |
+
+> **Nota:** Google anunció una migración a un sistema de cuotas más granular para
+> `search.list` a partir de junio de 2026, que podría ya estar vigente en tu cuenta.
+> Antes de depender de estos números en producción, vuelve a verificar en
+> [Google Cloud Console → YouTube Data API v3 → Cuotas](https://console.cloud.google.com/apis/api/youtube.googleapis.com/quotas).
 
 Valores por defecto verificados en `Settings`/`CreatorProfile`
 (`test_new_budget_fields_have_conservative_defaults`). La cuota de `search.list` de
