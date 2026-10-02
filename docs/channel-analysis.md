@@ -150,16 +150,20 @@ semilla). Devuelve uno de dos estados:
   etc.), igual que en el catálogo. El dashboard muestra videos analizados, canales
   comparables, tasa de breakout y concentración (HHI) en la pestaña de detalle.
 
-**Limitación real, no documentada hasta ahora: el breakout del panorama siempre sale
-vacío.** `compute_panorama` construye cada `Membership` con `size_stratum="unknown"`
-(no se calcula un estrato de tamaño real para canales de análisis puntual). Pero
-`calculate()` solo clasifica breakout sobre miembros con `size_stratum == "small"` — así
-que `breakout_classified`/`breakout_eligible` quedan siempre en `0` y `breakout_rate`
-siempre en `None` para este flujo, sin importar cuántos videos comparables reales haya.
-`demand_by_age` y la concentración (`hhi`/`concentration_score`) sí son señales reales y
-completas; el "breakout" del panorama de un análisis de canal, hoy, nunca lo es. El
-dashboard ya refleja esto honestamente (muestra `"—"` cuando `breakout_rate is None`),
-pero conviene saber que **eso ocurre siempre**, no solo cuando falta evidencia.
+**Clasificación de breakout por tamaño real de canal.** `compute_panorama` recibe los
+`Channel` reales de cada comparable (ya resueltos en la etapa `discover_comparables`,
+incluyendo `.subscribers`) y clasifica el `size_stratum` de cada `Membership` como
+`"small"` o `"large"` comparando los suscriptores reales del comparable contra
+`CreatorProfile.small_channel_subscribers` (por defecto 50.000) — el mismo umbral que ya
+usa el flujo de catálogo (`discovery/sampling.py::sample()`). Cuando el comparable no
+tiene suscriptores resueltos (`Channel.subscribers is None`), el estrato queda
+`"unknown"` y ese miembro simplemente no participa en la clasificación de breakout — una
+degradación honesta, no un dato inventado. La clasificación se indexa por el canal
+comparable bajo el que se obtuvieron los videos (la propia clave de
+`comparable_videos`), no por `video.channel_id`: para `SyntheticProvider`, el video
+devuelto por `fetch_channel_videos` declara siempre el mismo `channel_id` sin importar
+qué comparable se pidió, así que usar `video.channel_id` directamente clasificaría mal
+casi todos los videos.
 
 ## Ganancia estimada (`scoring/profit.py::estimate_profit`)
 
@@ -330,9 +334,9 @@ de texto para URL/handle/ID con el costo máximo real declarado antes de confirm
 análisis previos (canal, estado, fecha) y detalle del seleccionado. Antes del `snapshot`
 completo (vía `render_structured`), si `snapshot.metrics.panorama` existe se muestra un
 subtítulo "Panorama del nicho" con videos analizados, canales comparables, tasa de
-breakout (`"—"` si es `None` — lo que, como se documenta arriba, ocurre siempre en este
-flujo hoy) y concentración (HHI); o un aviso con la razón exacta si el panorama quedó
-`"incomplete"`.
+breakout (`"—"` si `breakout_rate is None` — p. ej. cuando ningún comparable resolvió un
+estrato `"small"`, como se documenta arriba) y concentración (HHI); o un aviso con la
+razón exacta si el panorama quedó `"incomplete"`.
 
 La pestaña Configuración (`dashboard.py`) agrega un formulario "Benchmark publicitario
 para análisis de canal" (ver "Ganancia estimada" arriba) debajo de los límites de
