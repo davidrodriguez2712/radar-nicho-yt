@@ -1097,7 +1097,28 @@ def render_channel_analysis(config: Settings) -> None:
                 "La evidencia de este análisis expiró por retención; solo se conservan "
                 "su configuración y su consumo."
             )
-        render_structured(detail.get("snapshot") or {})
+        snapshot = detail.get("snapshot") or {}
+        panorama = snapshot.get("metrics", {}).get("panorama")
+        if panorama:
+            st.subheader("Panorama del nicho")
+            if panorama["status"] == "computed":
+                metrics = panorama["metrics"]
+                cols = st.columns(3)
+                cols[0].metric("Videos analizados", metrics["videos"])
+                cols[1].metric("Canales comparables", metrics["channels"])
+                if metrics["breakout_rate"] is not None:
+                    breakout_text = f"{metrics['breakout_rate']:.1%}"
+                else:
+                    breakout_text = "—"
+                cols[2].metric("Tasa de breakout", breakout_text)
+                st.caption(
+                    f"Concentración (HHI): {metrics['hhi']:.3f}"
+                    if metrics["hhi"] is not None
+                    else "Concentración: sin datos suficientes."
+                )
+            else:
+                st.info(f"Panorama incompleto: {panorama['reason']}")
+        render_structured(snapshot)
 
 
 def render_pilot_preflight(config: Settings) -> None:
