@@ -1,0 +1,12 @@
+{
+  "version": "families-v1",
+  "families": [
+    {"id": "science", "label": "Ciencia", "queries": ["science explained", "astronomy discoveries"]},
+    {"id": "history", "label": "Historia", "queries": ["history explained", "ancient civilizations"]},
+    {"id": "technology", "label": "Tecnología", "queries": ["technology explained", "engineering innovations"]},
+    {"id": "nature", "label": "Naturaleza", "queries": ["wildlife explained", "natural phenomena"]},
+    {"id": "education", "label": "Educación", "queries": ["learning skills", "mathematics explained"]},
+    {"id": "culture", "label": "Cultura", "queries": ["world cultures", "language origins"]},
+    {"id": "entertainment", "label": "Entretenimiento", "queries": ["puzzle challenges", "fiction storytelling"]}
+  ]
+}

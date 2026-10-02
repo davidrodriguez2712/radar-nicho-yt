@@ -1,0 +1,65 @@
+{
+  "observed_at": "2026-09-22",
+  "limits": {"per_run": 20, "per_week": 25, "per_cycle": 100},
+  "expanded_run": {
+    "job_id": "5b76a5f1-6ca9-49c2-bd7c-6e341f741f83",
+    "run_id": "62afbcf0-c7e1-4af6-9a46-8f742a13df59",
+    "status": "partial",
+    "pending_reason": "run_budget_exhausted",
+    "provider_calls": 9,
+    "operations": {"channel_search": 1, "channel_videos": 3, "balance": 5},
+    "credits": 20,
+    "balance_before": 165,
+    "balance_after": 145,
+    "videos": 100,
+    "cohorts": [
+      {"format": "long", "received": 50, "included": 0, "reason": "language_unknown"},
+      {"format": "shorts", "received": 50, "included": 0, "reason": "language_unknown"}
+    ],
+    "ranking_entries": 2,
+    "unresolved_reservations": 0
+  },
+  "cached_reprocessing": {
+    "job_id": "8479082e-edce-4dd9-ae3e-db4e1d7f2f1b",
+    "run_id": "69699e30-881d-4625-a86c-31d7ea230503",
+    "status": "partial",
+    "pending_reason": "period_budget_exhausted",
+    "provider_calls": 1,
+    "operations": {"balance": 1},
+    "credits": 0,
+    "videos_reused": 100,
+    "english_channel_claims": 100,
+    "cohorts": [
+      {"format": "long", "received": 50, "included": 0, "reason": "relevance_unknown"},
+      {"format": "shorts", "received": 50, "included": 0, "reason": "relevance_unknown"}
+    ],
+    "ranking_entries": 2,
+    "unresolved_reservations": 0
+  },
+  "semantic_calibration": {
+    "model": "paraphrase-MiniLM-L3-v2@4ca70771034acceecb2e72475f72050fcdde4ddc-qint8-amd64",
+    "videos": 100,
+    "threshold": 0.35,
+    "confirmed_long": 4,
+    "confirmed_shorts": 5,
+    "encode_seconds": 3.602,
+    "process_peak_mib": 172
+  },
+  "semantic_reprocessing": {
+    "job_id": "b0d29c1b-a539-44d6-970b-9bac3045c9f5",
+    "run_id": "4bd1b7e2-b03b-48e3-802a-10276646ada6",
+    "status": "partial",
+    "pending_reason": "period_budget_exhausted",
+    "provider_calls": 1,
+    "operations": {"balance": 1},
+    "credits": 0,
+    "evaluated_cohorts": 10,
+    "confirmed_long": 4,
+    "shorts_outside_window": 5,
+    "noise_groups": 4,
+    "ranking_entries": 8,
+    "unresolved_reservations": 0
+  },
+  "final_balance": {"renewable": 105, "additional": 40, "total": 145},
+  "radar_paused": true
+}

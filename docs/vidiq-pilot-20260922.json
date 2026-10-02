@@ -1,0 +1,96 @@
+{
+  "pilot": "vidiq-personal-isolated-v1",
+  "started_at": "2026-09-22T14:02:10.035234+00:00",
+  "elapsed_seconds": 6.748,
+  "job_status": "partial",
+  "error_code": null,
+  "pending_reason": "run_budget_exhausted",
+  "provider_calls": 3,
+  "operations": {
+    "balance": 2,
+    "channel_search": 1
+  },
+  "request_states": {
+    "completed": 3
+  },
+  "request_seconds": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "credits": {
+    "confirmed": "5.000000",
+    "maximum": "5",
+    "unresolved_reservations": 0,
+    "cycle_started_at": "2026-09-04T01:49:11.161411+00:00",
+    "cycle_start_basis": "inferred_one_month_before_provider_renewal_for_single_5_credit_pilot"
+  },
+  "cost": {
+    "vidiq_credits": "5.000000",
+    "incremental_usd_purchase": "0",
+    "subscription_cost_attribution": "not_measured"
+  },
+  "balance_snapshots": [
+    {
+      "renewable": "135",
+      "additional": "40",
+      "total": "175",
+      "recurring_allocation": "150",
+      "renews_at": "2026-10-04T01:49:11.161411+00:00"
+    },
+    {
+      "renewable": "130",
+      "additional": "40",
+      "total": "170",
+      "recurring_allocation": "150",
+      "renews_at": "2026-10-04T01:49:11.161411+00:00"
+    }
+  ],
+  "coverage": {
+    "family": "culture",
+    "channels_returned": 10,
+    "channels_reported_total": 10000,
+    "provider_category_matches_family": 0,
+    "provider_claims_english": 10,
+    "formats": {
+      "long": "not_queried_budget_cap",
+      "shorts": "not_queried_budget_cap"
+    },
+    "analysis": {
+      "complete": false,
+      "grouping": {
+        "omitted": 0,
+        "received": 0,
+        "processed": 0,
+        "noise_groups": 0,
+        "fallback_reason": "model_not_configured",
+        "ambiguous_groups": 0
+      },
+      "synthetic": false,
+      "work_kind": "catalog",
+      "pending_reason": "run_budget_exhausted",
+      "catalog_pending": [
+        "science",
+        "history",
+        "technology",
+        "nature",
+        "education",
+        "entertainment"
+      ],
+      "refresh_pending": [],
+      "evaluated_cohorts": 0
+    }
+  },
+  "calibration": {
+    "state": "uncalibrated",
+    "reason": "no_video_or_cohort_evidence_within_5_credit_cap",
+    "references_frozen": false
+  },
+  "privacy": {
+    "raw_channel_names_in_report": false,
+    "raw_channel_ids_in_report": false,
+    "raw_query_text_in_report": false,
+    "temporary_database": true,
+    "retention_days": 7
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "cycle": "vidiq-personal-scheduled-v1",
+  "started_at": "2026-09-22T15:40:29.362140+00:00",
+  "finished_at": "2026-09-22T15:40:33.656112+00:00",
+  "job_status": "partial",
+  "source_mode": "live",
+  "trigger": "scheduled",
+  "pending_reason": "run_budget_exhausted",
+  "provider_calls": 3,
+  "operations": {"balance": 2, "channel_search": 1},
+  "request_states": {"completed": 3},
+  "credits": {
+    "confirmed": "5.000000",
+    "maximum_per_run": "5",
+    "maximum_per_week": "25",
+    "maximum_per_cycle": "100",
+    "unresolved_reservations": 0
+  },
+  "balance_snapshots": [
+    {"renewable": "130", "additional": "40", "total": "170"},
+    {"renewable": "125", "additional": "40", "total": "165"}
+  ],
+  "pipeline": {
+    "completed_stages": [
+      "planning",
+      "query",
+      "normalization",
+      "cohort",
+      "metrics",
+      "evaluation",
+      "backlog"
+    ],
+    "evaluated_cohorts": 0,
+    "ranking_snapshot_created": true,
+    "ranking_entries": 0,
+    "synthetic": false
+  },
+  "operation_after": {
+    "radar_paused": true,
+    "schedule_mode": "live",
+    "interval_seconds": 3600
+  },
+  "privacy": {
+    "raw_channel_names_in_report": false,
+    "raw_channel_ids_in_report": false,
+    "raw_query_text_in_report": false,
+    "retention_days": 7
+  }
+}

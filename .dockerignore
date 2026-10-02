@@ -1,0 +1,26 @@
+# Public release context: include only inputs consumed by the Dockerfile.
+**
+!Dockerfile
+!.dockerignore
+!pyproject.toml
+!uv.lock
+!README.md
+!alembic.ini
+!.streamlit/
+!.streamlit/config.toml
+!src/
+!src/**/
+!src/**/*.py
+!src/nicheradar/data/*.json
+!migrations/
+!migrations/**/
+!migrations/**/*.py
+!migrations/script.py.mako
+!scripts/
+!scripts/install_embedding_model.py
+# Never send local caches or credential files, even inside an included directory.
+**/__pycache__/
+**/*.pyc
+**/.env*
+**/*.pem
+**/*.key

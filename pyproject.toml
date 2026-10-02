@@ -1,0 +1,55 @@
+[project]
+name = "nicheradar"
+version = "0.1.0"
+description = "Radar privado de oportunidades de YouTube basado en evidencia"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "alembic>=1.16,<2",
+  "fastapi>=0.115,<1",
+  "httpx>=0.28,<1",
+  "mcp>=1.25,<2",
+  "psycopg[binary]>=3.2,<4",
+  "pydantic>=2.11,<3",
+  "pydantic-settings>=2.9,<3",
+  "sqlalchemy>=2.0,<3",
+  "streamlit>=1.45,<2",
+  "uvicorn>=0.34,<1",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3,<10", "pytest-cov>=6,<8", "ruff>=0.11,<1", "mypy>=1.15,<2"]
+
+[project.optional-dependencies]
+embeddings = ["numpy>=2,<3", "onnxruntime>=1.22,<2", "tokenizers>=0.21,<1"]
+
+[project.scripts]
+nicheradar-api = "nicheradar.entrypoints:api"
+nicheradar-dashboard = "nicheradar.entrypoints:dashboard"
+nicheradar-worker = "nicheradar.workers.main:main"
+nicheradar-vidiq = "nicheradar.integrations.vidiq_cli:main"
+nicheradar-youtube = "nicheradar.integrations.youtube_cli:main"
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nicheradar"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src", "apps", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = ["postgres: requires isolated test PostgreSQL", "smoke: launches local processes"]

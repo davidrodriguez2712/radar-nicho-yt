@@ -1,0 +1,104 @@
+name: nicheradar
+x-backend: &backend
+  image: ${NR_BACKEND_IMAGE:-nicheradar-backend:local}
+  build:
+    context: .
+    target: backend
+  environment: &backend-environment
+    NR_MODE: synthetic
+    NR_RADAR_PAUSED: "true"
+    NR_TIMEZONE: America/Lima
+    NR_DATABASE_URL: postgresql+psycopg://nicheradar:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/nicheradar
+    NR_SERVICE_TOKEN: ${NR_SERVICE_TOKEN:?Set NR_SERVICE_TOKEN}
+    NR_API_HOST: 0.0.0.0
+    NR_WORKER_POLL_SECONDS: "30"
+    NR_WORKER_MAXIMUM_ATTEMPTS: "${NR_WORKER_MAXIMUM_ATTEMPTS:-3}"
+    NR_EXTERNAL_CONCURRENCY: "1"
+  restart: unless-stopped
+  networks: [private]
+  mem_limit: 512m
+  cpus: 1.0
+
+services:
+  postgres:
+    image: postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+    environment:
+      POSTGRES_USER: nicheradar
+      POSTGRES_DB: nicheradar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes: ["postgres-data:/var/lib/postgresql"]
+    networks: [private]
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nicheradar -d nicheradar"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      postgres: {condition: service_healthy}
+  api:
+    <<: *backend
+    networks: [private, local-access]
+    command: ["nicheradar-api"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    ports: ["127.0.0.1:${NR_LOCAL_API_PORT:-8000}:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  worker:
+    <<: *backend
+    image: ${NR_WORKER_IMAGE:-nicheradar-worker:local}
+    build:
+      context: .
+      target: worker
+    command: ["nicheradar-worker"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-m", "nicheradar.workers.health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+  dashboard:
+    image: ${NR_DASHBOARD_IMAGE:-nicheradar-dashboard:local}
+    build:
+      context: .
+      target: dashboard
+    environment:
+      NR_MODE: synthetic
+      NR_SERVICE_TOKEN: ${NR_SERVICE_TOKEN:?Set NR_SERVICE_TOKEN}
+      NR_DASHBOARD_PASSWORD: ${NR_DASHBOARD_PASSWORD:?Set NR_DASHBOARD_PASSWORD}
+      NR_API_URL: http://api:8000
+      NR_DASHBOARD_HOST: 0.0.0.0
+    depends_on:
+      api: {condition: service_healthy}
+    ports: ["127.0.0.1:${NR_LOCAL_DASHBOARD_PORT:-8501}:8501"]
+    networks: [private, local-access]
+    mem_limit: 512m
+    cpus: 0.5
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  private:
+    internal: true
+  # Docker Desktop needs a non-internal network to publish loopback ports.
+  # PostgreSQL and the worker remain attached only to the isolated network.
+  local-access:
+    driver: bridge
+volumes:
+  postgres-data:
