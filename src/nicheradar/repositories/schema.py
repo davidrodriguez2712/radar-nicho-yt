@@ -150,6 +150,29 @@ production_recipe_defaults = sa.Table(
     sa.CheckConstraint("version > 0", name="recipe_default_version"),
     sa.CheckConstraint("format IN ('long', 'shorts')", name="recipe_default_format"),
 )
+channel_analyses = sa.Table(
+    "channel_analyses",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid4),
+    sa.Column(
+        "profile_id", UUID(as_uuid=True), sa.ForeignKey("creator_profiles.id"), nullable=False
+    ),
+    sa.Column(
+        "run_id", UUID(as_uuid=True), sa.ForeignKey("analysis_runs.id"), nullable=False, unique=True
+    ),
+    sa.Column("channel_input", sa.Text, nullable=False),
+    sa.Column("channel_external_id", sa.String(80)),
+    sa.Column("status", sa.String(20), nullable=False),
+    sa.Column("configuration", JSONB, nullable=False),
+    sa.Column("snapshot", JSONB),
+    sa.Column("consumption", JSONB, nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("retain_until", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("expired_at", sa.DateTime(timezone=True)),
+    sa.CheckConstraint(
+        "status IN ('completed', 'partial', 'failed')", name="channel_analysis_status"
+    ),
+)
 topic_artifact_sources = sa.Table(
     "topic_artifact_sources",
     metadata,
