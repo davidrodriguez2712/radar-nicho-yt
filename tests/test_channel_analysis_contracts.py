@@ -1,6 +1,8 @@
+import asyncio
 from datetime import UTC, datetime
 
 from nicheradar.integrations.contracts import Batch, Coverage, Operation, Provenance
+from nicheradar.integrations.synthetic import SyntheticProvider
 
 
 def test_new_operations_exist_and_batch_carries_comments_and_categories() -> None:
@@ -21,3 +23,20 @@ def test_new_operations_exist_and_batch_carries_comments_and_categories() -> Non
     )
     assert batch.comments[0]["text"] == "hi"
     assert batch.category_labels["24"] == "Entertainment"
+
+
+def test_synthetic_provider_supports_new_operations() -> None:
+    provider = SyntheticProvider()
+    now = datetime.now(UTC)
+    search = asyncio.run(
+        provider.fetch(
+            Operation.SEARCH, {"type": "channel", "q": "science", "family": "science"}, now
+        )
+    )
+    assert len(search.channels) > 0
+    comments = asyncio.run(
+        provider.fetch(Operation.COMMENT_THREADS, {"videoId": "x", "family": "science"}, now)
+    )
+    assert len(comments.comments) > 0
+    categories = asyncio.run(provider.fetch(Operation.VIDEO_CATEGORIES, {"family": "science"}, now))
+    assert categories.category_labels

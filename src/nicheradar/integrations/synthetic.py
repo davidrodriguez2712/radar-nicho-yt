@@ -60,7 +60,24 @@ class SyntheticProvider:
                     renews_at=now + timedelta(days=30),
                 ),
             )
-        if operation in {Operation.CHANNEL_SEARCH, Operation.CHANNELS}:
+        if operation == Operation.COMMENT_THREADS:
+            return Batch(
+                **common,
+                comments=tuple(
+                    {"text": f"Synthetic comment {index} about {family}", "like_count": index * 2}
+                    for index in range(3)
+                ),
+                coverage=Coverage(returned=3, complete=True, selection_method="synthetic"),
+            )
+        if operation == Operation.VIDEO_CATEGORIES:
+            return Batch(
+                **common,
+                category_labels={"24": "Entertainment", "27": "Education"},
+                coverage=Coverage(returned=2, complete=True, selection_method="synthetic"),
+            )
+        if operation == Operation.SEARCH and parameters.get("type") == "video":
+            operation = Operation.CHANNEL_VIDEOS  # falls through to the generic video fixture below
+        if operation in {Operation.CHANNEL_SEARCH, Operation.CHANNELS, Operation.SEARCH}:
             channels = tuple(
                 Channel(
                     id=f"synthetic:{family}:channel-{index}",
