@@ -440,6 +440,10 @@ class Pipeline:
         owner: str,
         now: datetime,
     ) -> None:
+        from collections import Counter
+
+        from pydantic import ValidationError
+
         from nicheradar.discovery.channel_analysis import (
             MAX_COMPARABLES,
             compute_comparison,
@@ -448,6 +452,7 @@ class Pipeline:
             fetch_channel_videos,
             resolve_channel,
         )
+        from nicheradar.scoring.advertising import AdvertisingBenchmark
         from nicheradar.services.channel_analysis import save_channel_analysis
         from nicheradar.services.channel_analysis_providers import (
             channel_analysis_vidiq_limits,
@@ -455,6 +460,12 @@ class Pipeline:
             channel_analysis_youtube_limits,
             channel_analysis_youtube_tariffs,
         )
+        from nicheradar.services.production import (
+            DEFAULT_VIDEOS_PER_MONTH,
+            default_recipe,
+            default_template,
+        )
+        from nicheradar.services.scenarios import Proposal, Scenario, simulate
         from nicheradar.workers.channel_analysis_queue import confirm_channel_analysis_stage
 
         stage = job["stage"]
@@ -626,7 +637,48 @@ class Pipeline:
                             "videos_by_channel"
                         ].items()
                     }
-                    comparison = compute_comparison(target_videos, channel, comparable_videos, now)
+                    video_format = (
+                        Counter(video.format for video in target_videos).most_common(1)[0][0]
+                        if target_videos
+                        else VideoFormat.LONG
+                    )
+                    advertising = None
+                    if profile.channel_analysis_advertising is not None:
+                        try:
+                            advertising = AdvertisingBenchmark.model_validate(
+                                profile.channel_analysis_advertising
+                            )
+                        except ValidationError:
+                            # A malformed stored benchmark must degrade profit to
+                            # "incomplete", never crash the whole analysis.
+                            advertising = None
+                    scenario_result = simulate(
+                        Scenario(
+                            name="channel-analysis-cost-estimate",
+                            proposals=(
+                                Proposal(
+                                    channel_key="channel-analysis",
+                                    opportunity_keys=(),
+                                    recipe=default_recipe(video_format, profile.language),
+                                    videos_per_month=DEFAULT_VIDEOS_PER_MONTH,
+                                ),
+                            ),
+                            tools=default_template(video_format, profile.language).tools,
+                            radar_monthly_usd=None,
+                            reserve_usd=profile.monthly_reserve_usd,
+                        ),
+                        profile,
+                    )
+                    monthly_cost_usd = scenario_result.monthly_usd
+                    comparison = compute_comparison(
+                        target_videos,
+                        channel,
+                        comparable_videos,
+                        now,
+                        videos_per_month=DEFAULT_VIDEOS_PER_MONTH,
+                        advertising=advertising,
+                        monthly_cost_usd=monthly_cost_usd,
+                    )
                     panorama = compute_panorama(comparable_videos, now)
                     confirm_channel_analysis_stage(
                         connection,
