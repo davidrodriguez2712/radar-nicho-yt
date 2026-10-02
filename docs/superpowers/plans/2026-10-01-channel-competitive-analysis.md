@@ -137,7 +137,9 @@ channel_analyses = sa.Table(
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("retain_until", sa.DateTime(timezone=True), nullable=False),
     sa.Column("expired_at", sa.DateTime(timezone=True)),
-    sa.CheckConstraint("status IN ('completed', 'partial', 'failed')", name="channel_analysis_status"),
+    sa.CheckConstraint(
+        "status IN ('completed', 'partial', 'failed')", name="channel_analysis_status"
+    ),
 )
 ```
 
@@ -188,7 +190,10 @@ def test_new_operations_exist_and_batch_carries_comments_and_categories() -> Non
     assert Operation.VIDEO_CATEGORIES == "video_categories"
     batch = Batch(
         provenance=Provenance(
-            provider="test", operation=Operation.SEARCH, auth_scope="x", fetched_at=datetime.now(UTC)
+            provider="test",
+            operation=Operation.SEARCH,
+            auth_scope="x",
+            fetched_at=datetime.now(UTC),
         ),
         coverage=Coverage(returned=0, selection_method="test"),
         costs=(),
@@ -281,7 +286,9 @@ def test_synthetic_provider_supports_new_operations() -> None:
     provider = SyntheticProvider()
     now = datetime.now(UTC)
     search = asyncio.run(
-        provider.fetch(Operation.SEARCH, {"type": "channel", "q": "science", "family": "science"}, now)
+        provider.fetch(
+            Operation.SEARCH, {"type": "channel", "q": "science", "family": "science"}, now
+        )
     )
     assert len(search.channels) > 0
     comments = asyncio.run(
@@ -400,9 +407,13 @@ def test_search_channels_maps_nested_id_shape() -> None:
         )
 
     provider = _provider(httpx.MockTransport(handler))
-    batch = asyncio.run(provider.fetch(
-        Operation.SEARCH, {"type": "channel", "q": "science", "maxResults": "10"}, datetime.now(UTC)
-    ))
+    batch = asyncio.run(
+        provider.fetch(
+            Operation.SEARCH,
+            {"type": "channel", "q": "science", "maxResults": "10"},
+            datetime.now(UTC),
+        )
+    )
     assert batch.channels[0].id == "UC123"
     assert batch.channels[0].title == "Science Channel"
     assert batch.costs[0].maximum == 100
@@ -427,9 +438,11 @@ def test_comment_threads_maps_top_level_comments() -> None:
         )
 
     provider = _provider(httpx.MockTransport(handler))
-    batch = asyncio.run(provider.fetch(
-        Operation.COMMENT_THREADS, {"videoId": "vid1", "maxResults": "20"}, datetime.now(UTC)
-    ))
+    batch = asyncio.run(
+        provider.fetch(
+            Operation.COMMENT_THREADS, {"videoId": "vid1", "maxResults": "20"}, datetime.now(UTC)
+        )
+    )
     assert batch.comments[0]["text"] == "Nice video"
     assert batch.comments[0]["like_count"] == 4
     assert batch.costs[0].maximum == 1
@@ -443,9 +456,9 @@ def test_video_categories_maps_id_to_title() -> None:
         )
 
     provider = _provider(httpx.MockTransport(handler))
-    batch = asyncio.run(provider.fetch(
-        Operation.VIDEO_CATEGORIES, {"regionCode": "US"}, datetime.now(UTC)
-    ))
+    batch = asyncio.run(
+        provider.fetch(Operation.VIDEO_CATEGORIES, {"regionCode": "US"}, datetime.now(UTC))
+    )
     assert batch.category_labels == {"24": "Entertainment"}
     assert batch.costs[0].maximum == 1
 
@@ -458,11 +471,13 @@ def test_unsupported_parameter_is_dropped_not_forwarded() -> None:
         return httpx.Response(200, json={"items": []})
 
     provider = _provider(httpx.MockTransport(handler))
-    asyncio.run(provider.fetch(
-        Operation.SEARCH,
-        {"type": "channel", "q": "science", "not_a_real_param": "x"},
-        datetime.now(UTC),
-    ))
+    asyncio.run(
+        provider.fetch(
+            Operation.SEARCH,
+            {"type": "channel", "q": "science", "not_a_real_param": "x"},
+            datetime.now(UTC),
+        )
+    )
     assert "not_a_real_param" not in captured["params"]
 ```
 
@@ -478,10 +493,16 @@ Read `src/nicheradar/integrations/youtube.py` fully first. Then:
 
 1. Add to `operations`:
 ```python
-    operations = frozenset(
-        {Operation.CHANNELS, Operation.UPLOADS, Operation.VIDEOS, Operation.SEARCH,
-         Operation.COMMENT_THREADS, Operation.VIDEO_CATEGORIES}
-    )
+operations = frozenset(
+    {
+        Operation.CHANNELS,
+        Operation.UPLOADS,
+        Operation.VIDEOS,
+        Operation.SEARCH,
+        Operation.COMMENT_THREADS,
+        Operation.VIDEO_CATEGORIES,
+    }
+)
 ```
 2. Add to the `resource` dict inside `fetch()`:
 ```python
@@ -504,44 +525,51 @@ Read `src/nicheradar/integrations/youtube.py` fully first. Then:
 5. Add response-normalization branches:
 
 ```python
-        if operation == Operation.SEARCH:
-            channels = tuple(
-                Channel(id=item["id"]["channelId"], title=item["snippet"]["title"])
-                for item in data.get("items", [])
-                if "channelId" in item.get("id", {})
-            )
-            videos = tuple(
-                Video(
-                    id=item["id"]["videoId"],
-                    channel_id=item["snippet"].get("channelId", ""),
-                    title=item["snippet"]["title"],
-                    published_at=None,
-                )
-                for item in data.get("items", [])
-                if "videoId" in item.get("id", {})
-            )
-            return Batch(
-                provenance=provenance, costs=costs, channels=channels, videos=videos,
-                coverage=Coverage(returned=len(data.get("items", [])), selection_method="search"),
-            )
-        if operation == Operation.COMMENT_THREADS:
-            comments = tuple(
-                {
-                    "text": item["snippet"]["topLevelComment"]["snippet"]["textDisplay"],
-                    "like_count": item["snippet"]["topLevelComment"]["snippet"]["likeCount"],
-                }
-                for item in data.get("items", [])
-            )
-            return Batch(
-                provenance=provenance, costs=costs, comments=comments,
-                coverage=Coverage(returned=len(comments), selection_method="comment_threads"),
-            )
-        if operation == Operation.VIDEO_CATEGORIES:
-            labels = {item["id"]: item["snippet"]["title"] for item in data.get("items", [])}
-            return Batch(
-                provenance=provenance, costs=costs, category_labels=labels,
-                coverage=Coverage(returned=len(labels), selection_method="video_categories"),
-            )
+if operation == Operation.SEARCH:
+    channels = tuple(
+        Channel(id=item["id"]["channelId"], title=item["snippet"]["title"])
+        for item in data.get("items", [])
+        if "channelId" in item.get("id", {})
+    )
+    videos = tuple(
+        Video(
+            id=item["id"]["videoId"],
+            channel_id=item["snippet"].get("channelId", ""),
+            title=item["snippet"]["title"],
+            published_at=None,
+        )
+        for item in data.get("items", [])
+        if "videoId" in item.get("id", {})
+    )
+    return Batch(
+        provenance=provenance,
+        costs=costs,
+        channels=channels,
+        videos=videos,
+        coverage=Coverage(returned=len(data.get("items", [])), selection_method="search"),
+    )
+if operation == Operation.COMMENT_THREADS:
+    comments = tuple(
+        {
+            "text": item["snippet"]["topLevelComment"]["snippet"]["textDisplay"],
+            "like_count": item["snippet"]["topLevelComment"]["snippet"]["likeCount"],
+        }
+        for item in data.get("items", [])
+    )
+    return Batch(
+        provenance=provenance,
+        costs=costs,
+        comments=comments,
+        coverage=Coverage(returned=len(comments), selection_method="comment_threads"),
+    )
+if operation == Operation.VIDEO_CATEGORIES:
+    labels = {item["id"]: item["snippet"]["title"] for item in data.get("items", [])}
+    return Batch(
+        provenance=provenance,
+        costs=costs,
+        category_labels=labels,
+        coverage=Coverage(returned=len(labels), selection_method="video_categories"),
+    )
 ```
 
 Adapt variable names (`provenance`, `costs`, `data`) to whatever the existing function
@@ -687,36 +715,63 @@ from tests.test_persistence import NOW
 
 def _prepared_request(db: Connection, profile_id, trigger: str) -> "uuid4":
     run_id = insert_record(
-        db, "analysis_runs",
-        {"profile_id": profile_id, "mode": "live", "trigger": trigger, "status": "running",
-         "configuration": {}},
+        db,
+        "analysis_runs",
+        {
+            "profile_id": profile_id,
+            "mode": "live",
+            "trigger": trigger,
+            "status": "running",
+            "configuration": {},
+        },
     )
     request_id = insert_record(
-        db, "provider_requests",
-        {"run_id": run_id, "provider": "vidiq", "operation": "channel_search",
-         "auth_scope": "test", "cache_key": "a" * 64, "idempotency_key": str(uuid4()),
-         "state": "prepared"},
+        db,
+        "provider_requests",
+        {
+            "run_id": run_id,
+            "provider": "vidiq",
+            "operation": "channel_search",
+            "auth_scope": "test",
+            "cache_key": "a" * 64,
+            "idempotency_key": str(uuid4()),
+            "state": "prepared",
+        },
     )
     return request_id
 
 
 @pytest.mark.postgres
 def test_channel_analysis_trigger_uses_its_own_run_cap(db: Connection) -> None:
-    profile = CreatorProfile(credits_per_run=5, channel_analysis_credits_per_run=50,
-                              credits_per_week=200, credits_per_cycle=400)
-    profile_id = seed_profile(db, profile, __import__(
-        "nicheradar.domain.profile", fromlist=["initial_catalog"]
-    ).initial_catalog())
+    profile = CreatorProfile(
+        credits_per_run=5,
+        channel_analysis_credits_per_run=50,
+        credits_per_week=200,
+        credits_per_cycle=400,
+    )
+    profile_id = seed_profile(
+        db,
+        profile,
+        __import__("nicheradar.domain.profile", fromlist=["initial_catalog"]).initial_catalog(),
+    )
     db.execute(
         insert(s.credit_balances).values(
-            provider="vidiq", auth_scope="test", unit="vidiq_credit",
-            renewable_remaining=Decimal(1000), additional_remaining=Decimal(0),
-            cycle_started_at=NOW, renews_at=NOW + timedelta(days=30),
-            refresh_required=False, confirmed_usage=Decimal(0),
+            provider="vidiq",
+            auth_scope="test",
+            unit="vidiq_credit",
+            renewable_remaining=Decimal(1000),
+            additional_remaining=Decimal(0),
+            cycle_started_at=NOW,
+            renews_at=NOW + timedelta(days=30),
+            refresh_required=False,
+            confirmed_usage=Decimal(0),
         )
     )
-    limits = {"vidiq_credit": Limits(operation=Decimal(5), run=Decimal(50),
-                                      week=Decimal(200), period=Decimal(400))}
+    limits = {
+        "vidiq_credit": Limits(
+            operation=Decimal(5), run=Decimal(50), week=Decimal(200), period=Decimal(400)
+        )
+    }
     costs = (Cost(unit="vidiq_credit", maximum=Decimal(30), source="test"),)
 
     manual_request = _prepared_request(db, profile_id, "manual")
@@ -803,22 +858,34 @@ git commit -m "fix: make vidIQ run-cap clamp trigger-aware for channel analysis"
 from nicheradar.domain.profile import CreatorProfile
 from nicheradar.integrations.contracts import Operation
 from nicheradar.services.channel_analysis_providers import (
-    channel_analysis_vidiq_limits, channel_analysis_vidiq_tariffs,
-    channel_analysis_youtube_limits, channel_analysis_youtube_tariffs,
+    channel_analysis_vidiq_limits,
+    channel_analysis_vidiq_tariffs,
+    channel_analysis_youtube_limits,
+    channel_analysis_youtube_tariffs,
 )
 
 
 def test_channel_analysis_tariffs_cover_every_operation_used() -> None:
     youtube = channel_analysis_youtube_tariffs()
-    for op in (Operation.CHANNELS, Operation.UPLOADS, Operation.VIDEOS,
-               Operation.SEARCH, Operation.COMMENT_THREADS, Operation.VIDEO_CATEGORIES):
+    for op in (
+        Operation.CHANNELS,
+        Operation.UPLOADS,
+        Operation.VIDEOS,
+        Operation.SEARCH,
+        Operation.COMMENT_THREADS,
+        Operation.VIDEO_CATEGORIES,
+    ):
         assert op in youtube
     assert youtube[Operation.SEARCH][0].maximum == 100
     assert youtube[Operation.VIDEOS][0].maximum == 1
 
     vidiq = channel_analysis_vidiq_tariffs()
-    for op in (Operation.CHANNEL_SEARCH, Operation.CHANNEL_VIDEOS, Operation.OUTLIERS,
-               Operation.KEYWORDS):
+    for op in (
+        Operation.CHANNEL_SEARCH,
+        Operation.CHANNEL_VIDEOS,
+        Operation.OUTLIERS,
+        Operation.KEYWORDS,
+    ):
         assert op in vidiq
     assert vidiq[Operation.CHANNEL_SEARCH][0].maximum == 5
 
@@ -861,7 +928,9 @@ VIDIQ_TARIFF_SOURCE = "MCP tools/list reviewed 2026-09-21; flat 5 credits per ca
 
 
 def channel_analysis_youtube_tariffs() -> dict[Operation, tuple[Cost, ...]]:
-    detail_cost = Cost(unit="youtube_detail_quota", maximum=Decimal(1), source=YOUTUBE_TARIFF_SOURCE)
+    detail_cost = Cost(
+        unit="youtube_detail_quota", maximum=Decimal(1), source=YOUTUBE_TARIFF_SOURCE
+    )
     return {
         Operation.CHANNELS: (detail_cost,),
         Operation.UPLOADS: (detail_cost,),
@@ -955,7 +1024,8 @@ from nicheradar.domain.profile import CreatorProfile, initial_catalog
 from nicheradar.repositories import schema_v1 as s
 from nicheradar.repositories.core import insert_record, seed_profile
 from nicheradar.workers.channel_analysis_queue import (
-    CHANNEL_ANALYSIS_STAGES, confirm_channel_analysis_stage,
+    CHANNEL_ANALYSIS_STAGES,
+    confirm_channel_analysis_stage,
 )
 from nicheradar.workers.queue import claim
 from tests.test_persistence import NOW
@@ -965,14 +1035,27 @@ from tests.test_persistence import NOW
 def test_stage_sequence_advances_and_completes(db: Connection) -> None:
     profile_id = seed_profile(db, CreatorProfile(), initial_catalog())
     run_id = insert_record(
-        db, "analysis_runs",
-        {"profile_id": profile_id, "mode": "live", "trigger": "channel_analysis",
-         "status": "running", "configuration": {}},
+        db,
+        "analysis_runs",
+        {
+            "profile_id": profile_id,
+            "mode": "live",
+            "trigger": "channel_analysis",
+            "status": "running",
+            "configuration": {},
+        },
     )
     insert_record(
-        db, "jobs",
-        {"run_id": run_id, "occurrence_key": "test-channel-analysis-1", "status": "queued",
-         "stage": CHANNEL_ANALYSIS_STAGES[0], "checkpoints": {}, "available_at": NOW},
+        db,
+        "jobs",
+        {
+            "run_id": run_id,
+            "occurrence_key": "test-channel-analysis-1",
+            "status": "queued",
+            "stage": CHANNEL_ANALYSIS_STAGES[0],
+            "checkpoints": {},
+            "available_at": NOW,
+        },
     )
     job = claim(db, "owner-a", NOW)
     assert job is not None
@@ -997,14 +1080,27 @@ def test_stage_sequence_advances_and_completes(db: Connection) -> None:
 def test_partial_confirmation_marks_job_partial_not_queued(db: Connection) -> None:
     profile_id = seed_profile(db, CreatorProfile(), initial_catalog())
     run_id = insert_record(
-        db, "analysis_runs",
-        {"profile_id": profile_id, "mode": "live", "trigger": "channel_analysis",
-         "status": "running", "configuration": {}},
+        db,
+        "analysis_runs",
+        {
+            "profile_id": profile_id,
+            "mode": "live",
+            "trigger": "channel_analysis",
+            "status": "running",
+            "configuration": {},
+        },
     )
     insert_record(
-        db, "jobs",
-        {"run_id": run_id, "occurrence_key": "test-channel-analysis-2", "status": "queued",
-         "stage": CHANNEL_ANALYSIS_STAGES[-1], "checkpoints": {}, "available_at": NOW},
+        db,
+        "jobs",
+        {
+            "run_id": run_id,
+            "occurrence_key": "test-channel-analysis-2",
+            "status": "queued",
+            "stage": CHANNEL_ANALYSIS_STAGES[-1],
+            "checkpoints": {},
+            "available_at": NOW,
+        },
     )
     job = claim(db, "owner-b", NOW)
     assert job is not None
@@ -1262,19 +1358,40 @@ from tests.test_persistence import NOW
 
 def test_channel_view_rate_is_median_views_per_day() -> None:
     videos = (
-        Video(id="a", channel_id="c", title="t", published_at=NOW - timedelta(days=10),
-              views=100, format=VideoFormat.LONG),
-        Video(id="b", channel_id="c", title="t", published_at=NOW - timedelta(days=10),
-              views=300, format=VideoFormat.LONG),
-        Video(id="c", channel_id="c", title="t", published_at=None, views=500,
-              format=VideoFormat.LONG),  # no published_at: excluded
+        Video(
+            id="a",
+            channel_id="c",
+            title="t",
+            published_at=NOW - timedelta(days=10),
+            views=100,
+            format=VideoFormat.LONG,
+        ),
+        Video(
+            id="b",
+            channel_id="c",
+            title="t",
+            published_at=NOW - timedelta(days=10),
+            views=300,
+            format=VideoFormat.LONG,
+        ),
+        Video(
+            id="c", channel_id="c", title="t", published_at=None, views=500, format=VideoFormat.LONG
+        ),  # no published_at: excluded
     )
     assert channel_view_rate(videos, NOW) == 20.0  # median(100/10, 300/10) = 20
 
 
 def test_channel_view_rate_none_when_no_usable_video() -> None:
-    videos = (Video(id="a", channel_id="c", title="t", published_at=None, views=None,
-                     format=VideoFormat.LONG),)
+    videos = (
+        Video(
+            id="a",
+            channel_id="c",
+            title="t",
+            published_at=None,
+            views=None,
+            format=VideoFormat.LONG,
+        ),
+    )
     assert channel_view_rate(videos, NOW) is None
 ```
 
@@ -1303,16 +1420,16 @@ def channel_view_rate(videos: tuple[Video, ...], now: datetime) -> float | None:
     return median(rates) if rates else None
 
 
-async def fetch_channel_videos(gateway: Gateway, channel: Channel, now: datetime) -> tuple[Video, ...]:
+async def fetch_channel_videos(
+    gateway: Gateway, channel: Channel, now: datetime
+) -> tuple[Video, ...]:
     if channel.uploads_playlist:
         uploads, _, _ = await gateway.fetch(
             Operation.UPLOADS, {"playlistId": channel.uploads_playlist, "maxResults": "25"}, now
         )
         video_ids = [video.id for video in uploads.videos][:25]
         if video_ids:
-            batch, _, _ = await gateway.fetch(
-                Operation.VIDEOS, {"id": ",".join(video_ids)}, now
-            )
+            batch, _, _ = await gateway.fetch(Operation.VIDEOS, {"id": ",".join(video_ids)}, now)
             return batch.videos
     return ()
 ```
@@ -1374,8 +1491,9 @@ class _FakeGateway:
 
         return (
             Batch(
-                provenance=Provenance(provider="fake", operation=operation, auth_scope="x",
-                                       fetched_at=now),
+                provenance=Provenance(
+                    provider="fake", operation=operation, auth_scope="x", fetched_at=now
+                ),
                 coverage=Coverage(returned=len(self._channels), selection_method="fake"),
                 costs=(),
                 channels=self._channels,
@@ -1423,7 +1541,9 @@ Expected: FAIL (`ImportError`).
 # append to src/nicheradar/discovery/channel_analysis.py
 MAX_COMPARABLES = 8
 VIDIQ_BUDGET_ERROR_CODES = {
-    "run_budget_exhausted", "period_budget_exhausted", "balance_exhausted",
+    "run_budget_exhausted",
+    "period_budget_exhausted",
+    "balance_exhausted",
     "balance_refresh_required",
 }
 
@@ -1497,17 +1617,35 @@ from nicheradar.discovery.channel_analysis import compute_comparison
 
 def test_compute_comparison_positions_target_against_real_comparables() -> None:
     target_videos = (
-        Video(id="t1", channel_id="target", title="t", published_at=NOW - timedelta(days=10),
-              views=500, format=VideoFormat.LONG),
+        Video(
+            id="t1",
+            channel_id="target",
+            title="t",
+            published_at=NOW - timedelta(days=10),
+            views=500,
+            format=VideoFormat.LONG,
+        ),
     )
     comparable_videos = {
         "UC_a": (
-            Video(id="a1", channel_id="UC_a", title="t", published_at=NOW - timedelta(days=10),
-                  views=100, format=VideoFormat.LONG),
+            Video(
+                id="a1",
+                channel_id="UC_a",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=100,
+                format=VideoFormat.LONG,
+            ),
         ),
         "UC_b": (
-            Video(id="b1", channel_id="UC_b", title="t", published_at=NOW - timedelta(days=10),
-                  views=2000, format=VideoFormat.LONG),
+            Video(
+                id="b1",
+                channel_id="UC_b",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=2000,
+                format=VideoFormat.LONG,
+            ),
         ),
     }
     result = compute_comparison(
@@ -1522,8 +1660,14 @@ def test_compute_comparison_positions_target_against_real_comparables() -> None:
 
 def test_compute_comparison_handles_zero_comparables_without_crashing() -> None:
     target_videos = (
-        Video(id="t1", channel_id="target", title="t", published_at=NOW - timedelta(days=10),
-              views=500, format=VideoFormat.LONG),
+        Video(
+            id="t1",
+            channel_id="target",
+            title="t",
+            published_at=NOW - timedelta(days=10),
+            views=500,
+            format=VideoFormat.LONG,
+        ),
     )
     result = compute_comparison(target_videos, Channel(id="target", title="Target"), {}, NOW)
     assert result["comparable_best"] is None
@@ -1644,14 +1788,27 @@ def test_channel_analysis_run_completes_through_every_stage(isolated_engine: Eng
     with isolated_engine.begin() as connection:
         profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
         run_id = insert_record(
-            connection, "analysis_runs",
-            {"profile_id": profile_id, "mode": "synthetic", "trigger": "channel_analysis",
-             "status": "running", "configuration": {"channel_input": "@scienceexplained"}},
+            connection,
+            "analysis_runs",
+            {
+                "profile_id": profile_id,
+                "mode": "synthetic",
+                "trigger": "channel_analysis",
+                "status": "running",
+                "configuration": {"channel_input": "@scienceexplained"},
+            },
         )
         job_id = insert_record(
-            connection, "jobs",
-            {"run_id": run_id, "occurrence_key": "test-ca-pipeline-1", "status": "queued",
-             "stage": CHANNEL_ANALYSIS_STAGES[0], "checkpoints": {}, "available_at": NOW},
+            connection,
+            "jobs",
+            {
+                "run_id": run_id,
+                "occurrence_key": "test-ca-pipeline-1",
+                "status": "queued",
+                "stage": CHANNEL_ANALYSIS_STAGES[0],
+                "checkpoints": {},
+                "available_at": NOW,
+            },
         )
     pipeline = Pipeline(isolated_engine, clock=lambda: NOW, provider=SyntheticProvider())
     asyncio.run(pipeline.process(job_id, "test-worker"))
@@ -1677,16 +1834,27 @@ def test_second_analysis_same_week_hits_search_quota_cleanly(isolated_engine: En
 
         def make_job(key: str) -> tuple:
             run_id = insert_record(
-                connection, "analysis_runs",
-                {"profile_id": profile_id, "mode": "synthetic", "trigger": "channel_analysis",
-                 "status": "running", "configuration": {"channel_input": "@scienceexplained"}},
+                connection,
+                "analysis_runs",
+                {
+                    "profile_id": profile_id,
+                    "mode": "synthetic",
+                    "trigger": "channel_analysis",
+                    "status": "running",
+                    "configuration": {"channel_input": "@scienceexplained"},
+                },
             )
             job_id = insert_record(
-                connection, "jobs",
-                {"run_id": run_id, "occurrence_key": key, "status": "queued",
-                 "stage": "discover_comparables",
-                 "checkpoints": {"resolve": {"channel": {"id": "UC1", "title": "Science"}}},
-                 "available_at": NOW},
+                connection,
+                "jobs",
+                {
+                    "run_id": run_id,
+                    "occurrence_key": key,
+                    "status": "queued",
+                    "stage": "discover_comparables",
+                    "checkpoints": {"resolve": {"channel": {"id": "UC1", "title": "Science"}}},
+                    "available_at": NOW,
+                },
             )
             return run_id, job_id
 
@@ -1698,15 +1866,16 @@ def test_second_analysis_same_week_hits_search_quota_cleanly(isolated_engine: En
     asyncio.run(pipeline.process(second_job_id, "test-worker"))
 
     with isolated_engine.connect() as connection:
-        second_job = connection.execute(
-            select(s.jobs).where(s.jobs.c.id == second_job_id)
-        ).mappings().one()
+        second_job = (
+            connection.execute(select(s.jobs).where(s.jobs.c.id == second_job_id)).mappings().one()
+        )
     assert second_job["status"] == "partial"
     # Partial reasons live in the checkpoint JSON (same convention as the catalog flow's
     # `coverage["pending_reason"]`), not the `error_code` column — that column is only
     # written by fail_job() for hard failures, which this path deliberately avoids.
     assert second_job["checkpoints"]["discover_comparables"]["reason"] in {
-        "run_budget_exhausted", "period_budget_exhausted",
+        "run_budget_exhausted",
+        "period_budget_exhausted",
     }
 ```
 
@@ -1730,123 +1899,167 @@ existing `stage = job["stage"]` / `if stage == "planning":` chain, add:
 Then add the new method to the `Pipeline` class:
 
 ```python
-    async def _process_channel_analysis_stage(
-        self, job: dict[str, Any], run: dict[str, Any], owner: str, now: datetime
-    ) -> None:
-        from nicheradar.discovery.channel_analysis import (
-            compute_comparison, discover_comparables, fetch_channel_videos, resolve_channel,
-        )
-        from nicheradar.services.channel_analysis_providers import (
-            channel_analysis_vidiq_limits, channel_analysis_vidiq_tariffs,
-            channel_analysis_youtube_limits, channel_analysis_youtube_tariffs,
-        )
-        from nicheradar.workers.channel_analysis_queue import confirm_channel_analysis_stage
+async def _process_channel_analysis_stage(
+    self, job: dict[str, Any], run: dict[str, Any], owner: str, now: datetime
+) -> None:
+    from nicheradar.discovery.channel_analysis import (
+        compute_comparison,
+        discover_comparables,
+        fetch_channel_videos,
+        resolve_channel,
+    )
+    from nicheradar.services.channel_analysis_providers import (
+        channel_analysis_vidiq_limits,
+        channel_analysis_vidiq_tariffs,
+        channel_analysis_youtube_limits,
+        channel_analysis_youtube_tariffs,
+    )
+    from nicheradar.workers.channel_analysis_queue import confirm_channel_analysis_stage
 
-        stage = job["stage"]
-        checkpoints = job["checkpoints"]
-        profile = CreatorProfile.model_validate(
-            self.engine  # placeholder — reuse the same profile-loading lines already
-            # present a few lines above in process() for the existing branch, do not
-            # refetch differently; pass `profile` into this method instead of reloading it
-            # if that reads more naturally once you see the surrounding code.
+    stage = job["stage"]
+    checkpoints = job["checkpoints"]
+    profile = CreatorProfile.model_validate(
+        self.engine  # placeholder — reuse the same profile-loading lines already
+        # present a few lines above in process() for the existing branch, do not
+        # refetch differently; pass `profile` into this method instead of reloading it
+        # if that reads more naturally once you see the surrounding code.
+    )
+    # Codes that mean "budget/quota ran out" — these must leave the job `partial`
+    # with the reason visible, never propagate to the generic fail_job() path (which
+    # would retry or mark the job "failed"/"deferred" instead of "partial", and would
+    # not match the spec's "falla esa etapa específica con un error claro" contract).
+    budget_error_codes = {
+        "run_budget_exhausted",
+        "period_budget_exhausted",
+        "balance_exhausted",
+        "balance_refresh_required",
+        "shared_budget_exhausted",
+    }
+    with self.engine.begin() as connection:
+        youtube_gateway = Gateway(
+            self.engine,
+            self.youtube,
+            run["profile_id"],
+            run["id"],
+            self.settings.youtube_auth_scope,
+            profile,
+            channel_analysis_youtube_limits(self.settings),
+            channel_analysis_youtube_tariffs(),
+            maximum_calls=self.maximum_calls,
         )
-        # Codes that mean "budget/quota ran out" — these must leave the job `partial`
-        # with the reason visible, never propagate to the generic fail_job() path (which
-        # would retry or mark the job "failed"/"deferred" instead of "partial", and would
-        # not match the spec's "falla esa etapa específica con un error claro" contract).
-        budget_error_codes = {
-            "run_budget_exhausted", "period_budget_exhausted", "balance_exhausted",
-            "balance_refresh_required", "shared_budget_exhausted",
-        }
-        with self.engine.begin() as connection:
-            youtube_gateway = Gateway(
-                self.engine, self.youtube, run["profile_id"], run["id"], self.settings.youtube_auth_scope,
-                profile, channel_analysis_youtube_limits(self.settings),
-                channel_analysis_youtube_tariffs(), maximum_calls=self.maximum_calls,
+        vidiq_gateway = (
+            Gateway(
+                self.engine,
+                self.provider,
+                run["profile_id"],
+                run["id"],
+                "vidiq-scope",
+                profile,
+                channel_analysis_vidiq_limits(profile),
+                channel_analysis_vidiq_tariffs(),
+                maximum_calls=self.maximum_calls,
             )
-            vidiq_gateway = Gateway(
-                self.engine, self.provider, run["profile_id"], run["id"], "vidiq-scope",
-                profile, channel_analysis_vidiq_limits(profile),
-                channel_analysis_vidiq_tariffs(), maximum_calls=self.maximum_calls,
-            ) if self.provider.name == "vidiq" else None
-            try:
-                if stage == "resolve":
-                    channel = await resolve_channel(
-                        youtube_gateway, run["configuration"]["channel_input"], now
-                    )
-                    confirm_channel_analysis_stage(
-                        connection, job["id"], owner, now, stage,
-                        {"channel": channel.model_dump(mode="json")},
-                    )
-                elif stage == "target_videos":
-                    channel = Channel.model_validate(checkpoints["resolve"]["channel"])
-                    videos = await fetch_channel_videos(youtube_gateway, channel, now)
-                    confirm_channel_analysis_stage(
-                        connection, job["id"], owner, now, stage,
-                        {"videos": [video.model_dump(mode="json") for video in videos]},
-                    )
-                elif stage == "discover_comparables":
-                    channel = Channel.model_validate(checkpoints["resolve"]["channel"])
-                    comparables = await discover_comparables(
-                        youtube_gateway, vidiq_gateway, channel, now
-                    )
-                    confirm_channel_analysis_stage(
-                        connection, job["id"], owner, now, stage,
-                        {"comparables": [c.model_dump(mode="json") for c in comparables]},
-                    )
-                elif stage == "comparable_videos":
-                    comparables = [
-                        Channel.model_validate(c)
-                        for c in checkpoints["discover_comparables"]["comparables"]
-                    ]
-                    videos_by_channel = {}
-                    for comparable in comparables:
-                        videos_by_channel[comparable.id] = [
-                            v.model_dump(mode="json")
-                            for v in await fetch_channel_videos(youtube_gateway, comparable, now)
-                        ]
-                    confirm_channel_analysis_stage(
-                        connection, job["id"], owner, now, stage,
-                        {"videos_by_channel": videos_by_channel},
-                    )
-                elif stage == "metrics":
-                    # Pure computation, no provider calls — see Task 12's compute_comparison.
-                    target_videos = tuple(
-                        Video.model_validate(v) for v in checkpoints["target_videos"]["videos"]
-                    )
-                    channel = Channel.model_validate(checkpoints["resolve"]["channel"])
-                    comparable_videos = {
-                        channel_id: tuple(Video.model_validate(v) for v in videos)
-                        for channel_id, videos
-                        in checkpoints["comparable_videos"]["videos_by_channel"].items()
-                    }
-                    comparison = compute_comparison(target_videos, channel, comparable_videos, now)
-                    confirm_channel_analysis_stage(
-                        connection, job["id"], owner, now, stage, comparison
-                    )
-                elif stage == "profit":
-                    # Profit is already computed inside compute_comparison (Task 12); this
-                    # stage exists so the sequence matches the spec 1:1 and leaves room for a
-                    # future task (e.g. attaching a specific recipe/advertising lookup)
-                    # without renumbering stages. For now it just carries the prior
-                    # checkpoint forward.
-                    confirm_channel_analysis_stage(
-                        connection, job["id"], owner, now, stage, checkpoints["metrics"]
-                    )
-                elif stage == "persist":
-                    from nicheradar.services.channel_analysis import save_channel_analysis
-
-                    save_channel_analysis(connection, run["id"], run["profile_id"], checkpoints, now)
-                    confirm_channel_analysis_stage(
-                        connection, job["id"], owner, now, stage, {"saved": True}
-                    )
-            except ProviderError as error:
-                if error.code not in budget_error_codes:
-                    raise
-                confirm_channel_analysis_stage(
-                    connection, job["id"], owner, now, stage,
-                    {"reason": error.code}, partial=True,
+            if self.provider.name == "vidiq"
+            else None
+        )
+        try:
+            if stage == "resolve":
+                channel = await resolve_channel(
+                    youtube_gateway, run["configuration"]["channel_input"], now
                 )
+                confirm_channel_analysis_stage(
+                    connection,
+                    job["id"],
+                    owner,
+                    now,
+                    stage,
+                    {"channel": channel.model_dump(mode="json")},
+                )
+            elif stage == "target_videos":
+                channel = Channel.model_validate(checkpoints["resolve"]["channel"])
+                videos = await fetch_channel_videos(youtube_gateway, channel, now)
+                confirm_channel_analysis_stage(
+                    connection,
+                    job["id"],
+                    owner,
+                    now,
+                    stage,
+                    {"videos": [video.model_dump(mode="json") for video in videos]},
+                )
+            elif stage == "discover_comparables":
+                channel = Channel.model_validate(checkpoints["resolve"]["channel"])
+                comparables = await discover_comparables(
+                    youtube_gateway, vidiq_gateway, channel, now
+                )
+                confirm_channel_analysis_stage(
+                    connection,
+                    job["id"],
+                    owner,
+                    now,
+                    stage,
+                    {"comparables": [c.model_dump(mode="json") for c in comparables]},
+                )
+            elif stage == "comparable_videos":
+                comparables = [
+                    Channel.model_validate(c)
+                    for c in checkpoints["discover_comparables"]["comparables"]
+                ]
+                videos_by_channel = {}
+                for comparable in comparables:
+                    videos_by_channel[comparable.id] = [
+                        v.model_dump(mode="json")
+                        for v in await fetch_channel_videos(youtube_gateway, comparable, now)
+                    ]
+                confirm_channel_analysis_stage(
+                    connection,
+                    job["id"],
+                    owner,
+                    now,
+                    stage,
+                    {"videos_by_channel": videos_by_channel},
+                )
+            elif stage == "metrics":
+                # Pure computation, no provider calls — see Task 12's compute_comparison.
+                target_videos = tuple(
+                    Video.model_validate(v) for v in checkpoints["target_videos"]["videos"]
+                )
+                channel = Channel.model_validate(checkpoints["resolve"]["channel"])
+                comparable_videos = {
+                    channel_id: tuple(Video.model_validate(v) for v in videos)
+                    for channel_id, videos in checkpoints["comparable_videos"][
+                        "videos_by_channel"
+                    ].items()
+                }
+                comparison = compute_comparison(target_videos, channel, comparable_videos, now)
+                confirm_channel_analysis_stage(connection, job["id"], owner, now, stage, comparison)
+            elif stage == "profit":
+                # Profit is already computed inside compute_comparison (Task 12); this
+                # stage exists so the sequence matches the spec 1:1 and leaves room for a
+                # future task (e.g. attaching a specific recipe/advertising lookup)
+                # without renumbering stages. For now it just carries the prior
+                # checkpoint forward.
+                confirm_channel_analysis_stage(
+                    connection, job["id"], owner, now, stage, checkpoints["metrics"]
+                )
+            elif stage == "persist":
+                from nicheradar.services.channel_analysis import save_channel_analysis
+
+                save_channel_analysis(connection, run["id"], run["profile_id"], checkpoints, now)
+                confirm_channel_analysis_stage(
+                    connection, job["id"], owner, now, stage, {"saved": True}
+                )
+        except ProviderError as error:
+            if error.code not in budget_error_codes:
+                raise
+            confirm_channel_analysis_stage(
+                connection,
+                job["id"],
+                owner,
+                now,
+                stage,
+                {"reason": error.code},
+                partial=True,
+            )
 ```
 
 (This sketch is long and touches real gateway construction — before finalizing, check the
@@ -1892,7 +2105,9 @@ from sqlalchemy import Connection
 from nicheradar.domain.profile import CreatorProfile, initial_catalog
 from nicheradar.repositories.core import insert_record, seed_profile
 from nicheradar.services.channel_analysis import (
-    channel_analysis_detail, list_channel_analyses, save_channel_analysis,
+    channel_analysis_detail,
+    list_channel_analyses,
+    save_channel_analysis,
 )
 from tests.test_persistence import NOW
 
@@ -1901,15 +2116,25 @@ from tests.test_persistence import NOW
 def test_save_then_list_then_detail(db: Connection) -> None:
     profile_id = seed_profile(db, CreatorProfile(), initial_catalog())
     run_id = insert_record(
-        db, "analysis_runs",
-        {"profile_id": profile_id, "mode": "synthetic", "trigger": "channel_analysis",
-         "status": "succeeded", "configuration": {"channel_input": "@scienceexplained"}},
+        db,
+        "analysis_runs",
+        {
+            "profile_id": profile_id,
+            "mode": "synthetic",
+            "trigger": "channel_analysis",
+            "status": "succeeded",
+            "configuration": {"channel_input": "@scienceexplained"},
+        },
     )
     checkpoints = {
         "resolve": {"channel": {"id": "UC1", "title": "Science"}},
-        "metrics": {"target_view_rate": 50.0, "comparable_best": 200.0,
-                    "comparable_worst": 10.0, "target_position": "within",
-                    "profit": {"status": "incomplete", "missing": ["videos_per_month"]}},
+        "metrics": {
+            "target_view_rate": 50.0,
+            "comparable_best": 200.0,
+            "comparable_worst": 10.0,
+            "target_position": "within",
+            "profit": {"status": "incomplete", "missing": ["videos_per_month"]},
+        },
     }
     analysis_id = save_channel_analysis(db, run_id, profile_id, checkpoints, NOW)
     db.commit()
@@ -1950,7 +2175,11 @@ from nicheradar.repositories.schema import channel_analyses
 
 
 def save_channel_analysis(
-    connection: Connection, run_id: UUID, profile_id: UUID, checkpoints: dict[str, Any], now: datetime
+    connection: Connection,
+    run_id: UUID,
+    profile_id: UUID,
+    checkpoints: dict[str, Any],
+    now: datetime,
 ) -> UUID:
     # This is only ever called from the pipeline's final "persist" stage (Task 13), which
     # only runs once every earlier stage has already confirmed cleanly — so the row is
@@ -1980,9 +2209,7 @@ def save_channel_analysis(
 def list_channel_analyses(
     connection: Connection, *, limit: int = 20, offset: int = 0
 ) -> dict[str, Any]:
-    total = connection.execute(
-        select(func.count()).select_from(channel_analyses)
-    ).scalar_one()
+    total = connection.execute(select(func.count()).select_from(channel_analyses)).scalar_one()
     rows = (
         connection.execute(
             select(channel_analyses)
@@ -2046,7 +2273,9 @@ from tests.test_foundation import TOKEN
 
 @pytest.mark.postgres
 def test_post_requires_auth_and_enqueues(isolated_engine: Engine) -> None:
-    client = TestClient(create_app(Settings(service_token=SecretStr(TOKEN)), engine=isolated_engine))
+    client = TestClient(
+        create_app(Settings(service_token=SecretStr(TOKEN)), engine=isolated_engine)
+    )
     path = "/api/v1/channel-analyses"
     assert client.post(path, json={"channel_input": "@x"}).status_code == 401
     client.headers["Authorization"] = f"Bearer {TOKEN}"
@@ -2066,7 +2295,9 @@ def test_post_requires_auth_and_enqueues(isolated_engine: Engine) -> None:
 
 @pytest.mark.postgres
 def test_post_rejects_unsupported_channel_input(isolated_engine: Engine) -> None:
-    client = TestClient(create_app(Settings(service_token=SecretStr(TOKEN)), engine=isolated_engine))
+    client = TestClient(
+        create_app(Settings(service_token=SecretStr(TOKEN)), engine=isolated_engine)
+    )
     client.headers["Authorization"] = f"Bearer {TOKEN}"
     response = client.post(
         "/api/v1/channel-analyses",
@@ -2103,7 +2334,9 @@ def request_channel_analysis(
     try:
         parse_channel_input(body.channel_input)
     except ValueError:
-        raise HTTPException(422, "No se reconoce ese canal; usa su @handle o su ID (UC...).") from None
+        raise HTTPException(
+            422, "No se reconoce ese canal; usa su @handle o su ID (UC...)."
+        ) from None
     connection.execute(select(func.pg_advisory_xact_lock(QUEUE_LOCK)))
     profile_id, _, _ = get_profile(connection)
     if config.mode == "live":
@@ -2113,16 +2346,33 @@ def request_channel_analysis(
         select(s.jobs.c.id).where(s.jobs.c.occurrence_key == key)
     ).scalar_one_or_none()
     if existing is not None:
-        return {"job_id": str(existing), "status": "accepted", "status_url": f"/api/v1/jobs/{existing}"}
+        return {
+            "job_id": str(existing),
+            "status": "accepted",
+            "status_url": f"/api/v1/jobs/{existing}",
+        }
     run_id = insert_record(
-        connection, "analysis_runs",
-        {"profile_id": profile_id, "mode": config.mode, "trigger": "channel_analysis",
-         "status": "running", "configuration": {"channel_input": body.channel_input}},
+        connection,
+        "analysis_runs",
+        {
+            "profile_id": profile_id,
+            "mode": config.mode,
+            "trigger": "channel_analysis",
+            "status": "running",
+            "configuration": {"channel_input": body.channel_input},
+        },
     )
     job_id = insert_record(
-        connection, "jobs",
-        {"run_id": run_id, "occurrence_key": key, "status": "queued",
-         "stage": CHANNEL_ANALYSIS_STAGES[0], "checkpoints": {}, "available_at": clock()},
+        connection,
+        "jobs",
+        {
+            "run_id": run_id,
+            "occurrence_key": key,
+            "status": "queued",
+            "stage": CHANNEL_ANALYSIS_STAGES[0],
+            "checkpoints": {},
+            "available_at": clock(),
+        },
     )
     return {"job_id": str(job_id), "status": "accepted", "status_url": f"/api/v1/jobs/{job_id}"}
 
@@ -2223,7 +2473,9 @@ def render_channel_analysis(config: Settings) -> None:
         )
         if st.form_submit_button("Analizar") and channel_input:
             api_request(
-                config, "POST", "/channel-analyses",
+                config,
+                "POST",
+                "/channel-analyses",
                 body={"channel_input": channel_input},
                 headers={"Idempotency-Key": str(uuid4())},
             )
@@ -2241,10 +2493,12 @@ def render_channel_analysis(config: Settings) -> None:
             }
             for item in result["items"]
         ],
-        hide_index=True, width="stretch",
+        hide_index=True,
+        width="stretch",
     )
     selected_id = st.selectbox(
-        "Ver detalle", [item["id"] for item in result["items"]],
+        "Ver detalle",
+        [item["id"] for item in result["items"]],
         format_func=lambda analysis_id: next(
             item["channel_input"] for item in result["items"] if item["id"] == analysis_id
         ),
