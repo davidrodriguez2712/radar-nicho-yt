@@ -38,9 +38,13 @@ si vidIQ falla por cupo agotado, el análisis continúa solo con YouTube. Explí
   una API descontinuada en 2015 — zona gris de cumplimiento.
 - **Google Trends**: sin API oficial pública; solo alpha cerrada por invitación, y la
   librería no oficial más usada está archivada.
+- **`featuredChannelsUrls`** (señal de YouTube sobre "canales destacados") y **scraping de
+  HTML** de páginas de YouTube como fuente de "canales similares": ambas evaluadas en vivo
+  contra canales reales y descartadas explícitamente para descubrimiento de comparables —
+  ver "Consulta de descubrimiento" más abajo para el detalle de por qué.
 
-Ninguna de las tres se activa aunque esté disponible técnicamente; una decisión de usar
-alguna en el futuro es nueva, no automática.
+Ninguna se activa aunque esté disponible técnicamente; una decisión de usar alguna en el
+futuro es nueva, no automática.
 
 ## Flujo paso a paso (stages de la cola)
 
@@ -53,20 +57,25 @@ despacha `Pipeline._process_channel_analysis_stage` (`workers/pipeline.py`):
 2. **`target_videos`**: `fetch_channel_videos` trae hasta 25 videos del canal objetivo
    (`playlistItems.list` + `videos.list`).
 3. **`discover_comparables`**: `discover_comparables` hace **una sola llamada**
-   `search.list` (`type=channel`) de YouTube más, si vidIQ está disponible,
-   `channel_search`; deduplica por `channel.id`, excluye al canal objetivo de sus propios
-   comparables, y recorta a `MAX_COMPARABLES = 8`.
+   `search.list` (`type=channel`, `maxResults=50`) de YouTube más, si vidIQ está
+   disponible, `channel_search`; deduplica por `channel.id`, excluye al canal objetivo de
+   sus propios comparables, y recorta a `MAX_COMPARABLES = 8`. La consulta (`q`) la deriva
+   `_discovery_query` del propio canal objetivo, nunca de una categoría o subtema
+   (confirmado que YouTube nunca los rellena): usa la primera palabra clave declarada en
+   `Channel.keywords` (ver "Consulta de descubrimiento" más abajo) si existe; si no, un
+   hashtag de su `description`; si tampoco hay, su título como último recurso.
 4. **`comparable_videos`**: `fetch_channel_videos` se repite para cada comparable
    encontrado (con heartbeat entre cada uno).
 5. **`metrics`**: `compute_comparison` calcula la velocidad de vistas/día del canal
    objetivo y del conjunto comparable (mediana de vistas/día por canal, excluyendo al
-   objetivo del rango mejor/peor), y la posición del objetivo (`above`/`below`/`within`/
-   `unknown`).
-6. **`profit`**: reutiliza `scoring/profit.py::estimate_profit` (ya calculado dentro de
-   `compute_comparison`); esta etapa existe solo para que la secuencia coincida 1:1 con
-   el diseño original y deja espacio a una mejora futura (p. ej. adjuntar una receta o
-   benchmark publicitario específico) sin tener que renumerar stages — hoy solo reenvía
-   el checkpoint de `metrics`.
+   objetivo del rango mejor/peor), la posición del objetivo (`above`/`below`/`within`/
+   `unknown`), la ganancia estimada (`scoring/profit.py::estimate_profit`, ver
+   "Ganancia estimada" más abajo) y el panorama del nicho (`compute_panorama`, ver
+   "Panorama del nicho" más abajo) a partir de los videos comparables.
+6. **`profit`**: la ganancia ya se calculó dentro de `compute_comparison` en la etapa
+   `metrics`; esta etapa existe solo para que la secuencia coincida 1:1 con el diseño
+   original y deja espacio a una mejora futura sin tener que renumerar stages — hoy solo
+   reenvía el checkpoint de `metrics`.
 7. **`persist`**: `save_channel_analysis` guarda canal objetivo, comparables, métricas,
    posición y ganancia estimada en `channel_analyses.snapshot`, con `status`
    `completed`/`partial`. `consumption` refleja el gasto real de la ejecución con el
@@ -90,6 +99,104 @@ YouTube (`videos`, `channels`, `uploads`, `search`, `comment_threads`,
 canal. `compute_comparison` nunca inventa un comparable: con cero comparables reales,
 la posición queda `"unknown"` y la ganancia `"incomplete"` con `"channel_view_rate"` en
 la lista de insumos faltantes.
+
+## Consulta de descubrimiento (`_discovery_query`, `discovery/channel_analysis.py`)
+
+`discover_comparables` ya no busca por el título del canal objetivo (señal débil: el
+título rara vez describe el nicho). `_discovery_query` construye la consulta real de
+`search.list`/`channel_search` con esta prioridad, verificada en
+`test_discover_comparables_queries_by_keyword_not_title` y
+`test_discover_comparables_falls_back_to_description_hashtag_then_title`:
+
+1. La primera palabra clave de `Channel.keywords` (viene de
+   `brandingSettings.channel.keywords`, ver abajo), si el canal objetivo declaró alguna.
+2. Si no hay `keywords`, el primer hashtag encontrado en `Channel.description`.
+3. Si tampoco hay hashtag, el título del canal como último recurso.
+
+Antes de esto, el diseño original planeaba usar categoría/subtemas del canal como
+consulta; se confirmó que YouTube nunca los rellena en la práctica, así que esa ruta
+nunca se implementó.
+
+**Señales evaluadas y descartadas explícitamente (no reabrir sin evidencia nueva):**
+
+- **`featuredChannelsUrls`**: evaluado en vivo contra 2 canales reales. Devuelve los
+  propios canales secundarios del creador y amistades personales, no competidores — una
+  señal de "a quién conoce", no "con quién compite". Descartado.
+- **Scraping de HTML de páginas de YouTube** para encontrar "canales similares":
+  investigado en vivo (se llegó a descargar páginas reales de YouTube) y descartado
+  explícitamente — duplicaría la misma señal ya descartada de `featuredChannelsUrls`, con
+  riesgo adicional de incumplimiento de los Términos de Servicio y fragilidad ante
+  cambios de maquetación, sin aportar información nueva.
+
+`search.list` ahora pide `maxResults=50` (antes no se especificaba, por lo que la API
+usaba su valor por defecto más bajo); el costo sigue siendo el mismo plano de 100
+unidades por llamada sin importar `maxResults`, así que esto es estrictamente más
+cobertura por el mismo costo, no un gasto adicional.
+
+## Panorama del nicho (`compute_panorama`, `discovery/channel_analysis.py`)
+
+La etapa `metrics` también calcula un panorama real del nicho a partir de **los videos de
+los comparables, excluyendo al canal objetivo** (reutiliza
+`features/metrics.py::calculate()`, el mismo motor que ya usa el catálogo de familias
+semilla). Devuelve uno de dos estados:
+
+- `{"status": "incomplete", "reason": "no_comparable_videos"}`: ningún comparable aportó
+  videos (p. ej. cero comparables encontrados, o todos sin videos recuperables).
+- `{"status": "incomplete", "reason": "mixed_formats_not_evaluable"}`: los videos
+  comparables mezclan formatos (`long` y `shorts` a la vez) — `calculate()` no evalúa una
+  cohorte mixta como una sola población, y el panorama no fuerza una elección arbitraria.
+- `{"status": "computed", "metrics": {...}}`: el `CohortMetrics` completo
+  (`videos`, `channels`, `demand_by_age`, `hhi`/`concentration_score`, `breakout_rate`,
+  etc.), igual que en el catálogo. El dashboard muestra videos analizados, canales
+  comparables, tasa de breakout y concentración (HHI) en la pestaña de detalle.
+
+**Limitación real, no documentada hasta ahora: el breakout del panorama siempre sale
+vacío.** `compute_panorama` construye cada `Membership` con `size_stratum="unknown"`
+(no se calcula un estrato de tamaño real para canales de análisis puntual). Pero
+`calculate()` solo clasifica breakout sobre miembros con `size_stratum == "small"` — así
+que `breakout_classified`/`breakout_eligible` quedan siempre en `0` y `breakout_rate`
+siempre en `None` para este flujo, sin importar cuántos videos comparables reales haya.
+`demand_by_age` y la concentración (`hhi`/`concentration_score`) sí son señales reales y
+completas; el "breakout" del panorama de un análisis de canal, hoy, nunca lo es. El
+dashboard ya refleja esto honestamente (muestra `"—"` cuando `breakout_rate is None`),
+pero conviene saber que **eso ocurre siempre**, no solo cuando falta evidencia.
+
+## Ganancia estimada (`scoring/profit.py::estimate_profit`)
+
+La ganancia mensual estimada (dentro de `compute_comparison`, etapa `metrics`) usa el
+mismo motor que el resto del radar: un rango acotado por el canal comparable mejor y peor
+posicionado ya observado, nunca una proyección de un canal nuevo. Para resolver a
+`"estimated"` necesita los cuatro insumos a la vez; si falta alguno, `status` queda
+`"incomplete"` con la razón exacta en `missing` (`channel_view_rate`,
+`videos_per_month`, `advertising_rate`, `production_cost`) — nunca se rellena con un
+valor inventado:
+
+1. **`channel_view_rate`**: viene de `compute_comparison` (mejor/peor vistas/día entre
+   comparables reales).
+2. **`videos_per_month`**: `DEFAULT_VIDEOS_PER_MONTH` (`services/production.py`), fijo
+   para este flujo.
+3. **`production_cost`**: el pipeline simula la **misma receta de producción por defecto**
+   que ya se documenta para el catálogo (`services/production.py::default_recipe`/
+   `default_template`, según el formato mayoritario de los videos del canal objetivo y el
+   idioma del perfil), vía `services/scenarios.py::simulate`, para obtener un
+   `monthly_cost_usd` real — no una suposición de costo cero.
+4. **`advertising_rate`**: requiere que el propietario haya declarado un
+   `CreatorProfile.channel_analysis_advertising` (ver "Benchmark publicitario" abajo). Si
+   es `None`, o si el valor guardado no valida como `AdvertisingBenchmark` (dato
+   corrupto/incompleto), la ganancia degrada a `"incomplete"` — nunca interrumpe el
+   análisis completo.
+
+**Benchmark publicitario (`CreatorProfile.channel_analysis_advertising`, Configuración):**
+campo opcional (`dict[str, Any] | None`, guardado crudo y revalidado como
+`AdvertisingBenchmark` en el momento de usarlo) que el propietario declara una sola vez,
+no por análisis, desde la pestaña Configuración del dashboard (formulario "Benchmark
+publicitario para análisis de canal", `dashboard.py`). El formulario permite declarar
+versión/fecha, fuente, RPM mínimo/máximo (USD por 1000 vistas), audiencia y supuestos; un
+checkbox sin marcar al guardar limpia el benchmark de vuelta a `None`. El formulario fija
+`format="long"` y `unit="usd_ads_per_1000_views"` siempre — el pipeline no cruza este
+`format` contra el formato real detectado del canal analizado, así que un benchmark
+declarado para contenido largo se aplica igual si el canal analizado resulta ser
+mayoritariamente Shorts.
 
 ## Presupuesto real (`services/channel_analysis_providers.py`, `config.py`)
 
@@ -143,6 +250,25 @@ conjuntos también `quota`: el código con el que `YouTubeProvider` traduce el 4
   (una fila por `run_id`).
 - Cero comparables reales encontrados nunca se rellena con un comparable inventado;
   `compute_comparison` deja la posición `"unknown"` y la ganancia `"incomplete"`.
+
+### Limitación conocida: en modo live, el costo real de YouTube nunca confirma — siempre queda `unknown_charge`
+
+`Gateway.fetch` solo marca una reserva como `"confirmed"` cuando las unidades de costo que
+devuelve el proveedor (`batch.costs`) coinciden exactamente con las unidades de la tarifa
+reservada (`services/gateway.py`, comparación `set(actual) == {cost.unit for cost in
+costs}`). Las tarifas de este flujo (`channel_analysis_youtube_tariffs()`) declaran
+`"youtube_search_quota"` para `search.list` y `"youtube_detail_quota"` para el resto — pero
+`YouTubeProvider.normalize()` (`integrations/youtube.py`), tanto en la rama compartida de
+`channels`/`uploads`/`videos` como en `_normalize_search`, siempre etiqueta su costo real
+como la unidad genérica **`"youtube_quota"`**, sin distinguir búsqueda de detalle. Esas
+unidades nunca coinciden, así que **en modo live, toda
+llamada YouTube de este flujo liquida como `"unknown_charge"` en vez de `"confirmed"`**,
+sin importar que el cargo real sí se conozca (el proveedor sí reporta un `actual` correcto,
+solo que bajo el nombre de unidad equivocado). El modo sintético no sufre esto porque
+`Gateway.fetch` sustituye la tarifa por una unidad `"USD"` fija cuando `synthetic=True`,
+evitando la comparación. Es un hueco conocido, heredado de que el adaptador real de
+YouTube (compartido con el resto del radar) nunca se diseñó con la unidad dividida que
+este flujo introdujo — no corregido en este plan.
 
 ### Limitación conocida: una etapa interrumpida descarta su progreso parcial
 
@@ -201,18 +327,36 @@ resolverlo primero.
 Pestaña "Análisis de canal" (`render_channel_analysis`, separada del Home): formulario
 de texto para URL/handle/ID con el costo máximo real declarado antes de confirmar
 ("hasta 50 créditos vidIQ y 1 búsqueda —100 unidades— de cuota de YouTube"), tabla de
-análisis previos (canal, estado, fecha) y detalle del seleccionado mostrando el
-`snapshot` completo vía `render_structured`.
+análisis previos (canal, estado, fecha) y detalle del seleccionado. Antes del `snapshot`
+completo (vía `render_structured`), si `snapshot.metrics.panorama` existe se muestra un
+subtítulo "Panorama del nicho" con videos analizados, canales comparables, tasa de
+breakout (`"—"` si es `None` — lo que, como se documenta arriba, ocurre siempre en este
+flujo hoy) y concentración (HHI); o un aviso con la razón exacta si el panorama quedó
+`"incomplete"`.
+
+La pestaña Configuración (`dashboard.py`) agrega un formulario "Benchmark publicitario
+para análisis de canal" (ver "Ganancia estimada" arriba) debajo de los límites de
+presupuesto existentes, antes de la receta de producción por defecto.
 
 ## Pruebas
 
 - `tests/test_channel_analysis_discovery.py` — `parse_channel_input`, resolución sin
   gastar cupo ajeno, `channel_view_rate`, deduplicación/exclusión de comparables,
   degradación por cupo vidIQ agotado, posición y ganancia con comparables reales y con
-  cero comparables.
+  cero comparables, `_discovery_query` por `keywords`/hashtag/título
+  (`test_discover_comparables_queries_by_keyword_not_title`,
+  `test_discover_comparables_falls_back_to_description_hashtag_then_title`), y
+  `compute_panorama` computado/incompleto por cero comparables o formatos mixtos
+  (`test_compute_panorama_computes_real_metrics_across_comparables`,
+  `test_compute_panorama_incomplete_when_no_comparable_videos`,
+  `test_compute_panorama_skips_mixed_formats_without_crashing`).
 - `tests/test_channel_analysis_pipeline.py` — secuencia completa de stages en modo
-  sintético y el camino de cupo YouTube `search.list` agotado a mitad de un segundo
+  sintético (incluyendo panorama y ganancia con un benchmark publicitario sembrado en el
+  perfil) y el camino de cupo YouTube `search.list` agotado a mitad de un segundo
   análisis en la misma semana, dejando el job `"partial"` sin truncar en silencio.
+- `tests/test_channel_analysis_advertising_benchmark.py` — `CreatorProfile` acepta,
+  omite por defecto y rechaza (si está malformado) `channel_analysis_advertising` — a
+  nivel de dominio, no del formulario de Configuración (ver abajo).
 - `tests/test_channel_analysis_queue.py` — avance y finalización de
   `CHANNEL_ANALYSIS_STAGES`, confirmación parcial.
 - `tests/test_channel_analysis_budget.py` — valores por defecto conservadores, tope de
@@ -221,7 +365,15 @@ análisis previos (canal, estado, fecha) y detalle del seleccionado mostrando el
 - `tests/test_channel_analysis_contracts.py` — nuevas `Operation`s y que el proveedor
   sintético las soporta.
 - `tests/test_channel_analysis_youtube.py` — mapeo de respuestas YouTube reales
-  (`search`, `commentThreads`, `videoCategories`, `channels`) a los contratos internos.
+  (`search`, `commentThreads`, `videoCategories`, `channels`) a los contratos internos,
+  incluyendo `keywords` desde `brandingSettings` (presente, ausente o malformado).
 - `tests/test_channel_analysis_service.py` — guardar/listar/detallar un análisis.
 - `tests/test_channel_analysis_api.py` — encolado autenticado y rechazo 422 de entrada
   no soportada.
+
+**Hueco de cobertura aceptado conscientemente:** no existe un test a nivel de dashboard
+(`AppTest`) que ejercite el formulario "Benchmark publicitario para análisis de canal" en
+sí — ni su envío ni su camino de limpiar el checkbox para volver a `None` —, solo el
+modelo de dominio subyacente (arriba). Se aceptó como hueco menor porque replicaría el
+patrón de prueba de envío de formularios ya existente en el archivo de pruebas del
+dashboard sin aportar cobertura nueva significativa.
