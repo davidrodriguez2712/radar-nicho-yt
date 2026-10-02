@@ -1,6 +1,7 @@
 """Complementary public metadata adapter; one quota-bearing page per fetch."""
 
 import re
+import shlex
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -32,6 +33,16 @@ def _duration_seconds(value: object) -> float | None:
         return None
     parts = {key: float(raw or 0) for key, raw in match.groupdict().items()}
     return parts["days"] * 86400 + parts["hours"] * 3600 + parts["minutes"] * 60 + parts["seconds"]
+
+
+def _parse_keywords(raw: str | None) -> tuple[str, ...]:
+    if not raw:
+        return ()
+    try:
+        return tuple(shlex.split(raw))
+    except ValueError:
+        # Unbalanced quotes in a creator-supplied field — fail soft, not loud.
+        return tuple(raw.split())
 
 
 class YouTubeProvider:
@@ -98,6 +109,8 @@ class YouTubeProvider:
             params["part"] = "snippet,contentDetails"
         elif operation in {Operation.SEARCH, Operation.COMMENT_THREADS, Operation.VIDEO_CATEGORIES}:
             params["part"] = "snippet"
+        elif operation == Operation.CHANNELS:
+            params["part"] = "snippet,contentDetails,statistics,brandingSettings"
         else:
             params["part"] = "snippet,contentDetails,statistics"
         if operation == Operation.UPLOADS:
@@ -174,6 +187,9 @@ class YouTubeProvider:
                     uploads_playlist=row.get("contentDetails", {})
                     .get("relatedPlaylists", {})
                     .get("uploads"),
+                    keywords=_parse_keywords(
+                        row.get("brandingSettings", {}).get("channel", {}).get("keywords")
+                    ),
                 )
                 for row in rows
             )

@@ -72,6 +72,7 @@ class Channel(Contract):
     category: str | None = None
     uploads_playlist: str | None = None
     subtopics: tuple[str, ...] = ()
+    keywords: tuple[str, ...] = ()
     metrics: dict[str, Metric] = Field(default_factory=dict)
 
 

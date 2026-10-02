@@ -104,6 +104,7 @@ class SyntheticProvider:
                     category=family,
                     uploads_playlist=f"synthetic:{family}:uploads-{index}",
                     subtopics=(f"{family} explained",),
+                    keywords=(family, f"{family} explained"),
                     metrics={
                         "growth_percent": Metric(
                             value=None if index == 0 else 5,

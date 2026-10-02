@@ -171,3 +171,53 @@ def test_resolve_channel_sends_identifying_param_over_real_http(
     # channels.list requires one of id/forHandle/forUsername/mine; the allow-list must not
     # strip whichever identifying key parse_channel_input produced.
     assert {key: captured.get(key) for key in expected} == expected
+
+
+def test_channels_list_requests_branding_settings_and_parses_keywords() -> None:
+    captured: dict[str, httpx.Request] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["request"] = request
+        return httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "id": "UC1",
+                        "snippet": {"title": "Revenge Showdown", "description": "desc"},
+                        "statistics": {"subscriberCount": "100"},
+                        "contentDetails": {"relatedPlaylists": {"uploads": "UU1"}},
+                        "brandingSettings": {
+                            "channel": {"keywords": ('"Cheating wife" "Reddit stories" singleword')}
+                        },
+                    }
+                ]
+            },
+        )
+
+    provider = _provider(httpx.MockTransport(handler))
+    batch = asyncio.run(provider.fetch(Operation.CHANNELS, {"id": "UC1"}, datetime.now(UTC)))
+    assert "brandingSettings" in captured["request"].url.params["part"]
+    channel = batch.channels[0]
+    assert channel.keywords == ("Cheating wife", "Reddit stories", "singleword")
+
+
+def test_channels_list_keywords_default_to_empty_tuple_when_absent() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "id": "UC2",
+                        "snippet": {"title": "No Keywords Channel"},
+                        "statistics": {"subscriberCount": "5"},
+                        "contentDetails": {"relatedPlaylists": {"uploads": "UU2"}},
+                    }
+                ]
+            },
+        )
+
+    provider = _provider(httpx.MockTransport(handler))
+    batch = asyncio.run(provider.fetch(Operation.CHANNELS, {"id": "UC2"}, datetime.now(UTC)))
+    assert batch.channels[0].keywords == ()

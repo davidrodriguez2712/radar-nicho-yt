@@ -104,6 +104,7 @@ def test_synthetic_provider_channels_populate_uploads_playlist() -> None:
     provider = SyntheticProvider()
     batch = asyncio.run(provider.fetch(Operation.CHANNELS, {}, datetime.now(UTC)))
     assert all(channel.uploads_playlist for channel in batch.channels)
+    assert all(channel.keywords for channel in batch.channels)
 
 
 def test_channel_view_rate_is_median_views_per_day() -> None:
