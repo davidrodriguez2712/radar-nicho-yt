@@ -982,6 +982,55 @@ def render_scenarios(config: Settings) -> None:
             render_structured(item["result"])
 
 
+def render_channel_analysis(config: Settings) -> None:
+    st.subheader("Análisis de canal")
+    st.caption(
+        "Investiga si hay oportunidad de competir en el nicho de un canal real. Usa su "
+        "@handle o su ID de canal (UC...); URLs con /c/ o /user/ todavía no se reconocen."
+    )
+    with st.form("channel-analysis-request"):
+        channel_input = st.text_input("URL, handle o ID del canal")
+        st.caption(
+            "Costo máximo real por análisis: hasta 50 créditos vidIQ y 1 búsqueda "
+            "(100 unidades) de cuota de YouTube."
+        )
+        if st.form_submit_button("Analizar") and channel_input:
+            api_request(
+                config,
+                "POST",
+                "/channel-analyses",
+                body={"channel_input": channel_input},
+                headers={"Idempotency-Key": str(uuid4())},
+            )
+            st.success("Análisis encolado. Aparecerá abajo cuando el radar lo procese.")
+    result = api_request(config, "GET", "/channel-analyses?limit=20")
+    if not result["items"]:
+        st.info("Todavía no hay análisis de canal guardados.")
+        return
+    st.dataframe(
+        [
+            {
+                "Canal": item.get("channel_input"),
+                "Estado": item.get("status"),
+                "Creado": local_time(str(item.get("created_at")), config.timezone),
+            }
+            for item in result["items"]
+        ],
+        hide_index=True,
+        width="stretch",
+    )
+    selected_id = st.selectbox(
+        "Ver detalle",
+        [item["id"] for item in result["items"]],
+        format_func=lambda analysis_id: next(
+            item["channel_input"] for item in result["items"] if item["id"] == analysis_id
+        ),
+    )
+    if selected_id:
+        detail = api_request(config, "GET", f"/channel-analyses/{selected_id}")
+        render_structured(detail.get("snapshot") or {})
+
+
 def render_pilot_preflight(config: Settings) -> None:
     if st.button("Ver requisitos del piloto real"):
         report = api_request(config, "GET", "/pilot/preflight")
@@ -1184,7 +1233,15 @@ def render() -> None:
         return
     render_research_status(config, status)
     page = st.sidebar.radio(
-        "Observatorio", ["Resumen", "Backlog", "Escenarios", "Configuración", "Operación"]
+        "Observatorio",
+        [
+            "Resumen",
+            "Backlog",
+            "Escenarios",
+            "Configuración",
+            "Operación",
+            "Análisis de canal",
+        ],
     )
     if page == "Backlog":
         render_backlog(config)
@@ -1194,6 +1251,8 @@ def render() -> None:
         render_configuration(config)
     elif page == "Operación":
         render_operations(config, status)
+    elif page == "Análisis de canal":
+        render_channel_analysis(config)
     else:
         st.caption(
             "Última ejecución satisfactoria: "

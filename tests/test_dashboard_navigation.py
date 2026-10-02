@@ -160,3 +160,7 @@ def test_dashboard_navigation_and_operation(
     assert (
         backend.get("/api/v1/scenarios").json()["items"][0]["result"]["status"] == "not_evaluable"
     )
+    app.radio[0].set_value("Análisis de canal").run()
+    assert not app.exception
+    assert "URL, handle o ID" in str(app.text_input[-1].label)
+    assert any("Todavía no hay análisis de canal guardados" in item.value for item in app.info)
