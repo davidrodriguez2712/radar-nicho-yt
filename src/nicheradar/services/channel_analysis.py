@@ -18,13 +18,15 @@ def save_channel_analysis(
     profile_id: UUID,
     checkpoints: dict[str, Any],
     now: datetime,
+    *,
+    status: str = "completed",
 ) -> UUID:
-    # This is only ever called from the pipeline's final "persist" stage (Task 13), which
-    # only runs once every earlier stage has already confirmed cleanly — so the row is
-    # "completed" by construction. A stage that hit a budget wall exits via the pipeline's
-    # own partial-confirm path (Task 13's except block) and never reaches persist at all;
-    # a channel-not-found or similar hard failure never reaches it either (Task 9's
-    # ProviderError propagates to the generic fail_job() path instead).
+    # `status` defaults to "completed" for the normal path, where every earlier stage
+    # confirmed cleanly before reaching "persist". The pipeline's channel-analysis flow
+    # (Task 13) passes status="partial" explicitly when an earlier stage recorded a
+    # budget-exhaustion reason that was carried forward, stage by stage, to this point —
+    # confirm_channel_analysis_stage() only honors `partial=True` at the final ("persist")
+    # stage, so a mid-sequence budget error must still reach persist to be recorded here.
     channel = checkpoints.get("resolve", {}).get("channel", {})
     return insert_record(
         connection,
@@ -34,7 +36,7 @@ def save_channel_analysis(
             "run_id": run_id,
             "channel_input": channel.get("title", ""),
             "channel_external_id": channel.get("id"),
-            "status": "completed",
+            "status": status,
             "configuration": {},
             "snapshot": checkpoints,
             "consumption": {},

@@ -17,7 +17,14 @@ from nicheradar.discovery.sampling import sample, selection_terms
 from nicheradar.domain.profile import CreatorProfile, VideoFormat
 from nicheradar.features.history import temporal_evidence
 from nicheradar.features.metrics import calculate
-from nicheradar.integrations.contracts import Batch, Operation, Provider, ProviderError, Video
+from nicheradar.integrations.contracts import (
+    Batch,
+    Channel,
+    Operation,
+    Provider,
+    ProviderError,
+    Video,
+)
 from nicheradar.integrations.synthetic import SyntheticProvider
 from nicheradar.recommendations.explanations import snapshot_explanation
 from nicheradar.repositories import schema_v1 as s
@@ -224,6 +231,9 @@ class Pipeline:
                         )
                         confirm_stage(connection, job_id, owner, now, stage, plan)
                         continue
+                if run["trigger"] == "channel_analysis":
+                    await self._process_channel_analysis_stage(job, dict(run), profile, owner, now)
+                    continue
                 if stage == "query":
                     await self.query(
                         job,
@@ -419,6 +429,204 @@ class Pipeline:
             self.provider = vidiq_provider(self.settings)
         if self.provider.name != "vidiq":
             raise ProviderError("provider_mode_mismatch", not_sent=True)
+
+    async def _process_channel_analysis_stage(
+        self,
+        job: dict[str, Any],
+        run: dict[str, Any],
+        profile: CreatorProfile,
+        owner: str,
+        now: datetime,
+    ) -> None:
+        from nicheradar.discovery.channel_analysis import (
+            compute_comparison,
+            discover_comparables,
+            fetch_channel_videos,
+            resolve_channel,
+        )
+        from nicheradar.services.channel_analysis import save_channel_analysis
+        from nicheradar.services.channel_analysis_providers import (
+            channel_analysis_vidiq_limits,
+            channel_analysis_vidiq_tariffs,
+            channel_analysis_youtube_limits,
+            channel_analysis_youtube_tariffs,
+        )
+        from nicheradar.workers.channel_analysis_queue import confirm_channel_analysis_stage
+
+        stage = job["stage"]
+        checkpoints = job["checkpoints"]
+        # Codes that mean "budget/quota ran out" — these must leave the job `partial`
+        # with the reason visible, never propagate to the generic fail_job() path.
+        budget_error_codes = {
+            "run_budget_exhausted",
+            "period_budget_exhausted",
+            "balance_exhausted",
+            "balance_refresh_required",
+            "shared_budget_exhausted",
+            "batch_limit",
+        }
+
+        def budget_exhausted_reason(checkpoints: dict[str, Any]) -> str | None:
+            for checkpoint in checkpoints.values():
+                if isinstance(checkpoint, dict) and "reason" in checkpoint:
+                    reason = checkpoint["reason"]
+                    return reason if isinstance(reason, str) else None
+            return None
+
+        with self.engine.begin() as connection:
+            synthetic = run["mode"] == "synthetic"
+            if not synthetic and not self.settings.youtube_live_enabled:
+                raise ProviderError("live_prerequisites_incomplete", not_sent=True)
+            if not self._youtube_override:
+                self.youtube = self.provider if synthetic else youtube_provider(self.settings)
+            youtube = self.youtube
+            if youtube is None:
+                raise ProviderError("provider_mode_mismatch", not_sent=True)
+            youtube_auth_scope = "synthetic" if synthetic else self.settings.youtube_auth_scope
+            if youtube_auth_scope is None:
+                raise ProviderError("account_scope_required", not_sent=True)
+
+            youtube_gateway = Gateway(
+                self.engine,
+                youtube,
+                run["profile_id"],
+                run["id"],
+                youtube_auth_scope,
+                profile,
+                channel_analysis_youtube_limits(self.settings),
+                channel_analysis_youtube_tariffs(),
+                maximum_calls=self.maximum_calls,
+            )
+            vidiq_gateway: Gateway | None = None
+            if self.provider.name == "vidiq":
+                vidiq_auth_scope = "synthetic" if synthetic else self.settings.vidiq_auth_scope
+                if vidiq_auth_scope is None:
+                    raise ProviderError("account_scope_required", not_sent=True)
+                vidiq_gateway = Gateway(
+                    self.engine,
+                    self.provider,
+                    run["profile_id"],
+                    run["id"],
+                    vidiq_auth_scope,
+                    profile,
+                    channel_analysis_vidiq_limits(profile),
+                    channel_analysis_vidiq_tariffs(),
+                    maximum_calls=self.maximum_calls,
+                    credit_cycle_started_at=None
+                    if synthetic
+                    else self.settings.vidiq_credit_cycle_started_at,
+                )
+
+            reason = budget_exhausted_reason(checkpoints)
+            if reason is not None:
+                if stage == "persist":
+                    save_channel_analysis(
+                        connection, run["id"], run["profile_id"], checkpoints, now, status="partial"
+                    )
+                    confirm_channel_analysis_stage(
+                        connection, job["id"], owner, now, stage, {"reason": reason}, partial=True
+                    )
+                else:
+                    confirm_channel_analysis_stage(
+                        connection, job["id"], owner, now, stage, {"reason": reason}
+                    )
+                return
+
+            try:
+                if stage == "resolve":
+                    channel = await resolve_channel(
+                        youtube_gateway, run["configuration"]["channel_input"], now
+                    )
+                    confirm_channel_analysis_stage(
+                        connection,
+                        job["id"],
+                        owner,
+                        now,
+                        stage,
+                        {"channel": channel.model_dump(mode="json")},
+                    )
+                elif stage == "target_videos":
+                    channel = Channel.model_validate(checkpoints["resolve"]["channel"])
+                    videos = await fetch_channel_videos(youtube_gateway, channel, now)
+                    confirm_channel_analysis_stage(
+                        connection,
+                        job["id"],
+                        owner,
+                        now,
+                        stage,
+                        {"videos": [video.model_dump(mode="json") for video in videos]},
+                    )
+                elif stage == "discover_comparables":
+                    channel = Channel.model_validate(checkpoints["resolve"]["channel"])
+                    comparables = await discover_comparables(
+                        youtube_gateway, vidiq_gateway, channel, now
+                    )
+                    confirm_channel_analysis_stage(
+                        connection,
+                        job["id"],
+                        owner,
+                        now,
+                        stage,
+                        {"comparables": [c.model_dump(mode="json") for c in comparables]},
+                    )
+                elif stage == "comparable_videos":
+                    comparable_channels = [
+                        Channel.model_validate(c)
+                        for c in checkpoints["discover_comparables"]["comparables"]
+                    ]
+                    videos_by_channel = {}
+                    for comparable in comparable_channels:
+                        with self.engine.begin() as heartbeat_connection:
+                            heartbeat(heartbeat_connection, job["id"], owner, self.clock())
+                        videos_by_channel[comparable.id] = [
+                            v.model_dump(mode="json")
+                            for v in await fetch_channel_videos(youtube_gateway, comparable, now)
+                        ]
+                    confirm_channel_analysis_stage(
+                        connection,
+                        job["id"],
+                        owner,
+                        now,
+                        stage,
+                        {"videos_by_channel": videos_by_channel},
+                    )
+                elif stage == "metrics":
+                    target_videos = tuple(
+                        Video.model_validate(v) for v in checkpoints["target_videos"]["videos"]
+                    )
+                    channel = Channel.model_validate(checkpoints["resolve"]["channel"])
+                    comparable_videos = {
+                        channel_id: tuple(Video.model_validate(v) for v in videos)
+                        for channel_id, videos in checkpoints["comparable_videos"][
+                            "videos_by_channel"
+                        ].items()
+                    }
+                    comparison = compute_comparison(target_videos, channel, comparable_videos, now)
+                    confirm_channel_analysis_stage(
+                        connection, job["id"], owner, now, stage, comparison
+                    )
+                elif stage == "profit":
+                    # Profit is already computed inside compute_comparison (Task 12); this
+                    # stage exists so the sequence matches the spec 1:1 and leaves room for a
+                    # future task (e.g. attaching a specific recipe/advertising lookup)
+                    # without renumbering stages. For now it just carries the prior
+                    # checkpoint forward.
+                    confirm_channel_analysis_stage(
+                        connection, job["id"], owner, now, stage, checkpoints["metrics"]
+                    )
+                elif stage == "persist":
+                    save_channel_analysis(
+                        connection, run["id"], run["profile_id"], checkpoints, now
+                    )
+                    confirm_channel_analysis_stage(
+                        connection, job["id"], owner, now, stage, {"saved": True}
+                    )
+            except ProviderError as error:
+                if error.code not in budget_error_codes:
+                    raise
+                confirm_channel_analysis_stage(
+                    connection, job["id"], owner, now, stage, {"reason": error.code}
+                )
 
     async def query(
         self,
