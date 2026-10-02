@@ -287,6 +287,128 @@ def test_youtube_channel_uploads_and_video_metadata() -> None:
     assert videos.costs[0].actual == 1
 
 
+def _videos_list_response(player: dict[str, Any] | None, duration: str | None) -> httpx.Response:
+    content_details: dict[str, Any] = {}
+    if duration is not None:
+        content_details["duration"] = duration
+    item: dict[str, Any] = {
+        "id": "fixture-video",
+        "snippet": {
+            "title": "Fixture",
+            "channelId": "fixture-channel",
+            "publishedAt": NOW.isoformat(),
+        },
+        "statistics": {"viewCount": "0"},
+        "contentDetails": content_details,
+    }
+    if player is not None:
+        item["player"] = player
+    return httpx.Response(200, json={"items": [item]})
+
+
+def test_youtube_classifies_long_from_duration_over_180s() -> None:
+    provider = YouTubeProvider(
+        SecretStr("fixture-key"),
+        "test",
+        enabled=True,
+        transport=httpx.MockTransport(
+            lambda request: _videos_list_response(
+                {"embedWidth": "640", "embedHeight": "360"}, "PT3M1S"
+            )
+        ),
+    )
+    batch = asyncio.run(provider.fetch(Operation.VIDEOS, {"id": "fixture-video"}, NOW))
+    assert batch.videos[0].format == VideoFormat.LONG
+    assert batch.videos[0].format_evidence == "duration > 180s"
+
+
+def test_youtube_classifies_shorts_from_short_duration_and_portrait_embed() -> None:
+    # Real Shorts: player.embedWidth/embedHeight scaled to the actual ~9:16 aspect ratio
+    # (not snippet.thumbnails, whose sizes are fixed per quality tier regardless of the
+    # source video's orientation). Confirmed via a real live API call that these two
+    # fields arrive as JSON strings (Google's standard int64-as-string encoding, same
+    # as statistics.viewCount) -- this fixture uses real-shaped string values.
+    provider = YouTubeProvider(
+        SecretStr("fixture-key"),
+        "test",
+        enabled=True,
+        transport=httpx.MockTransport(
+            lambda request: _videos_list_response(
+                {"embedWidth": "203", "embedHeight": "360"}, "PT30S"
+            )
+        ),
+    )
+    batch = asyncio.run(provider.fetch(Operation.VIDEOS, {"id": "fixture-video"}, NOW))
+    assert batch.videos[0].format == VideoFormat.SHORTS
+    assert (
+        batch.videos[0].format_evidence == "duration <= 180s and portrait/square embed dimensions"
+    )
+
+
+def test_youtube_classifies_long_from_short_duration_but_landscape_embed() -> None:
+    # A 90-second landscape video is not a Short -- duration alone must never infer it.
+    # Uses plain ints (rather than the real API's strings) to confirm the parser accepts
+    # either numeric form, not just strings.
+    provider = YouTubeProvider(
+        SecretStr("fixture-key"),
+        "test",
+        enabled=True,
+        transport=httpx.MockTransport(
+            lambda request: _videos_list_response({"embedWidth": 640, "embedHeight": 360}, "PT90S")
+        ),
+    )
+    batch = asyncio.run(provider.fetch(Operation.VIDEOS, {"id": "fixture-video"}, NOW))
+    assert batch.videos[0].format == VideoFormat.LONG
+    assert batch.videos[0].format_evidence == "duration <= 180s but landscape embed dimensions"
+
+
+def test_youtube_classifies_unknown_when_duration_missing() -> None:
+    provider = YouTubeProvider(
+        SecretStr("fixture-key"),
+        "test",
+        enabled=True,
+        transport=httpx.MockTransport(
+            lambda request: _videos_list_response({"embedWidth": "203", "embedHeight": "360"}, None)
+        ),
+    )
+    batch = asyncio.run(provider.fetch(Operation.VIDEOS, {"id": "fixture-video"}, NOW))
+    assert batch.videos[0].format == VideoFormat.UNKNOWN
+    assert batch.videos[0].format_evidence is None
+
+
+def test_youtube_classifies_unknown_when_short_duration_but_no_embed_dimensions() -> None:
+    provider = YouTubeProvider(
+        SecretStr("fixture-key"),
+        "test",
+        enabled=True,
+        transport=httpx.MockTransport(lambda request: _videos_list_response(None, "PT30S")),
+    )
+    batch = asyncio.run(provider.fetch(Operation.VIDEOS, {"id": "fixture-video"}, NOW))
+    assert batch.videos[0].format == VideoFormat.UNKNOWN
+    assert (
+        batch.videos[0].format_evidence
+        == "duration <= 180s but no embed dimensions to confirm aspect"
+    )
+
+
+def test_youtube_videos_request_sends_max_height_so_embed_dimensions_are_returned() -> None:
+    # player.embedWidth/embedHeight are only returned by the real API at all when the
+    # request specifies maxHeight and/or maxWidth -- without this, the SHORTS/LONG
+    # embed-aspect branches would be permanently dead code against real data.
+    captured: dict[str, str] = {}
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        captured.update(dict(request.url.params))
+        return _videos_list_response({"embedWidth": 202, "embedHeight": 360}, "PT30S")
+
+    provider = YouTubeProvider(
+        SecretStr("fixture-key"), "test", enabled=True, transport=httpx.MockTransport(respond)
+    )
+    asyncio.run(provider.fetch(Operation.VIDEOS, {"id": "fixture-video"}, NOW))
+    assert captured["maxHeight"] == "360"
+    assert "player" in captured["part"].split(",")
+
+
 @pytest.mark.parametrize("status,code", [(401, "authentication_required"), (429, "quota")])
 def test_youtube_auth_and_quota_do_not_retry_or_expose_key(status: int, code: str) -> None:
     calls = []

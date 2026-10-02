@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 from pydantic import SecretStr
 
+from nicheradar.domain.profile import VideoFormat
 from nicheradar.integrations.contracts import (
     Batch,
     Channel,
@@ -33,6 +34,45 @@ def _duration_seconds(value: object) -> float | None:
         return None
     parts = {key: float(raw or 0) for key, raw in match.groupdict().items()}
     return parts["days"] * 86400 + parts["hours"] * 3600 + parts["minutes"] * 60 + parts["seconds"]
+
+
+def _embed_dimensions(player: dict[str, Any]) -> tuple[float, float] | None:
+    # Unlike snippet.thumbnails (fixed-size tiers, not representative of the source
+    # video's real orientation), videos.list's player.embedWidth/embedHeight are scaled
+    # to the video's REAL aspect ratio by YouTube itself -- but only returned at all
+    # when the request specifies maxHeight and/or maxWidth (see fetch(), which sets
+    # maxHeight for every VIDEOS call), and only when YouTube knows the real aspect
+    # ratio in the first place -- when it doesn't, these two numeric fields are simply
+    # omitted (the documented 4:3 fallback only affects the embedHtml iframe markup,
+    # not embedWidth/embedHeight), so whenever both fields are present here they are
+    # already a confirmed, real signal. Confirmed via a real live call: like viewCount
+    # (also int64), these arrive as JSON strings (e.g. "640"), Google's standard
+    # int64-as-string encoding -- parse defensively, accepting either a string or a
+    # number, same as Video.views already does via pydantic coercion.
+    width, height = player.get("embedWidth"), player.get("embedHeight")
+    try:
+        return float(width), float(height)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
+def _classify_format(
+    duration_seconds: float | None, player: dict[str, Any]
+) -> tuple[VideoFormat, str | None]:
+    """Classify format from two real, already-fetched signals: duration (contentDetails)
+    and the video's real embed aspect ratio (player.embedWidth/embedHeight) -- never
+    duration alone, since a 90-second landscape video is not a Short."""
+    if duration_seconds is None:
+        return VideoFormat.UNKNOWN, None
+    if duration_seconds > 180:
+        return VideoFormat.LONG, "duration > 180s"
+    dimensions = _embed_dimensions(player)
+    if dimensions is None:
+        return VideoFormat.UNKNOWN, "duration <= 180s but no embed dimensions to confirm aspect"
+    width, height = dimensions
+    if height >= width:
+        return VideoFormat.SHORTS, "duration <= 180s and portrait/square embed dimensions"
+    return VideoFormat.LONG, "duration <= 180s but landscape embed dimensions"
 
 
 def _parse_keywords(raw: str | None) -> tuple[str, ...]:
@@ -112,7 +152,13 @@ class YouTubeProvider:
         elif operation == Operation.CHANNELS:
             params["part"] = "snippet,contentDetails,statistics,brandingSettings"
         else:
-            params["part"] = "snippet,contentDetails,statistics"
+            params["part"] = "snippet,contentDetails,statistics,player"
+            # player.embedWidth/embedHeight are only returned at all when maxHeight
+            # and/or maxWidth is requested -- 360 is a reasonable fixed value (the
+            # documented valid range is 72-8192; YouTube's docs don't name a specific
+            # default), kept as an internal constant of this VIDEOS request, not
+            # caller-configurable, same as `part` above.
+            params["maxHeight"] = 360
         if operation == Operation.UPLOADS:
             params.setdefault("maxResults", 50)
         if operation != Operation.UPLOADS and len(str(params.get("id", "")).split(",")) > 50:
@@ -208,6 +254,10 @@ class YouTubeProvider:
                 published = snippet.get("publishedAt")
             if not video_id or not channel_id:
                 continue
+            duration_seconds = _duration_seconds(content.get("duration"))
+            video_format, format_evidence = _classify_format(
+                duration_seconds, row.get("player", {})
+            )
             videos[video_id] = Video(
                 id=video_id,
                 channel_id=channel_id,
@@ -215,12 +265,14 @@ class YouTubeProvider:
                 description=snippet.get("description"),
                 published_at=published,
                 views=row.get("statistics", {}).get("viewCount"),
+                format=video_format,
+                format_evidence=format_evidence,
                 language=snippet.get("defaultAudioLanguage"),
                 language_evidence="declared defaultAudioLanguage"
                 if snippet.get("defaultAudioLanguage")
                 else None,
                 category=snippet.get("categoryId"),
-                duration_seconds=_duration_seconds(content.get("duration")),
+                duration_seconds=duration_seconds,
             )
         return Batch(**common, videos=tuple(videos.values()))
 
