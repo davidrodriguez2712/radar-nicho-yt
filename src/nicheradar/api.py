@@ -315,6 +315,88 @@ def create_app(
         )
         return {"job_id": str(job), "status": "accepted", "status_url": f"/api/v1/jobs/{job}"}
 
+    class ChannelAnalysisRequest(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        channel_input: str = Field(min_length=1, max_length=500)
+
+    @router.post("/channel-analyses", status_code=202)
+    def request_channel_analysis(
+        body: ChannelAnalysisRequest,
+        connection: Annotated[Connection, Depends(db)],
+        idempotency_key: Annotated[str, Header(min_length=8, max_length=100)],
+    ) -> dict[str, str]:
+        from nicheradar.discovery.channel_analysis import parse_channel_input
+        from nicheradar.workers.channel_analysis_queue import CHANNEL_ANALYSIS_STAGES
+
+        try:
+            parse_channel_input(body.channel_input)
+        except ValueError:
+            raise HTTPException(
+                422, "No se reconoce ese canal; usa su @handle o su ID (UC...)."
+            ) from None
+        connection.execute(select(func.pg_advisory_xact_lock(QUEUE_LOCK)))
+        profile_id, _, _ = get_profile(connection)
+        key = f"channel-analysis:{profile_id}:{config.mode}:{idempotency_key}"
+        existing = connection.execute(
+            select(s.jobs.c.id).where(s.jobs.c.occurrence_key == key)
+        ).scalar_one_or_none()
+        if existing is not None:
+            return {
+                "job_id": str(existing),
+                "status": "accepted",
+                "status_url": f"/api/v1/jobs/{existing}",
+            }
+        require_live_ready(connection, scheduled=False)
+        run_id = insert_record(
+            connection,
+            "analysis_runs",
+            {
+                "profile_id": profile_id,
+                "mode": config.mode,
+                "trigger": "channel_analysis",
+                "status": "running",
+                "configuration": {"channel_input": body.channel_input},
+            },
+        )
+        job_id = insert_record(
+            connection,
+            "jobs",
+            {
+                "run_id": run_id,
+                "occurrence_key": key,
+                "status": "queued",
+                "stage": CHANNEL_ANALYSIS_STAGES[0],
+                "checkpoints": {},
+                "available_at": clock(),
+            },
+        )
+        return {
+            "job_id": str(job_id),
+            "status": "accepted",
+            "status_url": f"/api/v1/jobs/{job_id}",
+        }
+
+    @router.get("/channel-analyses")
+    def channel_analyses_list(
+        connection: Annotated[Connection, Depends(db)],
+        limit: Annotated[int, Query(ge=1, le=100)] = 20,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> dict[str, Any]:
+        from nicheradar.services.channel_analysis import list_channel_analyses
+
+        return list_channel_analyses(connection, limit=limit, offset=offset)
+
+    @router.get("/channel-analyses/{analysis_id}")
+    def channel_analysis_detail_endpoint(
+        analysis_id: UUID, connection: Annotated[Connection, Depends(db)]
+    ) -> dict[str, Any]:
+        from nicheradar.services.channel_analysis import channel_analysis_detail
+
+        result = channel_analysis_detail(connection, analysis_id)
+        if result is None:
+            raise HTTPException(404, "Análisis no encontrado")
+        return result
+
     @router.get("/jobs")
     def jobs(
         connection: Annotated[Connection, Depends(db)],
