@@ -219,6 +219,100 @@ def test_discover_comparables_degrades_when_vidiq_rate_limited() -> None:
     assert discovery.vidiq_omitted == "budget_exhausted"
 
 
+class _MultiOpFakeGateway:
+    """Serves a different channel batch per requested `Operation` -- needed once a single
+    call site (`discover_comparables`'s own `youtube_gateway`) issues more than one kind
+    of call (SEARCH, then a follow-up CHANNELS resolution)."""
+
+    def __init__(
+        self,
+        responses: dict[Any, tuple[Channel, ...]],
+        *,
+        raises: dict[Any, ProviderError] | None = None,
+    ):
+        self._responses = responses
+        self._raises = raises or {}
+
+    async def fetch(
+        self, operation: Any, parameters: Any, now: datetime
+    ) -> tuple[Batch, str, datetime]:
+        if operation in self._raises:
+            raise self._raises[operation]
+        channels = self._responses.get(operation, ())
+        return (
+            Batch(
+                provenance=Provenance(
+                    provider="fake", operation=operation, auth_scope="x", fetched_at=now
+                ),
+                coverage=Coverage(returned=len(channels), selection_method="fake"),
+                costs=(),
+                channels=channels,
+            ),
+            "fake-request-id",
+            now,
+        )
+
+
+def test_discover_comparables_resolves_real_subscribers_and_uploads_playlist() -> None:
+    # Live-mode SEARCH normalization only ever returns bare Channel(id, title) objects --
+    # discover_comparables must make one extra batched channels.list call to fill in real
+    # subscribers/uploads_playlist, or Task 10's breakout classification and
+    # fetch_channel_videos (which requires uploads_playlist) silently never get real data.
+    from nicheradar.integrations.contracts import Operation as Op
+
+    target = Channel(id="UC_target", title="Target")
+    thin = (Channel(id="UC_a", title="A"), Channel(id="UC_b", title="B"))
+    resolved = (
+        Channel(id="UC_a", title="A", subscribers=1_000, uploads_playlist="uploads-a"),
+        Channel(id="UC_b", title="B", subscribers=2_000, uploads_playlist="uploads-b"),
+    )
+    youtube_gateway = _MultiOpFakeGateway({Op.SEARCH: thin, Op.CHANNELS: resolved})
+    discovery = asyncio.run(
+        discover_comparables(cast(Gateway, youtube_gateway), None, target, datetime.now(UTC))
+    )
+    by_id = {channel.id: channel for channel in discovery.comparables}
+    assert by_id["UC_a"].subscribers == 1_000
+    assert by_id["UC_a"].uploads_playlist == "uploads-a"
+    assert by_id["UC_b"].subscribers == 2_000
+    assert by_id["UC_b"].uploads_playlist == "uploads-b"
+
+
+def test_discover_comparables_keeps_thin_channel_when_resolution_call_fails() -> None:
+    # A failure on the bonus resolution call must degrade gracefully (keep the thin,
+    # search-only comparable), never lose the already-successful discovery.
+    from nicheradar.integrations.contracts import Operation as Op
+
+    target = Channel(id="UC_target", title="Target")
+    thin = (Channel(id="UC_a", title="A"),)
+    youtube_gateway = _MultiOpFakeGateway(
+        {Op.SEARCH: thin}, raises={Op.CHANNELS: ProviderError("quota", may_have_charged=True)}
+    )
+    discovery = asyncio.run(
+        discover_comparables(cast(Gateway, youtube_gateway), None, target, datetime.now(UTC))
+    )
+    assert {channel.id for channel in discovery.comparables} == {"UC_a"}
+    assert discovery.comparables[0].subscribers is None  # thin version kept, not dropped
+
+
+def test_discover_comparables_skips_resolution_call_when_nothing_missing() -> None:
+    # vidIQ's CHANNEL_SEARCH already provides `subscribers` -- a comparable that already
+    # has both real fields must not trigger (or need) the extra budget spend.
+    from nicheradar.integrations.contracts import Operation as Op
+
+    target = Channel(id="UC_target", title="Target")
+    already_resolved = (
+        Channel(id="UC_a", title="A", subscribers=1_000, uploads_playlist="uploads-a"),
+    )
+    youtube_gateway = _MultiOpFakeGateway(
+        {Op.SEARCH: already_resolved},
+        raises={Op.CHANNELS: ProviderError("should_not_be_called")},
+    )
+    discovery = asyncio.run(
+        discover_comparables(cast(Gateway, youtube_gateway), None, target, datetime.now(UTC))
+    )
+    assert discovery.comparables == already_resolved
+
+
 def test_discover_comparables_without_vidiq_gateway_is_not_marked_omitted() -> None:
     # Synthetic/YouTube-only runs never planned a vidIQ call; nothing was skipped.
     discovery = asyncio.run(
@@ -412,7 +506,10 @@ def test_compute_panorama_incomplete_when_no_comparable_videos() -> None:
     assert panorama == {"status": "incomplete", "reason": "no_comparable_videos"}
 
 
-def test_compute_panorama_skips_mixed_formats_without_crashing() -> None:
+def test_compute_panorama_computes_majority_format_excluding_one_off_format_outlier() -> None:
+    # A single off-format (or UNKNOWN-format) video is routine with real data and must not
+    # abort the whole panorama -- only the majority CONFIRMED format is evaluated, and the
+    # outlier is excluded (included=False), not dropped and not fatal.
     from nicheradar.discovery.channel_analysis import compute_panorama
 
     comparable_videos: dict[str, tuple[Video, ...]] = {
@@ -443,8 +540,62 @@ def test_compute_panorama_skips_mixed_formats_without_crashing() -> None:
         50_000,
         NOW,
     )
-    assert panorama["status"] == "incomplete"
-    assert panorama["reason"] == "mixed_formats_not_evaluable"
+    assert panorama["status"] == "computed"
+    # Only the LONG video (the majority) counts; the SHORTS outlier is excluded.
+    assert panorama["metrics"]["videos"] == 1
+    assert panorama["metrics"]["channels"] == 1
+    assert panorama["metrics"]["excluded"] == {"different_format": 1}
+
+
+def test_compute_panorama_excludes_unknown_format_videos_from_majority() -> None:
+    # Confirms the specific regression the final review found: a real {long, unknown} mix
+    # (UNKNOWN is YouTubeProvider's permanent default) must compute for the confirmed
+    # majority, not treat UNKNOWN as its own distinct format that trips the guard.
+    from nicheradar.discovery.channel_analysis import compute_panorama
+
+    comparable_videos: dict[str, tuple[Video, ...]] = {
+        "UC_a": (
+            Video(
+                id="a1",
+                channel_id="UC_a",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=1000,
+                format=VideoFormat.LONG,
+            ),
+            Video(
+                id="a2",
+                channel_id="UC_a",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=500,
+                format=VideoFormat.UNKNOWN,
+            ),
+        ),
+    }
+    panorama = compute_panorama(comparable_videos, (Channel(id="UC_a", title="A"),), 50_000, NOW)
+    assert panorama["status"] == "computed"
+    assert panorama["metrics"]["videos"] == 1
+    assert panorama["metrics"]["excluded"] == {"format_unknown": 1}
+
+
+def test_compute_panorama_incomplete_when_zero_confirmed_format_videos() -> None:
+    from nicheradar.discovery.channel_analysis import compute_panorama
+
+    comparable_videos: dict[str, tuple[Video, ...]] = {
+        "UC_a": (
+            Video(
+                id="a1",
+                channel_id="UC_a",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=1000,
+                format=VideoFormat.UNKNOWN,
+            ),
+        ),
+    }
+    panorama = compute_panorama(comparable_videos, (Channel(id="UC_a", title="A"),), 50_000, NOW)
+    assert panorama == {"status": "incomplete", "reason": "no_confirmed_format_videos"}
 
 
 def test_compute_panorama_classifies_breakout_by_real_subscriber_counts() -> None:

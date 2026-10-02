@@ -100,14 +100,18 @@ def test_channel_analysis_run_completes_through_every_stage(isolated_engine: Eng
     assert analysis["configuration"]["channel_input"] == "@scienceexplained"
     assert set(analysis["consumption"]) == {"confirmed", "reservations"}
     panorama = analysis["snapshot"]["metrics"]["panorama"]
-    assert panorama["status"] in {"computed", "incomplete"}
-    if panorama["status"] == "computed":
-        assert panorama["metrics"]["videos"] > 0
-        # Real wiring check (Task 10): the key must exist (not KeyError, not a crash).
-        # Its value isn't asserted here -- this synthetic fixture's exact subscriber
-        # counts aren't controlled by this test -- just that breakout classification
-        # ran against real subscriber data without blowing up.
-        assert "breakout_rate" in panorama["metrics"]
+    # This synthetic fixture naturally produces a {long, unknown} format mix per
+    # comparable channel (SyntheticProvider always marks one of its 8 videos per
+    # channel UNKNOWN) -- after the mixed-format guard was loosened to evaluate the
+    # confirmed majority format instead of aborting over one outlier, the panorama
+    # must now actually compute, not merely be allowed to.
+    assert panorama["status"] == "computed"
+    assert panorama["metrics"]["videos"] > 0
+    # Real wiring check (Task 10): the key must exist (not KeyError, not a crash).
+    # Its value isn't asserted here -- this synthetic fixture's exact subscriber
+    # counts aren't controlled by this test -- just that breakout classification
+    # ran against real subscriber data without blowing up.
+    assert "breakout_rate" in panorama["metrics"]
     # Loose on purpose: whether profit fully resolves to "estimated" also depends on
     # real comparable view-rate data existing in this synthetic run, which this test
     # isn't changing. The point here is confirming the wiring runs without crashing

@@ -5,12 +5,14 @@ seed-family catalog.
 """
 
 import re
+from collections import Counter
 from datetime import datetime
 from statistics import median
 from typing import Any, Literal, NamedTuple
 
 from nicheradar.discovery.sampling import Membership, age_band
 from nicheradar.domain.production import EstimateRange
+from nicheradar.domain.profile import VideoFormat
 from nicheradar.features.metrics import calculate
 from nicheradar.integrations.contracts import Channel, Operation, ProviderError, Video
 from nicheradar.scoring.advertising import AdvertisingBenchmark
@@ -124,7 +126,37 @@ async def discover_comparables(
             vidiq_omitted = "budget_exhausted"
 
     found.pop(target.id, None)
-    return ComparableDiscovery(tuple(found.values())[:max_comparables], vidiq_omitted)
+    comparables: dict[str, Channel] = dict(list(found.items())[:max_comparables])
+
+    # Neither SEARCH's nor vidIQ's CHANNEL_SEARCH's channel normalization reliably
+    # provides both `subscribers` and `uploads_playlist` (SEARCH gives neither; vidIQ
+    # gives subscribers but never uploads_playlist) -- without these, Task 10's
+    # subscriber-based breakout classification silently has no real data to work with,
+    # and fetch_channel_videos cannot fetch ANY videos for the comparable at all. One
+    # extra batched channels.list call (<=50 ids, 1 unit total) resolves both for
+    # whichever comparables still need it; a comparable that already has both (from a
+    # provider that supplies them) is skipped to avoid spending budget on data that's
+    # already real.
+    missing_ids = [
+        channel_id
+        for channel_id, channel in comparables.items()
+        if channel.subscribers is None or channel.uploads_playlist is None
+    ]
+    if missing_ids:
+        try:
+            resolved_batch, _, _ = await youtube_gateway.fetch(
+                Operation.CHANNELS, {"id": ",".join(missing_ids)}, now
+            )
+        except ProviderError:
+            # Graceful degrade, not data loss: keep the thin (search-only) comparables
+            # already found rather than losing the whole discovery over this bonus call.
+            resolved_batch = None
+        if resolved_batch is not None:
+            for resolved in resolved_batch.channels:
+                if resolved.id in comparables:
+                    comparables[resolved.id] = resolved
+
+    return ComparableDiscovery(tuple(comparables.values()), vidiq_omitted)
 
 
 def compute_comparison(
@@ -183,9 +215,18 @@ def compute_panorama(
     ]
     if not all_videos:
         return {"status": "incomplete", "reason": "no_comparable_videos"}
-    formats = {video.format for _, video in all_videos}
-    if len(formats) > 1:
-        return {"status": "incomplete", "reason": "mixed_formats_not_evaluable"}
+    # A single UNKNOWN-format video (routine with real YouTube data, since
+    # YouTubeProvider never sets `format`) must not wipe out the whole cohort's
+    # panorama. Evaluate the most common CONFIRMED format only; videos with a
+    # different confirmed format or an UNKNOWN format are excluded (included=False,
+    # with a reason), not dropped, so `calculate()`'s own accounting (e.g. `excluded`)
+    # still sees them -- same convention `discovery/sampling.py::sample()` uses.
+    confirmed_formats = [
+        video.format for _, video in all_videos if video.format != VideoFormat.UNKNOWN
+    ]
+    if not confirmed_formats:
+        return {"status": "incomplete", "reason": "no_confirmed_format_videos"}
+    majority_format = Counter(confirmed_formats).most_common(1)[0][0]
 
     def stratum(channel_id: str) -> Literal["small", "large", "unknown"]:
         subscribers = subscribers_by_channel.get(channel_id)
@@ -193,11 +234,18 @@ def compute_panorama(
             return "unknown"
         return "small" if subscribers <= small_channel_subscribers else "large"
 
+    def membership_reason(video: Video) -> str:
+        if video.format == VideoFormat.UNKNOWN:
+            return "format_unknown"
+        if video.format != majority_format:
+            return "different_format"
+        return "channel_analysis_comparable"
+
     members = tuple(
         Membership(
             video=video,
-            included=True,
-            reason="channel_analysis_comparable",
+            included=video.format == majority_format,
+            reason=membership_reason(video),
             size_stratum=stratum(channel_id),
             age_band=age_band((now - video.published_at).total_seconds() / 86400)
             if video.published_at
