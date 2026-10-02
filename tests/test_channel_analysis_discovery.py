@@ -296,3 +296,74 @@ def test_compute_comparison_handles_zero_comparables_without_crashing() -> None:
     assert result["target_position"] == "unknown"
     assert result["profit"]["status"] == "incomplete"
     assert "channel_view_rate" in result["profit"]["missing"]
+
+
+def test_discover_comparables_queries_by_keyword_not_title() -> None:
+    target = Channel(
+        id="UC_target",
+        title="Revenge Showdown",
+        description="#revengestories #familydrama",
+        keywords=("reddit revenge stories", "family drama"),
+    )
+    captured: dict[str, Any] = {}
+
+    class CapturingGateway:
+        async def fetch(
+            self, operation: Any, parameters: Any, now: datetime
+        ) -> tuple[Batch, str, datetime]:
+            captured["parameters"] = parameters
+            return (
+                Batch(
+                    provenance=Provenance(
+                        provider="fake", operation=operation, auth_scope="x", fetched_at=now
+                    ),
+                    coverage=Coverage(returned=0, selection_method="fake"),
+                    costs=(),
+                    channels=(),
+                ),
+                "fake-request-id",
+                now,
+            )
+
+    asyncio.run(
+        discover_comparables(cast(Gateway, CapturingGateway()), None, target, datetime.now(UTC))
+    )
+    assert captured["parameters"]["q"] == "reddit revenge stories"
+    assert captured["parameters"]["maxResults"] == "50"
+
+
+def test_discover_comparables_falls_back_to_description_hashtag_then_title() -> None:
+    no_keywords = Channel(
+        id="UC_target", title="Revenge Showdown", description="Welcome! #revengestories here"
+    )
+    bare = Channel(id="UC_bare", title="Bare Title Channel")
+    captured: list[str] = []
+
+    class CapturingGateway:
+        async def fetch(
+            self, operation: Any, parameters: Any, now: datetime
+        ) -> tuple[Batch, str, datetime]:
+            captured.append(parameters["q"])
+            return (
+                Batch(
+                    provenance=Provenance(
+                        provider="fake", operation=operation, auth_scope="x", fetched_at=now
+                    ),
+                    coverage=Coverage(returned=0, selection_method="fake"),
+                    costs=(),
+                    channels=(),
+                ),
+                "fake-request-id",
+                now,
+            )
+
+    asyncio.run(
+        discover_comparables(
+            cast(Gateway, CapturingGateway()), None, no_keywords, datetime.now(UTC)
+        )
+    )
+    asyncio.run(
+        discover_comparables(cast(Gateway, CapturingGateway()), None, bare, datetime.now(UTC))
+    )
+    assert captured[0] == "revengestories"
+    assert captured[1] == "Bare Title Channel"

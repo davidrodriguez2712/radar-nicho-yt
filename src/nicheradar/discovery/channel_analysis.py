@@ -17,6 +17,7 @@ from nicheradar.services.gateway import Gateway
 
 _HANDLE = re.compile(r"@([A-Za-z0-9_.-]+)")
 _CHANNEL_ID = re.compile(r"(UC[A-Za-z0-9_-]{22})")
+_HASHTAG = re.compile(r"#(\w+)")
 
 
 def parse_channel_input(raw: str) -> dict[str, str]:
@@ -28,6 +29,16 @@ def parse_channel_input(raw: str) -> dict[str, str]:
     if handle_match:
         return {"forHandle": handle_match.group(1)}
     raise ValueError("unsupported_channel_input")
+
+
+def _discovery_query(target: Channel) -> str:
+    if target.keywords:
+        return target.keywords[0]
+    if target.description:
+        hashtag = _HASHTAG.search(target.description)
+        if hashtag:
+            return hashtag.group(1)
+    return target.title
 
 
 async def resolve_channel(gateway: Gateway, raw_input: str, now: datetime) -> Channel:
@@ -88,12 +99,12 @@ async def discover_comparables(
     *,
     max_comparables: int = MAX_COMPARABLES,
 ) -> ComparableDiscovery:
-    query = target.category or (target.subtopics[0] if target.subtopics else target.title)
+    query = _discovery_query(target)
     found: dict[str, Channel] = {}
     vidiq_omitted: str | None = None
 
     youtube_batch, _, _ = await youtube_gateway.fetch(
-        Operation.SEARCH, {"type": "channel", "q": query, "maxResults": "25"}, now
+        Operation.SEARCH, {"type": "channel", "q": query, "maxResults": "50"}, now
     )
     for channel in youtube_batch.channels:
         found[channel.id] = channel
