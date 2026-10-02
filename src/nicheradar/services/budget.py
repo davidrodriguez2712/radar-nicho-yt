@@ -161,6 +161,9 @@ def reserve(
     )
     if existing or request["state"] != "prepared":
         raise ProviderError("request_already_reserved")
+    trigger = connection.execute(
+        select(s.analysis_runs.c.trigger).where(s.analysis_runs.c.id == request["run_id"])
+    ).scalar_one()
     lock_account(connection, request["provider"], request["auth_scope"])
     week_start, month_start, month_end = calendar_windows(now, timezone)
     reservations = []
@@ -179,9 +182,14 @@ def reserve(
                 period=min(cap.period, profile.radar_usd_per_month),
             )
         elif cost.unit == "vidiq_credit":
+            run_cap = (
+                profile.channel_analysis_credits_per_run
+                if trigger == "channel_analysis"
+                else profile.credits_per_run
+            )
             cap = Limits(
                 operation=cap.operation,
-                run=min(cap.run, Decimal(profile.credits_per_run)),
+                run=min(cap.run, Decimal(run_cap)),
                 week=min(cap.week, Decimal(profile.credits_per_week)),
                 period=min(cap.period, Decimal(profile.credits_per_cycle)),
             )
