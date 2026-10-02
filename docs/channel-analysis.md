@@ -80,7 +80,7 @@ despacha `Pipeline._process_channel_analysis_stage` (`workers/pipeline.py`):
    posición y ganancia estimada en `channel_analyses.snapshot`, con `status`
    `completed`/`partial`. `consumption` refleja el gasto real de la ejecución con el
    mismo criterio que la vista de jobs: `confirmed` (libro de costos, por unidad:
-   `youtube_search_quota`, `youtube_detail_quota`, `vidiq_credit`) y `reservations`
+   `youtube_search_quota`, `youtube_quota`, `vidiq_credit`) y `reservations`
    todavía abiertas (`reserved`/`unknown_charge`); las liberadas no cuentan.
    `configuration` guarda los parámetros reales (`channel_input`, `mode`,
    `max_comparables`, `maximum_calls`).
@@ -207,7 +207,7 @@ mayoritariamente Shorts.
 | Operación | Costo por llamada | Tope por análisis | Tope semanal | Tope mensual |
 |---|---|---|---|---|
 | YouTube `search.list` (`youtube_search_quota`) | 100 unidades | 100 (`youtube_search_quota_per_run`, 1 llamada) | 700 (`youtube_search_quota_per_week`) | 3000 (`youtube_search_quota_per_month`) |
-| YouTube `channels.list`/`playlistItems.list`/`videos.list`/`commentThreads.list`/`videoCategories.list` (`youtube_detail_quota`) | 1 unidad | 100 (`youtube_detail_quota_per_run`) | 500 (`youtube_detail_quota_per_week`) | 2000 (`youtube_detail_quota_per_month`) |
+| YouTube `channels.list`/`playlistItems.list`/`videos.list`/`commentThreads.list`/`videoCategories.list` (`youtube_quota`) | 1 unidad | 100 (`youtube_detail_quota_per_run`) | 500 (`youtube_detail_quota_per_week`) | 2000 (`youtube_detail_quota_per_month`) |
 | vidIQ `channel_search`/`channel_videos`/`outliers`/`keyword_research` (`vidiq_credit`) | 5 créditos planos | 50 (`CreatorProfile.channel_analysis_credits_per_run`) | `credits_per_week` del perfil (25 por defecto) | `credits_per_cycle` del perfil (100 por defecto) |
 
 > **Nota:** Google anunció una migración a un sistema de cuotas más granular para
@@ -220,6 +220,17 @@ Valores por defecto verificados en `Settings`/`CreatorProfile`
 YouTube tiene su propio bucket separado (100/día real declarado por el propietario); el
 diseño la acota a una sola llamada por análisis a propósito, dejando el resto de
 llamadas (detalle de cada comparable) en el pool barato de 10.000/día.
+
+**`youtube_quota` es la misma unidad que usa el catálogo.** Las operaciones de detalle
+(`channels`/`uploads`/`videos`/`commentThreads`/`videoCategories`) reservan bajo el
+mismo nombre de unidad `"youtube_quota"` que ya usa el flujo de catálogo
+(`services/youtube_enrichment.py::youtube_tariffs()`), porque ambos flujos consumen
+realmente el mismo cupo externo compartido de 10.000/día de Google — no dos pools
+internos separados para un solo recurso externo. Los topes run/week/month de este flujo
+(`youtube_detail_quota_per_run/week/month` en `Settings`, nombre histórico conservado
+por claridad de intención) siguen siendo propios de channel-analysis, pero el consumo
+contra ellos se contabiliza junto con el del catálogo, porque `services/budget.py`
+agrega por `(profile_id, unit)`, no por flujo.
 
 El tope de **50 créditos vidIQ por análisis es un tope de ejecución propio de este
 flujo**, más alto que el `credits_per_run` por defecto del resto del radar (5), pero
@@ -255,24 +266,34 @@ conjuntos también `quota`: el código con el que `YouTubeProvider` traduce el 4
 - Cero comparables reales encontrados nunca se rellena con un comparable inventado;
   `compute_comparison` deja la posición `"unknown"` y la ganancia `"incomplete"`.
 
-### Limitación conocida: en modo live, el costo real de YouTube nunca confirma — siempre queda `unknown_charge`
+### Corregido: en modo live, el costo real de YouTube liquidaba siempre como `unknown_charge`
 
 `Gateway.fetch` solo marca una reserva como `"confirmed"` cuando las unidades de costo que
 devuelve el proveedor (`batch.costs`) coinciden exactamente con las unidades de la tarifa
 reservada (`services/gateway.py`, comparación `set(actual) == {cost.unit for cost in
-costs}`). Las tarifas de este flujo (`channel_analysis_youtube_tariffs()`) declaran
-`"youtube_search_quota"` para `search.list` y `"youtube_detail_quota"` para el resto — pero
-`YouTubeProvider.normalize()` (`integrations/youtube.py`), tanto en la rama compartida de
-`channels`/`uploads`/`videos` como en `_normalize_search`, siempre etiqueta su costo real
-como la unidad genérica **`"youtube_quota"`**, sin distinguir búsqueda de detalle. Esas
-unidades nunca coinciden, así que **en modo live, toda
-llamada YouTube de este flujo liquida como `"unknown_charge"` en vez de `"confirmed"`**,
-sin importar que el cargo real sí se conozca (el proveedor sí reporta un `actual` correcto,
-solo que bajo el nombre de unidad equivocado). El modo sintético no sufre esto porque
-`Gateway.fetch` sustituye la tarifa por una unidad `"USD"` fija cuando `synthetic=True`,
-evitando la comparación. Es un hueco conocido, heredado de que el adaptador real de
-YouTube (compartido con el resto del radar) nunca se diseñó con la unidad dividida que
-este flujo introdujo — no corregido en este plan.
+costs}`). Antes de la corrección, las tarifas de este flujo
+(`channel_analysis_youtube_tariffs()`) declaraban `"youtube_search_quota"` para
+`search.list` y `"youtube_detail_quota"` para el resto, pero `YouTubeProvider.normalize()`
+(`integrations/youtube.py`) siempre etiquetaba su costo real como la unidad genérica
+`"youtube_quota"` en ambas ramas, sin distinguir búsqueda de detalle. Esas unidades nunca
+coincidían, así que en modo live toda llamada YouTube de este flujo liquidaba como
+`"unknown_charge"` en vez de `"confirmed"`, sin importar que el cargo real sí se conocía
+(el proveedor sí reportaba un `actual` correcto, solo que bajo el nombre de unidad
+equivocado). El modo sintético nunca sufrió esto porque `Gateway.fetch` sustituye la
+tarifa por una unidad `"USD"` fija cuando `synthetic=True`, evitando la comparación.
+
+**Corrección aplicada:** `_normalize_search` (`integrations/youtube.py`) ahora reporta
+`"youtube_search_quota"` (search.list es, en los hechos, un cupo real separado de
+100/día); las otras tres ramas de costo (CHANNELS/UPLOADS/VIDEOS genérica,
+`_normalize_comment_threads`, `_normalize_video_categories`) siguen reportando
+`"youtube_quota"`, sin cambios. `channel_analysis_youtube_tariffs()` ahora reserva
+`"youtube_quota"` para las operaciones de detalle (en vez de `"youtube_detail_quota"`),
+que es exactamente lo que el proveedor ya reportaba — y la misma unidad que usa
+`services/youtube_enrichment.py::youtube_tariffs()` para el catálogo, así que ambos
+flujos ahora comparten el mismo seguimiento contra el cupo real externo de Google (ver
+"Presupuesto real" arriba). Cubierto end-to-end por
+`test_youtube_detail_and_search_calls_settle_confirmed_not_unknown_charge`
+(`tests/test_channel_analysis_budget.py`), que recorre el `Gateway.fetch()` real.
 
 ### Limitación conocida: una etapa interrumpida descarta su progreso parcial
 

@@ -1,13 +1,18 @@
+import asyncio
 from datetime import timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
-from sqlalchemy import Connection, insert
+from pydantic import SecretStr
+from sqlalchemy import Connection, Engine, insert, select
 
 from nicheradar.config import Settings
 from nicheradar.domain.profile import CreatorProfile, initial_catalog
 from nicheradar.integrations.contracts import Cost, Operation, ProviderError
+from nicheradar.integrations.youtube import YouTubeProvider
+from nicheradar.repositories import schema_v1 as s
 from nicheradar.repositories.core import insert_record, seed_profile
 from nicheradar.repositories.schema import credit_balances
 from nicheradar.services.budget import Limits, reserve
@@ -17,6 +22,7 @@ from nicheradar.services.channel_analysis_providers import (
     channel_analysis_youtube_limits,
     channel_analysis_youtube_tariffs,
 )
+from nicheradar.services.gateway import Gateway
 from tests.test_persistence import NOW
 
 
@@ -139,10 +145,96 @@ def test_channel_analysis_limits_use_configured_values() -> None:
     settings = Settings()
     yt_limits = channel_analysis_youtube_limits(settings)
     assert yt_limits["youtube_search_quota"].run == 100
-    assert yt_limits["youtube_detail_quota"].run == 100
+    # "youtube_quota" (not "youtube_detail_quota"): detail operations (channels/uploads/
+    # videos/commentThreads/videoCategories) share YouTube's real 10,000/day quota pool
+    # with the catalog's own enrichment flow (services/youtube_enrichment.py), which
+    # already uses "youtube_quota" -- a separate internal name for the same external
+    # resource was itself a latent bug (see test below for the settle()-path symptom).
+    assert yt_limits["youtube_quota"].run == 100
     profile = CreatorProfile()
     vidiq_limits = channel_analysis_vidiq_limits(profile)
     assert vidiq_limits["vidiq_credit"].run == 50
+
+
+@pytest.mark.postgres
+def test_youtube_detail_and_search_calls_settle_confirmed_not_unknown_charge(
+    isolated_engine: Engine,
+) -> None:
+    """Regression test for the real root cause of the live-mode bug: YouTubeProvider
+    reported every cost as unit="youtube_quota" (CHANNELS/UPLOADS/VIDEOS/COMMENT_THREADS/
+    VIDEO_CATEGORIES) or unit="youtube_quota" for SEARCH too (bug), while
+    channel_analysis_youtube_tariffs() reserved "youtube_detail_quota"/
+    "youtube_search_quota" instead. Gateway._fetch()'s `known = set(actual) ==
+    {cost.unit for cost in costs}` check never matched, so every real YouTube call in
+    this flow settled "unknown_charge" instead of "confirmed" -- this drives the real
+    reserve -> send -> settle path end-to-end through Gateway.fetch(), not just a unit
+    string comparison in isolation."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/channels"):
+            return httpx.Response(
+                200, json={"items": [{"id": "UC1", "snippet": {"title": "Science"}}]}
+            )
+        return httpx.Response(200, json={"items": []})
+
+    with isolated_engine.begin() as db:
+        profile_id = seed_profile(db, CreatorProfile(paid_limits_confirmed=True), initial_catalog())
+        run_id = insert_record(
+            db,
+            "analysis_runs",
+            {
+                "profile_id": profile_id,
+                "mode": "live",
+                "trigger": "channel_analysis",
+                "status": "running",
+                "configuration": {},
+            },
+        )
+        for operation in (Operation.CHANNELS.value, Operation.SEARCH.value):
+            for usage in ("query", "storage", "history"):
+                insert_record(
+                    db,
+                    "provider_policies",
+                    {
+                        "provider": "youtube",
+                        "operation": operation,
+                        "data_type": "metadata",
+                        "usage": usage,
+                        "version": "fixture-only",
+                        "status": "enabled",
+                        "effective_at": NOW,
+                        "evidence_source": "fixture-not-an-actual-permission",
+                        "retention_seconds": 86400,
+                    },
+                )
+
+    provider = YouTubeProvider(
+        SecretStr("key"), "scope", enabled=True, transport=httpx.MockTransport(handler)
+    )
+    gateway = Gateway(
+        isolated_engine,
+        provider,
+        profile_id,
+        run_id,
+        "scope",
+        CreatorProfile(paid_limits_confirmed=True),
+        channel_analysis_youtube_limits(Settings()),
+        channel_analysis_youtube_tariffs(),
+    )
+    asyncio.run(gateway.fetch(Operation.CHANNELS, {"id": "UC1"}, NOW))
+    asyncio.run(gateway.fetch(Operation.SEARCH, {"q": "science", "type": "channel"}, NOW))
+
+    with isolated_engine.connect() as db:
+        rows = (
+            db.execute(select(s.cost_reservations.c.unit, s.cost_reservations.c.status))
+            .mappings()
+            .all()
+        )
+    settled = {row["unit"]: row["status"] for row in rows}
+    assert settled == {
+        "youtube_quota": "confirmed",
+        "youtube_search_quota": "confirmed",
+    }
 
 
 @pytest.mark.postgres

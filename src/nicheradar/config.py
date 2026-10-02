@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     youtube_search_quota_per_run: int = Field(default=100, ge=0, le=10_000)
     youtube_search_quota_per_week: int = Field(default=700, ge=0, le=100_000)
     youtube_search_quota_per_month: int = Field(default=3000, ge=0, le=1_000_000)
+    # Field names kept as "detail" for clarity of intent (channel-analysis's own run/
+    # week/month caps for its detail-call operations); the Cost/Limits unit they map to
+    # is the shared "youtube_quota" (services/channel_analysis_providers.py), the same
+    # one the catalog's own enrichment flow uses for the same real external quota pool.
     youtube_detail_quota_per_run: int = Field(default=100, ge=0, le=10_000)
     youtube_detail_quota_per_week: int = Field(default=500, ge=0, le=100_000)
     youtube_detail_quota_per_month: int = Field(default=2000, ge=0, le=1_000_000)

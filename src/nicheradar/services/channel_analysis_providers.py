@@ -20,9 +20,16 @@ VIDIQ_TARIFF_SOURCE = "MCP tools/list reviewed 2026-09-21; flat 5 credits per ca
 
 
 def channel_analysis_youtube_tariffs() -> dict[Operation, tuple[Cost, ...]]:
-    detail_cost = Cost(
-        unit="youtube_detail_quota", maximum=Decimal(1), source=YOUTUBE_TARIFF_SOURCE
-    )
+    # "youtube_quota": the detail operations below (CHANNELS/UPLOADS/VIDEOS/
+    # COMMENT_THREADS/VIDEO_CATEGORIES) draw from YouTube's same real shared 10,000/day
+    # quota pool as the catalog's own enrichment flow (services/youtube_enrichment.py),
+    # which already uses "youtube_quota" for its own Operation.VIDEOS tariff -- so this
+    # must use the SAME canonical unit name, both because YouTubeProvider.normalize()
+    # (integrations/youtube.py) always reports it under that name for these operations,
+    # and because these two flows genuinely share one external Google quota, which they
+    # should track together (two separate internal pools for one real external resource
+    # was itself a latent bug).
+    detail_cost = Cost(unit="youtube_quota", maximum=Decimal(1), source=YOUTUBE_TARIFF_SOURCE)
     return {
         Operation.CHANNELS: (detail_cost,),
         Operation.UPLOADS: (detail_cost,),
@@ -43,7 +50,7 @@ def channel_analysis_youtube_limits(config: Settings) -> dict[str, Limits]:
             week=Decimal(config.youtube_search_quota_per_week),
             period=Decimal(config.youtube_search_quota_per_month),
         ),
-        "youtube_detail_quota": Limits(
+        "youtube_quota": Limits(
             operation=Decimal(1),
             run=Decimal(config.youtube_detail_quota_per_run),
             week=Decimal(config.youtube_detail_quota_per_week),

@@ -123,10 +123,8 @@ def test_save_records_real_consumption_and_configuration(db: Connection) -> None
     detail = channel_analysis_detail(db, analysis_id)
     assert detail is not None
     assert detail["consumption"] == {
-        "confirmed": {"youtube_detail_quota": 2.0, "youtube_search_quota": 100.0},
-        "reservations": [
-            {"unit": "youtube_detail_quota", "status": "unknown_charge", "amount": 1.0}
-        ],
+        "confirmed": {"youtube_quota": 2.0, "youtube_search_quota": 100.0},
+        "reservations": [{"unit": "youtube_quota", "status": "unknown_charge", "amount": 1.0}],
     }
     assert detail["configuration"] == configuration
 

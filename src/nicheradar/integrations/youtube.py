@@ -309,7 +309,10 @@ class YouTubeProvider:
             ),
             costs=(
                 Cost(
-                    unit="youtube_quota",
+                    # search.list draws from its own real 100/day quota bucket, distinct
+                    # from the 10,000/day shared pool the other operations draw from --
+                    # must match channel_analysis_youtube_tariffs()'s SEARCH unit name.
+                    unit="youtube_search_quota",
                     maximum=Decimal(100),
                     actual=Decimal(100),
                     source="YouTube search.list quota verified 2026-10-01",
