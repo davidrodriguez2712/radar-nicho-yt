@@ -6,6 +6,7 @@ from sqlalchemy import Connection, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from nicheradar.domain.profile import CreatorProfile, SeedCatalog
+from nicheradar.repositories import schema
 from nicheradar.repositories import schema_v1 as s
 
 
@@ -129,7 +130,11 @@ def update_profile(connection: Connection, profile: CreatorProfile, expected_ver
 
 def insert_record(connection: Connection, table_name: str, values: Mapping[str, Any]) -> UUID:
     """Internal repository helper. Never pass an untrusted table name from HTTP."""
-    table = s.metadata.tables[table_name]
+    # Check schema_v1 first (frozen baseline), then schema (extended with newer tables).
+    if table_name in s.metadata.tables:
+        table = s.metadata.tables[table_name]
+    else:
+        table = schema.metadata.tables[table_name]
     result: UUID = connection.execute(
         insert(table).values(**values).returning(table.c.id)
     ).scalar_one()
