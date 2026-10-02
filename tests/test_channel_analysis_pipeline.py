@@ -103,6 +103,11 @@ def test_channel_analysis_run_completes_through_every_stage(isolated_engine: Eng
     assert panorama["status"] in {"computed", "incomplete"}
     if panorama["status"] == "computed":
         assert panorama["metrics"]["videos"] > 0
+        # Real wiring check (Task 10): the key must exist (not KeyError, not a crash).
+        # Its value isn't asserted here -- this synthetic fixture's exact subscriber
+        # counts aren't controlled by this test -- just that breakout classification
+        # ran against real subscriber data without blowing up.
+        assert "breakout_rate" in panorama["metrics"]
     # Loose on purpose: whether profit fully resolves to "estimated" also depends on
     # real comparable view-rate data existing in this synthetic run, which this test
     # isn't changing. The point here is confirming the wiring runs without crashing

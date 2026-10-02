@@ -606,12 +606,12 @@ class Pipeline:
                         },
                     )
                 elif stage == "comparable_videos":
-                    comparable_channels = [
+                    discovered_channels = [
                         Channel.model_validate(c)
                         for c in checkpoints["discover_comparables"]["comparables"]
                     ]
                     videos_by_channel = {}
-                    for comparable in comparable_channels:
+                    for comparable in discovered_channels:
                         with self.engine.begin() as heartbeat_connection:
                             heartbeat(heartbeat_connection, job["id"], owner, self.clock())
                         videos_by_channel[comparable.id] = [
@@ -637,6 +637,10 @@ class Pipeline:
                             "videos_by_channel"
                         ].items()
                     }
+                    comparable_channels = tuple(
+                        Channel.model_validate(c)
+                        for c in checkpoints["discover_comparables"]["comparables"]
+                    )
                     video_format = (
                         Counter(video.format for video in target_videos).most_common(1)[0][0]
                         if target_videos
@@ -679,7 +683,12 @@ class Pipeline:
                         advertising=advertising,
                         monthly_cost_usd=monthly_cost_usd,
                     )
-                    panorama = compute_panorama(comparable_videos, now)
+                    panorama = compute_panorama(
+                        comparable_videos,
+                        comparable_channels,
+                        profile.small_channel_subscribers,
+                        now,
+                    )
                     confirm_channel_analysis_stage(
                         connection,
                         job["id"],

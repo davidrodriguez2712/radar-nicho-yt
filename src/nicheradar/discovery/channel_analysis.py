@@ -7,7 +7,7 @@ seed-family catalog.
 import re
 from datetime import datetime
 from statistics import median
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 from nicheradar.discovery.sampling import Membership, age_band
 from nicheradar.domain.production import EstimateRange
@@ -165,26 +165,46 @@ def compute_comparison(
 
 
 def compute_panorama(
-    comparable_videos: dict[str, tuple[Video, ...]], now: datetime
+    comparable_videos: dict[str, tuple[Video, ...]],
+    comparable_channels: tuple[Channel, ...],
+    small_channel_subscribers: int,
+    now: datetime,
 ) -> dict[str, Any]:
-    all_videos = [video for videos in comparable_videos.values() for video in videos]
+    subscribers_by_channel = {channel.id: channel.subscribers for channel in comparable_channels}
+    # Keyed by `comparable_videos`'s own dict key (the comparable channel actually
+    # iterated when these videos were fetched), not `video.channel_id`: verified empirically
+    # that `fetch_channel_videos` can return videos whose `channel_id` does not match the
+    # requested comparable (confirmed for SyntheticProvider, whose UPLOADS/VIDEOS fixture
+    # ignores the requested channel and always reports "channel-0" as the owner) -- using
+    # `video.channel_id` here would silently misclassify every comparable's videos under
+    # the wrong channel's subscriber count.
+    all_videos = [
+        (channel_id, video) for channel_id, videos in comparable_videos.items() for video in videos
+    ]
     if not all_videos:
         return {"status": "incomplete", "reason": "no_comparable_videos"}
-    formats = {video.format for video in all_videos}
+    formats = {video.format for _, video in all_videos}
     if len(formats) > 1:
         return {"status": "incomplete", "reason": "mixed_formats_not_evaluable"}
+
+    def stratum(channel_id: str) -> Literal["small", "large", "unknown"]:
+        subscribers = subscribers_by_channel.get(channel_id)
+        if subscribers is None:
+            return "unknown"
+        return "small" if subscribers <= small_channel_subscribers else "large"
+
     members = tuple(
         Membership(
             video=video,
             included=True,
             reason="channel_analysis_comparable",
-            size_stratum="unknown",
+            size_stratum=stratum(channel_id),
             age_band=age_band((now - video.published_at).total_seconds() / 86400)
             if video.published_at
             else "unknown",
             selection_method="channel_analysis",
         )
-        for video in all_videos
+        for channel_id, video in all_videos
     )
     metrics = calculate(members, now)
     return {"status": "computed", "metrics": metrics.model_dump(mode="json")}

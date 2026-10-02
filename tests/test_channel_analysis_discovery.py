@@ -394,7 +394,12 @@ def test_compute_panorama_computes_real_metrics_across_comparables() -> None:
             ),
         ),
     }
-    panorama = compute_panorama(comparable_videos, NOW)
+    panorama = compute_panorama(
+        comparable_videos,
+        (Channel(id="UC_a", title="A"), Channel(id="UC_b", title="B")),
+        50_000,
+        NOW,
+    )
     assert panorama["status"] == "computed"
     assert panorama["metrics"]["videos"] == 2
     assert panorama["metrics"]["channels"] == 2
@@ -403,7 +408,7 @@ def test_compute_panorama_computes_real_metrics_across_comparables() -> None:
 def test_compute_panorama_incomplete_when_no_comparable_videos() -> None:
     from nicheradar.discovery.channel_analysis import compute_panorama
 
-    panorama = compute_panorama({}, NOW)
+    panorama = compute_panorama({}, (), 50_000, NOW)
     assert panorama == {"status": "incomplete", "reason": "no_comparable_videos"}
 
 
@@ -432,6 +437,76 @@ def test_compute_panorama_skips_mixed_formats_without_crashing() -> None:
             ),
         ),
     }
-    panorama = compute_panorama(comparable_videos, NOW)
+    panorama = compute_panorama(
+        comparable_videos,
+        (Channel(id="UC_a", title="A"), Channel(id="UC_b", title="B")),
+        50_000,
+        NOW,
+    )
     assert panorama["status"] == "incomplete"
     assert panorama["reason"] == "mixed_formats_not_evaluable"
+
+
+def test_compute_panorama_classifies_breakout_by_real_subscriber_counts() -> None:
+    from nicheradar.discovery.channel_analysis import compute_panorama
+
+    small_channel = Channel(id="UC_a", title="Small", subscribers=1000)
+    large_channel = Channel(id="UC_b", title="Large", subscribers=5_000_000)
+    comparable_videos = {
+        "UC_a": tuple(
+            Video(
+                id=f"a{i}",
+                channel_id="UC_a",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=100,
+                format=VideoFormat.LONG,
+            )
+            for i in range(5)
+        )
+        + (
+            Video(
+                id="a-outlier",
+                channel_id="UC_a",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=10_000,
+                format=VideoFormat.LONG,
+            ),
+        ),
+        "UC_b": (
+            Video(
+                id="b1",
+                channel_id="UC_b",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=2000,
+                format=VideoFormat.LONG,
+            ),
+        ),
+    }
+    panorama = compute_panorama(comparable_videos, (small_channel, large_channel), 50_000, NOW)
+    assert panorama["status"] == "computed"
+    assert panorama["metrics"]["breakout_rate"] is not None
+
+
+def test_compute_panorama_unknown_stratum_when_subscribers_not_resolved() -> None:
+    from nicheradar.discovery.channel_analysis import compute_panorama
+
+    unresolved = Channel(id="UC_a", title="Unresolved")  # subscribers defaults to None
+    comparable_videos: dict[str, tuple[Video, ...]] = {
+        "UC_a": (
+            Video(
+                id="a1",
+                channel_id="UC_a",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=1000,
+                format=VideoFormat.LONG,
+            ),
+        ),
+    }
+    panorama = compute_panorama(comparable_videos, (unresolved,), 50_000, NOW)
+    assert panorama["status"] == "computed"
+    # No "small" members at all -- honest, not fabricated.
+    assert panorama["metrics"]["breakout_rate"] is None
