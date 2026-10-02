@@ -368,9 +368,14 @@ nested shape, not the flat `id` shape the other endpoints use.
 
 ```python
 # tests/test_channel_analysis_youtube.py
-import httpx
-import pytest
+# NOTE: this project has no pytest-asyncio plugin installed (checked pyproject.toml/
+# uv.lock — confirm this is still true before using it). Every async call elsewhere in
+# this codebase is tested via the sync `def test_...(): asyncio.run(coro)` pattern (see
+# tests/test_evaluation.py) — follow that convention here, not `@pytest.mark.asyncio`.
+import asyncio
 from datetime import datetime, UTC
+
+import httpx
 from pydantic import SecretStr
 
 from nicheradar.integrations.contracts import Operation, ProviderError
@@ -381,8 +386,7 @@ def _provider(transport: httpx.MockTransport) -> YouTubeProvider:
     return YouTubeProvider(SecretStr("key"), "scope", enabled=True, transport=transport)
 
 
-@pytest.mark.asyncio
-async def test_search_channels_maps_nested_id_shape() -> None:
+def test_search_channels_maps_nested_id_shape() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.params["type"] == "channel"
         assert request.url.params["q"] == "science"
@@ -396,16 +400,15 @@ async def test_search_channels_maps_nested_id_shape() -> None:
         )
 
     provider = _provider(httpx.MockTransport(handler))
-    batch = await provider.fetch(
+    batch = asyncio.run(provider.fetch(
         Operation.SEARCH, {"type": "channel", "q": "science", "maxResults": "10"}, datetime.now(UTC)
-    )
+    ))
     assert batch.channels[0].id == "UC123"
     assert batch.channels[0].title == "Science Channel"
     assert batch.costs[0].maximum == 100
 
 
-@pytest.mark.asyncio
-async def test_comment_threads_maps_top_level_comments() -> None:
+def test_comment_threads_maps_top_level_comments() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.params["videoId"] == "vid1"
         return httpx.Response(
@@ -424,16 +427,15 @@ async def test_comment_threads_maps_top_level_comments() -> None:
         )
 
     provider = _provider(httpx.MockTransport(handler))
-    batch = await provider.fetch(
+    batch = asyncio.run(provider.fetch(
         Operation.COMMENT_THREADS, {"videoId": "vid1", "maxResults": "20"}, datetime.now(UTC)
-    )
+    ))
     assert batch.comments[0]["text"] == "Nice video"
     assert batch.comments[0]["like_count"] == 4
     assert batch.costs[0].maximum == 1
 
 
-@pytest.mark.asyncio
-async def test_video_categories_maps_id_to_title() -> None:
+def test_video_categories_maps_id_to_title() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -441,15 +443,14 @@ async def test_video_categories_maps_id_to_title() -> None:
         )
 
     provider = _provider(httpx.MockTransport(handler))
-    batch = await provider.fetch(
+    batch = asyncio.run(provider.fetch(
         Operation.VIDEO_CATEGORIES, {"regionCode": "US"}, datetime.now(UTC)
-    )
+    ))
     assert batch.category_labels == {"24": "Entertainment"}
     assert batch.costs[0].maximum == 1
 
 
-@pytest.mark.asyncio
-async def test_unsupported_parameter_is_dropped_not_forwarded() -> None:
+def test_unsupported_parameter_is_dropped_not_forwarded() -> None:
     captured = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -457,11 +458,11 @@ async def test_unsupported_parameter_is_dropped_not_forwarded() -> None:
         return httpx.Response(200, json={"items": []})
 
     provider = _provider(httpx.MockTransport(handler))
-    await provider.fetch(
+    asyncio.run(provider.fetch(
         Operation.SEARCH,
         {"type": "channel", "q": "science", "not_a_real_param": "x"},
         datetime.now(UTC),
-    )
+    ))
     assert "not_a_real_param" not in captured["params"]
 ```
 
@@ -1944,29 +1945,36 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.engine import Connection
 
+from nicheradar.repositories.core import insert_record
 from nicheradar.repositories.schema import channel_analyses
 
 
 def save_channel_analysis(
     connection: Connection, run_id: UUID, profile_id: UUID, checkpoints: dict[str, Any], now: datetime
 ) -> UUID:
+    # This is only ever called from the pipeline's final "persist" stage (Task 13), which
+    # only runs once every earlier stage has already confirmed cleanly — so the row is
+    # "completed" by construction. A stage that hit a budget wall exits via the pipeline's
+    # own partial-confirm path (Task 13's except block) and never reaches persist at all;
+    # a channel-not-found or similar hard failure never reaches it either (Task 9's
+    # ProviderError propagates to the generic fail_job() path instead).
     channel = checkpoints.get("resolve", {}).get("channel", {})
-    status = "completed" if "persist" not in checkpoints else checkpoints.get("status", "completed")
-    result = connection.execute(
-        channel_analyses.insert().values(
-            profile_id=profile_id,
-            run_id=run_id,
-            channel_input=channel.get("title", ""),
-            channel_external_id=channel.get("id"),
-            status=status,
-            configuration={},
-            snapshot=checkpoints,
-            consumption={},
-            created_at=now,
-            retain_until=now + timedelta(days=180),
-        ).returning(channel_analyses.c.id)
+    return insert_record(
+        connection,
+        "channel_analyses",
+        {
+            "profile_id": profile_id,
+            "run_id": run_id,
+            "channel_input": channel.get("title", ""),
+            "channel_external_id": channel.get("id"),
+            "status": "completed",
+            "configuration": {},
+            "snapshot": checkpoints,
+            "consumption": {},
+            "created_at": now,
+            "retain_until": now + timedelta(days=180),
+        },
     )
-    return result.scalar_one()
 
 
 def list_channel_analyses(
