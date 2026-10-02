@@ -125,6 +125,16 @@ def test_channel_analysis_tariffs_cover_every_operation_used() -> None:
     assert vidiq[Operation.CHANNEL_SEARCH][0].maximum == 5
 
 
+def test_channel_analysis_vidiq_tariffs_declare_a_free_balance_check() -> None:
+    # Gateway.fetch() requires a verified free (maximum=0) Operation.BALANCE tariff
+    # before it will refresh the balance automatically; without one it raises
+    # ProviderError("balance_refresh_required") on every live call.
+    vidiq = channel_analysis_vidiq_tariffs()
+    assert Operation.BALANCE in vidiq
+    assert vidiq[Operation.BALANCE][0].maximum == Decimal(0)
+    assert vidiq[Operation.BALANCE][0].unit == "vidiq_credit"
+
+
 def test_channel_analysis_limits_use_configured_values() -> None:
     settings = Settings()
     yt_limits = channel_analysis_youtube_limits(settings)

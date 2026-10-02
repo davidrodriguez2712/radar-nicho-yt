@@ -59,6 +59,12 @@ def channel_analysis_vidiq_tariffs() -> dict[Operation, tuple[Cost, ...]]:
         Operation.CHANNEL_VIDEOS: (cost,),
         Operation.OUTLIERS: (cost,),
         Operation.KEYWORDS: (cost,),
+        # Gateway.fetch() requires a verified free (maximum=0) BALANCE tariff before it
+        # will refresh the balance automatically (see services/pilot.py::vidiq_tariffs);
+        # without this entry every live call degrades with "balance_refresh_required".
+        Operation.BALANCE: (
+            Cost(unit="vidiq_credit", maximum=Decimal(0), source=VIDIQ_TARIFF_SOURCE),
+        ),
     }
 
 
