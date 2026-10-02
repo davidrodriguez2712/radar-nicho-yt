@@ -101,6 +101,7 @@ que quieras conservar.
 - [Operación live acotada](docs/live-operation.md).
 - [Release desplegada 011](docs/release-20261001-011.md).
 - [Piloto real YouTube/LLM](docs/youtube-llm-pilot-20260927.md).
+- [Análisis competitivo de canal](docs/channel-analysis.md).
 
 La candidata 011 está desplegada en Contabo, en modo live y pausada. El Home del
 dashboard ahora resume el panorama de oportunidades (conteos por estado, candidatos
