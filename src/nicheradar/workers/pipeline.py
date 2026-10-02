@@ -443,6 +443,7 @@ class Pipeline:
         from nicheradar.discovery.channel_analysis import (
             MAX_COMPARABLES,
             compute_comparison,
+            compute_panorama,
             discover_comparables,
             fetch_channel_videos,
             resolve_channel,
@@ -626,8 +627,14 @@ class Pipeline:
                         ].items()
                     }
                     comparison = compute_comparison(target_videos, channel, comparable_videos, now)
+                    panorama = compute_panorama(comparable_videos, now)
                     confirm_channel_analysis_stage(
-                        connection, job["id"], owner, now, stage, comparison
+                        connection,
+                        job["id"],
+                        owner,
+                        now,
+                        stage,
+                        comparison | {"panorama": panorama},
                     )
                 elif stage == "profit":
                     # Profit is already computed inside compute_comparison (Task 12); this

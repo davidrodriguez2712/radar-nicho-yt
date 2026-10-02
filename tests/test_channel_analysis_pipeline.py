@@ -71,6 +71,10 @@ def test_channel_analysis_run_completes_through_every_stage(isolated_engine: Eng
     assert analysis["configuration"]["max_comparables"] == 8
     assert analysis["configuration"]["channel_input"] == "@scienceexplained"
     assert set(analysis["consumption"]) == {"confirmed", "reservations"}
+    panorama = analysis["snapshot"]["metrics"]["panorama"]
+    assert panorama["status"] in {"computed", "incomplete"}
+    if panorama["status"] == "computed":
+        assert panorama["metrics"]["videos"] > 0
 
 
 class _SearchQuotaExhaustedAfterFirstCall:

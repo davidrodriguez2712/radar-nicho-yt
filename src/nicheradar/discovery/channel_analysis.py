@@ -9,7 +9,9 @@ from datetime import datetime
 from statistics import median
 from typing import Any, NamedTuple
 
+from nicheradar.discovery.sampling import Membership, age_band
 from nicheradar.domain.production import EstimateRange
+from nicheradar.features.metrics import calculate
 from nicheradar.integrations.contracts import Channel, Operation, ProviderError, Video
 from nicheradar.scoring.advertising import AdvertisingBenchmark
 from nicheradar.scoring.profit import estimate_profit
@@ -160,3 +162,29 @@ def compute_comparison(
         "target_position": position,
         "profit": profit.model_dump(mode="json"),
     }
+
+
+def compute_panorama(
+    comparable_videos: dict[str, tuple[Video, ...]], now: datetime
+) -> dict[str, Any]:
+    all_videos = [video for videos in comparable_videos.values() for video in videos]
+    if not all_videos:
+        return {"status": "incomplete", "reason": "no_comparable_videos"}
+    formats = {video.format for video in all_videos}
+    if len(formats) > 1:
+        return {"status": "incomplete", "reason": "mixed_formats_not_evaluable"}
+    members = tuple(
+        Membership(
+            video=video,
+            included=True,
+            reason="channel_analysis_comparable",
+            size_stratum="unknown",
+            age_band=age_band((now - video.published_at).total_seconds() / 86400)
+            if video.published_at
+            else "unknown",
+            selection_method="channel_analysis",
+        )
+        for video in all_videos
+    )
+    metrics = calculate(members, now)
+    return {"status": "computed", "metrics": metrics.model_dump(mode="json")}

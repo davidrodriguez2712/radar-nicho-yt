@@ -367,3 +367,71 @@ def test_discover_comparables_falls_back_to_description_hashtag_then_title() -> 
     )
     assert captured[0] == "revengestories"
     assert captured[1] == "Bare Title Channel"
+
+
+def test_compute_panorama_computes_real_metrics_across_comparables() -> None:
+    from nicheradar.discovery.channel_analysis import compute_panorama
+
+    comparable_videos: dict[str, tuple[Video, ...]] = {
+        "UC_a": (
+            Video(
+                id="a1",
+                channel_id="UC_a",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=1000,
+                format=VideoFormat.LONG,
+            ),
+        ),
+        "UC_b": (
+            Video(
+                id="b1",
+                channel_id="UC_b",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=2000,
+                format=VideoFormat.LONG,
+            ),
+        ),
+    }
+    panorama = compute_panorama(comparable_videos, NOW)
+    assert panorama["status"] == "computed"
+    assert panorama["metrics"]["videos"] == 2
+    assert panorama["metrics"]["channels"] == 2
+
+
+def test_compute_panorama_incomplete_when_no_comparable_videos() -> None:
+    from nicheradar.discovery.channel_analysis import compute_panorama
+
+    panorama = compute_panorama({}, NOW)
+    assert panorama == {"status": "incomplete", "reason": "no_comparable_videos"}
+
+
+def test_compute_panorama_skips_mixed_formats_without_crashing() -> None:
+    from nicheradar.discovery.channel_analysis import compute_panorama
+
+    comparable_videos: dict[str, tuple[Video, ...]] = {
+        "UC_a": (
+            Video(
+                id="a1",
+                channel_id="UC_a",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=1000,
+                format=VideoFormat.LONG,
+            ),
+        ),
+        "UC_b": (
+            Video(
+                id="b1",
+                channel_id="UC_b",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=2000,
+                format=VideoFormat.SHORTS,
+            ),
+        ),
+    }
+    panorama = compute_panorama(comparable_videos, NOW)
+    assert panorama["status"] == "incomplete"
+    assert panorama["reason"] == "mixed_formats_not_evaluable"
