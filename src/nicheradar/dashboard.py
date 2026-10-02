@@ -1028,6 +1028,11 @@ def render_channel_analysis(config: Settings) -> None:
     )
     if selected_id:
         detail = api_request(config, "GET", f"/channel-analyses/{selected_id}")
+        if not detail.get("evidence_available", True):
+            st.caption(
+                "La evidencia de este análisis expiró por retención; solo se conservan "
+                "su configuración y su consumo."
+            )
         render_structured(detail.get("snapshot") or {})
 
 

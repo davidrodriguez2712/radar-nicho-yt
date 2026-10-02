@@ -3,12 +3,14 @@
 import hashlib
 import json
 from collections.abc import Callable
+from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Connection, Engine, select, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import SQLAlchemyError
 
 from nicheradar.config import Settings
 from nicheradar.discovery.planning import finish_work, plan_family
@@ -439,6 +441,7 @@ class Pipeline:
         now: datetime,
     ) -> None:
         from nicheradar.discovery.channel_analysis import (
+            MAX_COMPARABLES,
             compute_comparison,
             discover_comparables,
             fetch_channel_videos,
@@ -464,6 +467,16 @@ class Pipeline:
             "balance_refresh_required",
             "shared_budget_exhausted",
             "batch_limit",
+            # YouTubeProvider's mapping of Google's 403 quotaExceeded/dailyLimitExceeded
+            # and 429 responses.
+            "quota",
+        }
+        # The real parameters this run is computed with, persisted with the report.
+        configuration = {
+            "channel_input": run["configuration"].get("channel_input"),
+            "mode": run["mode"],
+            "max_comparables": MAX_COMPARABLES,
+            "maximum_calls": self.maximum_calls,
         }
 
         def budget_exhausted_reason(checkpoints: dict[str, Any]) -> str | None:
@@ -521,7 +534,13 @@ class Pipeline:
             if reason is not None:
                 if stage == "persist":
                     save_channel_analysis(
-                        connection, run["id"], run["profile_id"], checkpoints, now, status="partial"
+                        connection,
+                        run["id"],
+                        run["profile_id"],
+                        checkpoints,
+                        now,
+                        status="partial",
+                        configuration=configuration,
                     )
                     confirm_channel_analysis_stage(
                         connection, job["id"], owner, now, stage, {"reason": reason}, partial=True
@@ -558,7 +577,7 @@ class Pipeline:
                     )
                 elif stage == "discover_comparables":
                     channel = Channel.model_validate(checkpoints["resolve"]["channel"])
-                    comparables = await discover_comparables(
+                    discovery = await discover_comparables(
                         youtube_gateway, vidiq_gateway, channel, now
                     )
                     confirm_channel_analysis_stage(
@@ -567,7 +586,12 @@ class Pipeline:
                         owner,
                         now,
                         stage,
-                        {"comparables": [c.model_dump(mode="json") for c in comparables]},
+                        {
+                            "comparables": [
+                                c.model_dump(mode="json") for c in discovery.comparables
+                            ],
+                            "vidiq_omitted": discovery.vidiq_omitted,
+                        },
                     )
                 elif stage == "comparable_videos":
                     comparable_channels = [
@@ -616,13 +640,37 @@ class Pipeline:
                     )
                 elif stage == "persist":
                     save_channel_analysis(
-                        connection, run["id"], run["profile_id"], checkpoints, now
+                        connection,
+                        run["id"],
+                        run["profile_id"],
+                        checkpoints,
+                        now,
+                        configuration=configuration,
                     )
                     confirm_channel_analysis_stage(
                         connection, job["id"], owner, now, stage, {"saved": True}
                     )
             except ProviderError as error:
                 if error.code not in budget_error_codes:
+                    # Leave a visible failed report, then let the generic fail_job() path
+                    # do its unchanged retry/defer bookkeeping. Own transaction: the
+                    # stage's connection rolls back when this error propagates. A lost
+                    # lease or stage conflict means another worker owns the run, so it is
+                    # not ours to report (and at `persist` the stage's own uncommitted
+                    # insert would block this write); a failure to write the report must
+                    # never mask the original error.
+                    if error.code not in {"lease_lost", "stage_conflict"}:
+                        with suppress(SQLAlchemyError), self.engine.begin() as failure_connection:
+                            save_channel_analysis(
+                                failure_connection,
+                                run["id"],
+                                run["profile_id"],
+                                checkpoints
+                                | {"failure": {"stage": stage, "error_code": error.code}},
+                                now,
+                                status="failed",
+                                configuration=configuration,
+                            )
                     raise
                 confirm_channel_analysis_stage(
                     connection, job["id"], owner, now, stage, {"reason": error.code}

@@ -83,6 +83,7 @@ class YouTubeProvider:
             if key
             in {
                 "id",
+                "forHandle",
                 "playlistId",
                 "pageToken",
                 "maxResults",

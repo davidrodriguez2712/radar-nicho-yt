@@ -66,6 +66,11 @@ def test_channel_analysis_run_completes_through_every_stage(isolated_engine: Eng
     assert set(job["checkpoints"]) >= set(CHANNEL_ANALYSIS_STAGES[:1])
     assert run["status"] == "succeeded"
     assert analysis["status"] == "completed"
+    # Synthetic runs plan no vidIQ call, so nothing was omitted -- but the marker is wired.
+    assert job["checkpoints"]["discover_comparables"]["vidiq_omitted"] is None
+    assert analysis["configuration"]["max_comparables"] == 8
+    assert analysis["configuration"]["channel_input"] == "@scienceexplained"
+    assert set(analysis["consumption"]) == {"confirmed", "reservations"}
 
 
 class _SearchQuotaExhaustedAfterFirstCall:
@@ -174,3 +179,153 @@ def test_second_analysis_same_week_hits_search_quota_cleanly(isolated_engine: En
     }
     assert second_run["status"] == "partial"
     assert second_analysis["status"] == "partial"
+
+
+class _YouTubeQuotaOnSearch:
+    """Real YouTubeProvider maps Google's 403 quotaExceeded / 429 to code "quota"."""
+
+    name = "synthetic"
+
+    def __init__(self) -> None:
+        self._delegate = SyntheticProvider()
+        self.operations = self._delegate.operations
+
+    async def fetch(self, operation: Operation, parameters: dict[str, Any], now: datetime) -> Batch:
+        if operation == Operation.SEARCH:
+            raise ProviderError("quota", may_have_charged=True)
+        return await self._delegate.fetch(operation, parameters, now)
+
+
+def _channel_analysis_job(
+    connection: Connection,
+    profile_id: UUID,
+    key: str,
+    stage: str,
+    checkpoints: dict[str, Any],
+    channel_input: str = "@scienceexplained",
+) -> UUID:
+    run_id = insert_record(
+        connection,
+        "analysis_runs",
+        {
+            "profile_id": profile_id,
+            "mode": "synthetic",
+            "trigger": "channel_analysis",
+            "status": "running",
+            "configuration": {"channel_input": channel_input},
+        },
+    )
+    return insert_record(
+        connection,
+        "jobs",
+        {
+            "run_id": run_id,
+            "occurrence_key": key,
+            "status": "queued",
+            "stage": stage,
+            "checkpoints": checkpoints,
+            "available_at": NOW,
+        },
+    )
+
+
+def _job_and_analysis(engine: Engine, job_id: UUID) -> tuple[Any, Any]:
+    with engine.connect() as connection:
+        job = connection.execute(select(s.jobs).where(s.jobs.c.id == job_id)).mappings().one()
+        analysis = (
+            connection.execute(
+                select(channel_analyses).where(channel_analyses.c.run_id == job["run_id"])
+            )
+            .mappings()
+            .first()
+        )
+    return job, analysis
+
+
+@pytest.mark.postgres
+def test_real_youtube_quota_code_degrades_to_clean_partial(isolated_engine: Engine) -> None:
+    with isolated_engine.begin() as connection:
+        profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
+        job_id = _channel_analysis_job(
+            connection,
+            profile_id,
+            "test-ca-yt-quota",
+            "discover_comparables",
+            {
+                "resolve": {"channel": {"id": "UC1", "title": "Science"}},
+                "target_videos": {"videos": []},
+            },
+        )
+        assert claim(connection, "test-worker", NOW) is not None
+    pipeline = Pipeline(isolated_engine, clock=lambda: NOW, provider=_YouTubeQuotaOnSearch())
+    asyncio.run(pipeline.process(job_id, "test-worker"))
+    job, analysis = _job_and_analysis(isolated_engine, job_id)
+    assert job["status"] == "partial"
+    assert job["error_code"] is None
+    assert job["checkpoints"]["discover_comparables"]["reason"] == "quota"
+    assert analysis is not None and analysis["status"] == "partial"
+
+
+@pytest.mark.postgres
+def test_hard_failure_still_fails_job_and_records_failed_analysis(
+    isolated_engine: Engine,
+) -> None:
+    with isolated_engine.begin() as connection:
+        profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
+        job_id = _channel_analysis_job(
+            connection, profile_id, "test-ca-not-found", "resolve", {}, "@__none__"
+        )
+        assert claim(connection, "test-worker", NOW) is not None
+    pipeline = Pipeline(isolated_engine, clock=lambda: NOW, provider=SyntheticProvider())
+    asyncio.run(pipeline.process(job_id, "test-worker"))
+    job, analysis = _job_and_analysis(isolated_engine, job_id)
+    # The generic fail_job() bookkeeping is unchanged...
+    assert job["status"] == "failed"
+    assert job["error_code"] == "channel_not_found"
+    # ...and the owner-facing list now also shows what happened.
+    assert analysis is not None
+    assert analysis["status"] == "failed"
+    assert analysis["snapshot"]["failure"] == {
+        "stage": "resolve",
+        "error_code": "channel_not_found",
+    }
+    assert analysis["channel_input"] == "@__none__"
+
+
+@pytest.mark.postgres
+def test_failed_analysis_row_is_replaced_when_retry_later_succeeds(
+    isolated_engine: Engine,
+) -> None:
+    # fail_job() may requeue/defer instead of finishing; a later successful persist for the
+    # same run must overwrite the provisional failed row (run_id is unique), not crash.
+    from nicheradar.services.channel_analysis import save_channel_analysis
+
+    with isolated_engine.begin() as connection:
+        profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
+        job_id = _channel_analysis_job(connection, profile_id, "test-ca-retry", "resolve", {})
+        run_id = connection.execute(
+            select(s.jobs.c.run_id).where(s.jobs.c.id == job_id)
+        ).scalar_one()
+        first = save_channel_analysis(
+            connection,
+            run_id,
+            profile_id,
+            {"failure": {"stage": "resolve", "error_code": "connection_failed"}},
+            NOW,
+            status="failed",
+        )
+        second = save_channel_analysis(
+            connection,
+            run_id,
+            profile_id,
+            {"resolve": {"channel": {"id": "UC1", "title": "Science"}}},
+            NOW,
+        )
+        rows = (
+            connection.execute(select(channel_analyses).where(channel_analyses.c.run_id == run_id))
+            .mappings()
+            .all()
+        )
+    assert first == second
+    assert [row["status"] for row in rows] == ["completed"]
+    assert rows[0]["channel_external_id"] == "UC1"

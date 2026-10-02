@@ -1,11 +1,15 @@
 import asyncio
 from datetime import UTC, datetime
+from typing import Any, cast
 
 import httpx
+import pytest
 from pydantic import SecretStr
 
-from nicheradar.integrations.contracts import Operation
+from nicheradar.discovery.channel_analysis import resolve_channel
+from nicheradar.integrations.contracts import Batch, Operation
 from nicheradar.integrations.youtube import YouTubeProvider
+from nicheradar.services.gateway import Gateway
 
 
 def _provider(transport: httpx.MockTransport) -> YouTubeProvider:
@@ -123,3 +127,47 @@ def test_unsupported_parameter_is_dropped_not_forwarded() -> None:
         )
     )
     assert "not_a_real_param" not in captured["params"]
+
+
+class _PassThroughGateway:
+    """Hands resolve_channel's params straight to the real provider so the test sees the
+    exact HTTP query string YouTubeProvider builds (policy/budget bookkeeping is covered
+    elsewhere and is irrelevant to which query params survive the allow-list)."""
+
+    def __init__(self, provider: YouTubeProvider):
+        self.provider = provider
+
+    async def fetch(
+        self, operation: Operation, parameters: dict[str, Any], now: datetime
+    ) -> tuple[Batch, str, bool]:
+        return await self.provider.fetch(operation, parameters, now), "request-id", False
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("@scienceexplained", {"forHandle": "scienceexplained"}),
+        ("https://www.youtube.com/@scienceexplained/videos", {"forHandle": "scienceexplained"}),
+        ("UC" + "a" * 22, {"id": "UC" + "a" * 22}),
+    ],
+)
+def test_resolve_channel_sends_identifying_param_over_real_http(
+    raw: str, expected: dict[str, str]
+) -> None:
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(dict(request.url.params))
+        return httpx.Response(
+            200,
+            json={"items": [{"id": "UC" + "a" * 22, "snippet": {"title": "Science"}}]},
+        )
+
+    provider = _provider(httpx.MockTransport(handler))
+    channel = asyncio.run(
+        resolve_channel(cast(Gateway, _PassThroughGateway(provider)), raw, datetime.now(UTC))
+    )
+    assert channel.title == "Science"
+    # channels.list requires one of id/forHandle/forUsername/mine; the allow-list must not
+    # strip whichever identifying key parse_channel_input produced.
+    assert {key: captured.get(key) for key in expected} == expected

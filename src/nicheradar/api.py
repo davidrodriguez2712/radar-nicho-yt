@@ -384,7 +384,7 @@ def create_app(
     ) -> dict[str, Any]:
         from nicheradar.services.channel_analysis import list_channel_analyses
 
-        return list_channel_analyses(connection, limit=limit, offset=offset)
+        return list_channel_analyses(connection, limit=limit, offset=offset, now=clock())
 
     @router.get("/channel-analyses/{analysis_id}")
     def channel_analysis_detail_endpoint(
@@ -392,7 +392,7 @@ def create_app(
     ) -> dict[str, Any]:
         from nicheradar.services.channel_analysis import channel_analysis_detail
 
-        result = channel_analysis_detail(connection, analysis_id)
+        result = channel_analysis_detail(connection, analysis_id, now=clock())
         if result is None:
             raise HTTPException(404, "Análisis no encontrado")
         return result

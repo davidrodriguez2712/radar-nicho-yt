@@ -69,7 +69,22 @@ despacha `Pipeline._process_channel_analysis_stage` (`workers/pipeline.py`):
    el checkpoint de `metrics`.
 7. **`persist`**: `save_channel_analysis` guarda canal objetivo, comparables, métricas,
    posición y ganancia estimada en `channel_analyses.snapshot`, con `status`
-   `completed`/`partial`.
+   `completed`/`partial`. `consumption` refleja el gasto real de la ejecución con el
+   mismo criterio que la vista de jobs: `confirmed` (libro de costos, por unidad:
+   `youtube_search_quota`, `youtube_detail_quota`, `vidiq_credit`) y `reservations`
+   todavía abiertas (`reserved`/`unknown_charge`); las liberadas no cuentan.
+   `configuration` guarda los parámetros reales (`channel_input`, `mode`,
+   `max_comparables`, `maximum_calls`).
+
+Retención: `integrations/retention.py::expire()` borra `snapshot` (la metadata retenida
+de YouTube/vidIQ) y marca `expired_at` cuando vence `retain_until`; `configuration` y
+`consumption` se conservan como rastro de auditoría. El listado y el detalle siguen
+mostrando el análisis con `evidence_available=false`.
+
+Políticas de uso: `scripts/activate_live.py` habilita, vía
+`integrations/policies.py::seed_youtube_policies`, una fila explícita por operación de
+YouTube (`videos`, `channels`, `uploads`, `search`, `comment_threads`,
+`video_categories`) — sin comodín `*`.
 
 `channel_view_rate` usa la misma mediana de vistas/día que `demand_by_age`, pero por
 canal. `compute_comparison` nunca inventa un comparable: con cero comparables reales,
@@ -102,18 +117,25 @@ análisis de canal seguidos puede agotar ese cupo compartido antes de llegar al 
 `VIDIQ_BUDGET_ERROR_CODES` (en `discover_comparables`) y `budget_error_codes` (en
 `_process_channel_analysis_stage`) distinguen códigos de agotamiento de cupo/crédito
 (`run_budget_exhausted`, `period_budget_exhausted`, `balance_exhausted`,
-`balance_refresh_required`, `shared_budget_exhausted`, `batch_limit`) de errores reales
+`balance_refresh_required`, `shared_budget_exhausted`, `batch_limit`, y en ambos
+conjuntos también `quota`: el código con el que `YouTubeProvider` traduce el 403
+`quotaExceeded`/`dailyLimitExceeded` o el 429 de Google, y con el que vidIQ traduce su
+429) de errores reales
 (`channel_not_found`, `contract_mismatch`, etc.):
 
 - Si vidIQ agota su cupo durante `discover_comparables`, el `ProviderError` se atrapa
-  ahí mismo y el análisis **continúa solo con YouTube** (sin aviso explícito distinto en
-  el snapshot — ver limitación abajo).
+  ahí mismo y el análisis **continúa solo con YouTube**, dejando
+  `"vidiq_omitted": "budget_exhausted"` en el checkpoint `discover_comparables` (y por
+  tanto en el snapshot); `null` si vidIQ corrió o no formaba parte de la ejecución.
 - Si cualquier etapa YouTube o vidIQ agota su cupo con un código de la lista de arriba,
   esa etapa confirma `{"reason": error.code}` en vez de propagar el error; el `reason`
   se arrastra checkpoint a checkpoint hasta `persist`, que guarda `status="partial"` y
   cierra el job como `"partial"` (nunca `"failed"`, nunca truncado en silencio). Un
   código que no está en la lista (p. ej. `channel_not_found`) sí propaga al manejador
-  genérico de `fail_job()`.
+  genérico de `fail_job()`, pero antes se guarda una fila `status="failed"` con
+  `snapshot.failure = {stage, error_code}` para que el fallo aparezca en el listado. Si
+  `fail_job()` reencola el job y un reintento termina bien, `persist` reemplaza esa fila
+  (una fila por `run_id`).
 - Cero comparables reales encontrados nunca se rellena con un comparable inventado;
   `compute_comparison` deja la posición `"unknown"` y la ganancia `"incomplete"`.
 
@@ -142,11 +164,11 @@ es decir, gratis). `Gateway.fetch` exige una tarifa `BALANCE` explícitamente gr
 poder refrescar el saldo real antes de una llamada externa en modo live
 (`services/gateway.py`); sin ella, **toda llamada vidIQ de este flujo en modo live
 levanta `balance_refresh_required`** inmediatamente. Como ese código está en
-`VIDIQ_BUDGET_ERROR_CODES`, `discover_comparables` lo atrapa en silencio y sigue "solo
-con YouTube" — el resultado práctico es que **este flujo hoy siempre degrada a
-YouTube-only en modo live**, sin ningún aviso visible que distinga "vidIQ se quedó sin
-cupo real" de "vidIQ nunca fue alcanzable por este hueco de tarifa". Es un seguimiento
-conocido, todavía sin corregir.
+`VIDIQ_BUDGET_ERROR_CODES`, `discover_comparables` lo atrapa y sigue "solo con
+YouTube" — el resultado práctico es que **este flujo hoy siempre degrada a
+YouTube-only en modo live**. El snapshot sí muestra `vidiq_omitted: "budget_exhausted"`,
+pero ese marcador no distingue "vidIQ se quedó sin cupo real" de "vidIQ nunca fue
+alcanzable por este hueco de tarifa". Es un seguimiento conocido, todavía sin corregir.
 
 ### Limitación conocida: falta el pre-check de cupo real antes de encolar
 

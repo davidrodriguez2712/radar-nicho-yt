@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from nicheradar.config import Settings
 from nicheradar.domain.profile import CreatorProfile
+from nicheradar.integrations.policies import seed_youtube_policies
 from nicheradar.repositories import schema_v1 as s
 from nicheradar.repositories.database import database_engine
 from nicheradar.services.pilot import preflight
@@ -73,34 +74,8 @@ with engine.begin() as connection:
             )
         )
     if config.youtube_live_enabled:
-        youtube_usages: tuple[str, ...] = ("query", "storage", "history", "derived", "scheduled")
-        if config.llm_enabled:
-            youtube_usages = (*youtube_usages, "llm_processing")
-        for usage in youtube_usages:
-            statement = insert(s.provider_policies).values(
-                provider="youtube",
-                operation="videos",
-                data_type="metadata",
-                usage=usage,
-                version="youtube-developer-policies-2026-09-23",
-                status="enabled",
-                evidence_source=("https://developers.google.com/youtube/terms/developer-policies"),
-                retention_seconds=7 * 86400,
-                effective_at=now,
-            )
-            connection.execute(
-                statement.on_conflict_do_update(
-                    index_elements=["provider", "data_type", "operation", "usage", "version"],
-                    set_={
-                        "status": "enabled",
-                        "evidence_source": (
-                            "https://developers.google.com/youtube/terms/developer-policies"
-                        ),
-                        "retention_seconds": 7 * 86400,
-                        "effective_at": now,
-                    },
-                )
-            )
+        # videos (catalog enrichment) plus every operation channel analysis calls.
+        seed_youtube_policies(connection, now, llm_enabled=config.llm_enabled)
     if config.llm_enabled:
         for usage in ("query", "storage", "derived", "llm_processing", "scheduled"):
             statement = insert(s.provider_policies).values(

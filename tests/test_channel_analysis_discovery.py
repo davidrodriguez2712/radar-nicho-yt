@@ -174,7 +174,7 @@ def test_discover_comparables_dedupes_and_excludes_target() -> None:
     target = Channel(id="UC_target", title="Target")
     youtube_results = (target, Channel(id="UC_a", title="A"), Channel(id="UC_b", title="B"))
     vidiq_results = (Channel(id="UC_b", title="B"), Channel(id="UC_c", title="C"))
-    comparables = asyncio.run(
+    discovery = asyncio.run(
         discover_comparables(
             cast(Gateway, _FakeGateway(youtube_results)),
             cast(Gateway, _FakeGateway(vidiq_results)),
@@ -182,14 +182,15 @@ def test_discover_comparables_dedupes_and_excludes_target() -> None:
             datetime.now(UTC),
         )
     )
-    ids = {channel.id for channel in comparables}
+    ids = {channel.id for channel in discovery.comparables}
     assert ids == {"UC_a", "UC_b", "UC_c"}  # target excluded, UC_b not duplicated
+    assert discovery.vidiq_omitted is None
 
 
 def test_discover_comparables_degrades_when_vidiq_budget_exhausted() -> None:
     target = Channel(id="UC_target", title="Target")
     youtube_results = (Channel(id="UC_a", title="A"),)
-    comparables = asyncio.run(
+    discovery = asyncio.run(
         discover_comparables(
             cast(Gateway, _FakeGateway(youtube_results)),
             cast(Gateway, _FakeGateway((), raises=ProviderError("run_budget_exhausted"))),
@@ -197,7 +198,37 @@ def test_discover_comparables_degrades_when_vidiq_budget_exhausted() -> None:
             datetime.now(UTC),
         )
     )
-    assert {channel.id for channel in comparables} == {"UC_a"}  # did not raise
+    assert {channel.id for channel in discovery.comparables} == {"UC_a"}  # did not raise
+    # The skip is visible, not silent, so the report can say vidIQ was omitted and why.
+    assert discovery.vidiq_omitted == "budget_exhausted"
+
+
+def test_discover_comparables_degrades_when_vidiq_rate_limited() -> None:
+    # vidIQ maps HTTP 429 to "quota"; it must degrade to YouTube-only like the other
+    # vidIQ budget codes, not discard the already-fetched YouTube results.
+    discovery = asyncio.run(
+        discover_comparables(
+            cast(Gateway, _FakeGateway((Channel(id="UC_a", title="A"),))),
+            cast(Gateway, _FakeGateway((), raises=ProviderError("quota", may_have_charged=True))),
+            Channel(id="UC_target", title="Target"),
+            datetime.now(UTC),
+        )
+    )
+    assert {channel.id for channel in discovery.comparables} == {"UC_a"}
+    assert discovery.vidiq_omitted == "budget_exhausted"
+
+
+def test_discover_comparables_without_vidiq_gateway_is_not_marked_omitted() -> None:
+    # Synthetic/YouTube-only runs never planned a vidIQ call; nothing was skipped.
+    discovery = asyncio.run(
+        discover_comparables(
+            cast(Gateway, _FakeGateway((Channel(id="UC_a", title="A"),))),
+            None,
+            Channel(id="UC_target", title="Target"),
+            datetime.now(UTC),
+        )
+    )
+    assert discovery.vidiq_omitted is None
 
 
 def test_compute_comparison_positions_target_against_real_comparables() -> None:

@@ -133,3 +133,24 @@ def test_channel_analysis_limits_use_configured_values() -> None:
     profile = CreatorProfile()
     vidiq_limits = channel_analysis_vidiq_limits(profile)
     assert vidiq_limits["vidiq_credit"].run == 50
+
+
+@pytest.mark.postgres
+def test_youtube_policy_seed_covers_every_channel_analysis_operation(db: Connection) -> None:
+    # scripts/activate_live.py seeds YouTube usage policies through this function. Before
+    # the fix only operation="videos" was seeded, so every channel-analysis call
+    # (channels/uploads/search/...) raised policy_pending in live mode.
+    from nicheradar.integrations.policies import Usage, require_usage, seed_youtube_policies
+
+    seed_youtube_policies(db, NOW, llm_enabled=False)
+    for operation in channel_analysis_youtube_tariffs():
+        for usage in (Usage.QUERY, Usage.STORAGE, Usage.HISTORY, Usage.SCHEDULED):
+            assert require_usage(db, "youtube", operation, usage, "metadata", NOW) is not None
+    with pytest.raises(ProviderError, match="policy_pending"):
+        require_usage(db, "youtube", Operation.VIDEOS, Usage.LLM_PROCESSING, "metadata", NOW)
+    # Re-running activation is an idempotent upsert, never a duplicate-key failure.
+    seed_youtube_policies(db, NOW, llm_enabled=True)
+    assert (
+        require_usage(db, "youtube", Operation.SEARCH, Usage.LLM_PROCESSING, "metadata", NOW)
+        is not None
+    )

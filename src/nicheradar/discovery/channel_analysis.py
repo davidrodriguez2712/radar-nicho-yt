@@ -7,7 +7,7 @@ seed-family catalog.
 import re
 from datetime import datetime
 from statistics import median
-from typing import Any
+from typing import Any, NamedTuple
 
 from nicheradar.domain.production import EstimateRange
 from nicheradar.integrations.contracts import Channel, Operation, ProviderError, Video
@@ -69,7 +69,15 @@ VIDIQ_BUDGET_ERROR_CODES = {
     "period_budget_exhausted",
     "balance_exhausted",
     "balance_refresh_required",
+    "quota",  # vidIQ maps HTTP 429 (rate limit) to "quota"
 }
+
+
+class ComparableDiscovery(NamedTuple):
+    comparables: tuple[Channel, ...]
+    # "budget_exhausted" when a planned vidIQ call was skipped for budget reasons;
+    # None when vidIQ ran or was never part of this run (synthetic/YouTube-only).
+    vidiq_omitted: str | None = None
 
 
 async def discover_comparables(
@@ -79,9 +87,10 @@ async def discover_comparables(
     now: datetime,
     *,
     max_comparables: int = MAX_COMPARABLES,
-) -> tuple[Channel, ...]:
+) -> ComparableDiscovery:
     query = target.category or (target.subtopics[0] if target.subtopics else target.title)
     found: dict[str, Channel] = {}
+    vidiq_omitted: str | None = None
 
     youtube_batch, _, _ = await youtube_gateway.fetch(
         Operation.SEARCH, {"type": "channel", "q": query, "maxResults": "25"}, now
@@ -99,9 +108,10 @@ async def discover_comparables(
         except ProviderError as error:
             if error.code not in VIDIQ_BUDGET_ERROR_CODES:
                 raise
+            vidiq_omitted = "budget_exhausted"
 
     found.pop(target.id, None)
-    return tuple(found.values())[:max_comparables]
+    return ComparableDiscovery(tuple(found.values())[:max_comparables], vidiq_omitted)
 
 
 def compute_comparison(

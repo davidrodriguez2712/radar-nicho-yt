@@ -8,6 +8,7 @@ from sqlalchemy import Connection, delete, func, or_, select, update
 from nicheradar.repositories import schema_v1 as s
 from nicheradar.repositories.schema import (
     balance_reconciliations,
+    channel_analyses,
     credit_balances,
     opportunity_scoring_configs,
     ranking_entries,
@@ -88,6 +89,13 @@ def expire(
             opportunity_scoring_configs.c.expired_at.is_(None),
         )
         .values(configuration=None, expired_at=now)
+    )
+    # The snapshot holds retained YouTube/vidIQ metadata; configuration/consumption are
+    # NOT NULL and kept as a small audit trail of what was asked and what it cost.
+    connection.execute(
+        update(channel_analyses)
+        .where(channel_analyses.c.retain_until <= now, channel_analyses.c.expired_at.is_(None))
+        .values(snapshot=None, expired_at=now)
     )
     due = or_(
         s.raw_observations.c.retain_until <= now,
