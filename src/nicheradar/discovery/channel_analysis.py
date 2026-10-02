@@ -6,8 +6,9 @@ seed-family catalog.
 
 import re
 from datetime import datetime
+from statistics import median
 
-from nicheradar.integrations.contracts import Channel, Operation, ProviderError
+from nicheradar.integrations.contracts import Channel, Operation, ProviderError, Video
 from nicheradar.services.gateway import Gateway
 
 _HANDLE = re.compile(r"@([A-Za-z0-9_.-]+)")
@@ -31,3 +32,28 @@ async def resolve_channel(gateway: Gateway, raw_input: str, now: datetime) -> Ch
     if not batch.channels:
         raise ProviderError("channel_not_found", not_sent=True)
     return batch.channels[0]
+
+
+def channel_view_rate(videos: tuple[Video, ...], now: datetime) -> float | None:
+    rates = []
+    for video in videos:
+        if video.views is None or video.published_at is None:
+            continue
+        days = (now - video.published_at).total_seconds() / 86400
+        if days > 0:
+            rates.append(video.views / days)
+    return median(rates) if rates else None
+
+
+async def fetch_channel_videos(
+    gateway: Gateway, channel: Channel, now: datetime
+) -> tuple[Video, ...]:
+    if channel.uploads_playlist:
+        uploads, _, _ = await gateway.fetch(
+            Operation.UPLOADS, {"playlistId": channel.uploads_playlist, "maxResults": "25"}, now
+        )
+        video_ids = [video.id for video in uploads.videos][:25]
+        if video_ids:
+            batch, _, _ = await gateway.fetch(Operation.VIDEOS, {"id": ",".join(video_ids)}, now)
+            return batch.videos
+    return ()

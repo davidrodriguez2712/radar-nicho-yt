@@ -82,6 +82,31 @@ def test_video_categories_maps_id_to_title() -> None:
     assert batch.costs[0].maximum == 1
 
 
+def test_channels_maps_uploads_playlist_from_content_details() -> None:
+    # fetch_channel_videos (Task 10) reads channel.uploads_playlist to know which playlist
+    # to pull a channel's videos from -- this must come from channels.list's
+    # contentDetails.relatedPlaylists.uploads.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "id": "UC123",
+                        "snippet": {"title": "Science Channel"},
+                        "contentDetails": {
+                            "relatedPlaylists": {"uploads": "UU123"},
+                        },
+                    },
+                ]
+            },
+        )
+
+    provider = _provider(httpx.MockTransport(handler))
+    batch = asyncio.run(provider.fetch(Operation.CHANNELS, {"id": "UC123"}, datetime.now(UTC)))
+    assert batch.channels[0].uploads_playlist == "UU123"
+
+
 def test_unsupported_parameter_is_dropped_not_forwarded() -> None:
     captured = {}
 

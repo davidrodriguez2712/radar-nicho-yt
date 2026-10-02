@@ -102,6 +102,7 @@ class SyntheticProvider:
                     content_languages=("en",),
                     faceless=True,
                     category=family,
+                    uploads_playlist=f"synthetic:{family}:uploads-{index}",
                     subtopics=(f"{family} explained",),
                     metrics={
                         "growth_percent": Metric(
