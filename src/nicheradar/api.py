@@ -25,8 +25,10 @@ from nicheradar.repositories.core import (
     update_profile,
 )
 from nicheradar.repositories.database import database_engine
+from nicheradar.repositories.schema import credit_balances
 from nicheradar.scoring.advertising import assess_advertising
 from nicheradar.services.backlog import ReviewState, decide
+from nicheradar.services.budget import balance_needs_refresh
 from nicheradar.services.console import (
     backlog,
     consumption,
@@ -335,7 +337,7 @@ def create_app(
                 422, "No se reconoce ese canal; usa su @handle o su ID (UC...)."
             ) from None
         connection.execute(select(func.pg_advisory_xact_lock(QUEUE_LOCK)))
-        profile_id, _, _ = get_profile(connection)
+        profile_id, _, profile = get_profile(connection)
         key = f"channel-analysis:{profile_id}:{config.mode}:{idempotency_key}"
         existing = connection.execute(
             select(s.jobs.c.id).where(s.jobs.c.occurrence_key == key)
@@ -347,6 +349,55 @@ def create_app(
                 "status_url": f"/api/v1/jobs/{existing}",
             }
         require_live_ready(connection, scheduled=False)
+        if config.mode == "live":
+            # require_live_ready() only confirms controls/policies are configured; it
+            # never checks the real vidIQ balance. Without this, a run can be enqueued
+            # and then burn through most of its vidIQ budget before failing partway.
+            # This is an early, advisory signal only -- Gateway/reserve() remains the
+            # real enforcement point (it does its own live balance refresh and raises
+            # balance_refresh_required/balance_exhausted when genuinely not ready), so
+            # a missing or stale balance row must fail OPEN here rather than
+            # permanently blocking live analyses (credit_balances rows expire after at
+            # most 7 days of inactivity, and nothing but a running Gateway call
+            # refreshes them).
+            balance = (
+                connection.execute(
+                    select(credit_balances).where(
+                        credit_balances.c.provider == "vidiq",
+                        credit_balances.c.auth_scope == config.vidiq_auth_scope,
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if balance is not None and not balance_needs_refresh(dict(balance), clock()):
+                # Same held-reservations formula reserve() itself uses (services/budget.py):
+                # available = renewable_remaining + additional_remaining - held, where held
+                # is every still-open (reserved/unknown_charge) reservation for this unit.
+                # confirmed_usage is a separate lifetime counter used only for balance-
+                # reconciliation deltas elsewhere; it must not be subtracted here too.
+                held = connection.execute(
+                    select(func.coalesce(func.sum(s.cost_reservations.c.amount), 0))
+                    .join(
+                        s.provider_requests,
+                        s.provider_requests.c.id == s.cost_reservations.c.request_id,
+                    )
+                    .where(
+                        s.provider_requests.c.provider == "vidiq",
+                        s.provider_requests.c.auth_scope == config.vidiq_auth_scope,
+                        s.cost_reservations.c.unit == "vidiq_credit",
+                        s.cost_reservations.c.status.in_(["reserved", "unknown_charge"]),
+                    )
+                ).scalar_one()
+                if profile.channel_analysis_credits_per_run + held > (
+                    balance["renewable_remaining"] + balance["additional_remaining"]
+                ):
+                    raise HTTPException(
+                        409,
+                        "Saldo vidIQ insuficiente para los "
+                        f"{profile.channel_analysis_credits_per_run} "
+                        "créditos declarados por análisis.",
+                    )
         run_id = insert_record(
             connection,
             "analysis_runs",
