@@ -18,6 +18,9 @@ class Operation(StrEnum):
     CHANNELS = "channels"
     UPLOADS = "uploads"
     VIDEOS = "videos"
+    SEARCH = "search"
+    COMMENT_THREADS = "comment_threads"
+    VIDEO_CATEGORIES = "video_categories"
 
 
 class Contract(BaseModel):
@@ -106,6 +109,8 @@ class Batch(Contract):
     videos: tuple[Video, ...] = ()
     keywords: tuple[dict[str, Any], ...] = ()
     balance: Balance | None = None
+    comments: tuple[dict[str, Any], ...] = ()
+    category_labels: dict[str, str] = Field(default_factory=dict)
 
 
 class ProviderError(Exception):
