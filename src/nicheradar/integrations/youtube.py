@@ -36,7 +36,16 @@ def _duration_seconds(value: object) -> float | None:
 
 class YouTubeProvider:
     name = "youtube"
-    operations = frozenset({Operation.CHANNELS, Operation.UPLOADS, Operation.VIDEOS})
+    operations = frozenset(
+        {
+            Operation.CHANNELS,
+            Operation.UPLOADS,
+            Operation.VIDEOS,
+            Operation.SEARCH,
+            Operation.COMMENT_THREADS,
+            Operation.VIDEO_CATEGORIES,
+        }
+    )
     endpoint = "https://www.googleapis.com/youtube/v3/"
 
     def __init__(
@@ -64,17 +73,32 @@ class YouTubeProvider:
             Operation.CHANNELS: "channels",
             Operation.UPLOADS: "playlistItems",
             Operation.VIDEOS: "videos",
+            Operation.SEARCH: "search",
+            Operation.COMMENT_THREADS: "commentThreads",
+            Operation.VIDEO_CATEGORIES: "videoCategories",
         }[operation]
         params = {
             key: value
             for key, value in parameters.items()
-            if key in {"id", "playlistId", "pageToken", "maxResults"}
+            if key
+            in {
+                "id",
+                "playlistId",
+                "pageToken",
+                "maxResults",
+                "q",
+                "type",
+                "order",
+                "videoId",
+                "regionCode",
+            }
         }
-        params["part"] = (
-            "snippet,contentDetails"
-            if operation == Operation.UPLOADS
-            else "snippet,contentDetails,statistics"
-        )
+        if operation == Operation.UPLOADS:
+            params["part"] = "snippet,contentDetails"
+        elif operation in {Operation.SEARCH, Operation.COMMENT_THREADS, Operation.VIDEO_CATEGORIES}:
+            params["part"] = "snippet"
+        else:
+            params["part"] = "snippet,contentDetails,statistics"
         if operation == Operation.UPLOADS:
             params.setdefault("maxResults", 50)
         if operation != Operation.UPLOADS and len(str(params.get("id", "")).split(",")) > 50:
@@ -107,6 +131,12 @@ class YouTubeProvider:
             raise ProviderError("provider_response_failed", may_have_charged=True) from None
 
     def normalize(self, operation: Operation, payload: dict[str, Any], now: datetime) -> Batch:
+        if operation == Operation.SEARCH:
+            return self._normalize_search(payload, now)
+        if operation == Operation.COMMENT_THREADS:
+            return self._normalize_comment_threads(payload, now)
+        if operation == Operation.VIDEO_CATEGORIES:
+            return self._normalize_video_categories(payload, now)
         # Deduplicate only by stable IDs, preserving first observed order.
         rows = list({row["id"]: row for row in payload.get("items", [])}.values())
         common: dict[str, Any] = {
@@ -176,3 +206,105 @@ class YouTubeProvider:
                 duration_seconds=_duration_seconds(content.get("duration")),
             )
         return Batch(**common, videos=tuple(videos.values()))
+
+    def _normalize_search(self, payload: dict[str, Any], now: datetime) -> Batch:
+        items = payload.get("items", [])
+        channels = tuple(
+            Channel(id=item["id"]["channelId"], title=item["snippet"]["title"])
+            for item in items
+            if "channelId" in item.get("id", {})
+        )
+        videos = tuple(
+            Video(
+                id=item["id"]["videoId"],
+                channel_id=item["snippet"].get("channelId", ""),
+                title=item["snippet"]["title"],
+                published_at=None,
+            )
+            for item in items
+            if "videoId" in item.get("id", {})
+        )
+        return Batch(
+            provenance=Provenance(
+                provider=self.name,
+                operation=Operation.SEARCH,
+                auth_scope=self.auth_scope,
+                fetched_at=now,
+            ),
+            coverage=Coverage(
+                returned=len(items),
+                reported_total=payload.get("pageInfo", {}).get("totalResults"),
+                next_page=payload.get("nextPageToken"),
+                complete=False,
+                selection_method="search",
+            ),
+            costs=(
+                Cost(
+                    unit="youtube_quota",
+                    maximum=Decimal(100),
+                    actual=Decimal(100),
+                    source="YouTube search.list quota verified 2026-10-01",
+                ),
+            ),
+            channels=channels,
+            videos=videos,
+        )
+
+    def _normalize_comment_threads(self, payload: dict[str, Any], now: datetime) -> Batch:
+        items = payload.get("items", [])
+        comments = tuple(
+            {
+                "text": item["snippet"]["topLevelComment"]["snippet"]["textDisplay"],
+                "like_count": item["snippet"]["topLevelComment"]["snippet"]["likeCount"],
+            }
+            for item in items
+        )
+        return Batch(
+            provenance=Provenance(
+                provider=self.name,
+                operation=Operation.COMMENT_THREADS,
+                auth_scope=self.auth_scope,
+                fetched_at=now,
+            ),
+            coverage=Coverage(
+                returned=len(comments),
+                reported_total=payload.get("pageInfo", {}).get("totalResults"),
+                next_page=payload.get("nextPageToken"),
+                complete=False,
+                selection_method="comment_threads",
+            ),
+            costs=(
+                Cost(
+                    unit="youtube_quota",
+                    maximum=Decimal(1),
+                    actual=Decimal(1),
+                    source="YouTube commentThreads.list quota verified 2026-10-01",
+                ),
+            ),
+            comments=comments,
+        )
+
+    def _normalize_video_categories(self, payload: dict[str, Any], now: datetime) -> Batch:
+        items = payload.get("items", [])
+        labels = {item["id"]: item["snippet"]["title"] for item in items}
+        return Batch(
+            provenance=Provenance(
+                provider=self.name,
+                operation=Operation.VIDEO_CATEGORIES,
+                auth_scope=self.auth_scope,
+                fetched_at=now,
+            ),
+            coverage=Coverage(
+                returned=len(labels),
+                selection_method="video_categories",
+            ),
+            costs=(
+                Cost(
+                    unit="youtube_quota",
+                    maximum=Decimal(1),
+                    actual=Decimal(1),
+                    source="YouTube videoCategories.list quota verified 2026-10-01",
+                ),
+            ),
+            category_labels=labels,
+        )
