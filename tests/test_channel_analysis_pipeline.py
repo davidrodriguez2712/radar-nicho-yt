@@ -341,6 +341,113 @@ def test_hard_failure_still_fails_job_and_records_failed_analysis(
 
 
 @pytest.mark.postgres
+def test_metrics_stage_with_all_unknown_format_target_videos_does_not_crash(
+    isolated_engine: Engine,
+) -> None:
+    """Real live-mode YouTube videos never carry a confirmed `format` (YouTubeProvider
+    never sets it) -- the majority-format vote must skip UNKNOWN target videos, and when
+    zero target videos have a confirmed format, `simulate()` must be skipped entirely
+    rather than calling `default_recipe(VideoFormat.UNKNOWN, ...)`, which raises a plain
+    pydantic ValidationError that nothing in this pipeline catches (a silent crash: no
+    failed-row persisted, no job-status update)."""
+    with isolated_engine.begin() as connection:
+        profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
+        target_video = {
+            "id": "t1",
+            "channel_id": "UC_target",
+            "title": "Unformatted video",
+            "published_at": (NOW - timedelta(days=10)).isoformat(),
+            "views": 1000,
+            "format": "unknown",
+        }
+        job_id = _channel_analysis_job(
+            connection,
+            profile_id,
+            "test-ca-unknown-format",
+            "metrics",
+            {
+                "resolve": {"channel": {"id": "UC_target", "title": "Target"}},
+                "target_videos": {"videos": [target_video]},
+                "discover_comparables": {"comparables": [], "vidiq_omitted": None},
+                "comparable_videos": {"videos_by_channel": {}},
+            },
+        )
+        assert claim(connection, "test-worker", NOW) is not None
+    pipeline = Pipeline(isolated_engine, clock=lambda: NOW, provider=SyntheticProvider())
+    asyncio.run(pipeline.process(job_id, "test-worker"))
+    job, analysis = _job_and_analysis(isolated_engine, job_id)
+    assert job["status"] == "succeeded"  # never an uncaught crash
+    assert analysis is not None and analysis["status"] == "completed"
+    profit = analysis["snapshot"]["metrics"]["profit"]
+    assert profit["status"] == "incomplete"
+    assert "production_cost" in profit["missing"]
+
+
+@pytest.mark.postgres
+def test_advertising_benchmark_with_mismatched_format_is_not_used(
+    isolated_engine: Engine,
+) -> None:
+    """Spec step 9 requires 'formato/audiencia equivalente' -- a declared Shorts-format
+    benchmark must not be used for a target whose detected format is Long; it must be
+    treated as unset for this run (profit degrades to "incomplete" with
+    "advertising_rate" missing), never silently mixed into a mismatched-format estimate."""
+    with isolated_engine.begin() as connection:
+        benchmark = AdvertisingBenchmark(
+            version="2026-10-02",
+            source="owner_declared_estimate",
+            origin="manual_assumption",
+            format=VideoFormat.SHORTS,
+            language="es",
+            audience_key="general",
+            unit="usd_ads_per_1000_engaged_views",
+            rate=EstimateRange(low=Decimal("1.0"), high=Decimal("3.0")),
+            revenue_scope="youtube_ads_only_after_revenue_share",
+            assumptions="Prueba.",
+            observed_at=NOW - timedelta(days=1),
+            valid_until=NOW + timedelta(days=180),
+        )
+        profile_id = seed_profile(
+            connection,
+            CreatorProfile(
+                paid_limits_confirmed=True,
+                channel_analysis_advertising=benchmark.model_dump(mode="json"),
+            ),
+            initial_catalog(),
+        )
+        target_video = {
+            "id": "t1",
+            "channel_id": "UC_target",
+            "title": "Long video",
+            "published_at": (NOW - timedelta(days=10)).isoformat(),
+            "views": 1000,
+            "format": "long",
+        }
+        job_id = _channel_analysis_job(
+            connection,
+            profile_id,
+            "test-ca-mismatched-format",
+            "metrics",
+            {
+                "resolve": {"channel": {"id": "UC_target", "title": "Target"}},
+                "target_videos": {"videos": [target_video]},
+                "discover_comparables": {"comparables": [], "vidiq_omitted": None},
+                "comparable_videos": {"videos_by_channel": {}},
+            },
+        )
+        assert claim(connection, "test-worker", NOW) is not None
+    pipeline = Pipeline(isolated_engine, clock=lambda: NOW, provider=SyntheticProvider())
+    asyncio.run(pipeline.process(job_id, "test-worker"))
+    job, analysis = _job_and_analysis(isolated_engine, job_id)
+    assert job["status"] == "succeeded"
+    profit = analysis["snapshot"]["metrics"]["profit"]
+    assert profit["status"] == "incomplete"
+    assert "advertising_rate" in profit["missing"]
+    # The format DID get confirmed (long) and cost DID get computed -- only the
+    # mismatched benchmark was rejected, nothing else degraded along with it.
+    assert "production_cost" not in profit["missing"]
+
+
+@pytest.mark.postgres
 def test_failed_analysis_row_is_replaced_when_retry_later_succeeds(
     isolated_engine: Engine,
 ) -> None:

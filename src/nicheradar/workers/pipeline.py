@@ -461,6 +461,7 @@ class Pipeline:
             channel_analysis_youtube_tariffs,
         )
         from nicheradar.services.production import (
+            DEFAULT_RADAR_MONTHLY_USD,
             DEFAULT_VIDEOS_PER_MONTH,
             default_recipe,
             default_template,
@@ -641,10 +642,22 @@ class Pipeline:
                         Channel.model_validate(c)
                         for c in checkpoints["discover_comparables"]["comparables"]
                     )
+                    # Only a CONFIRMED (non-UNKNOWN) format may drive the recipe/profit
+                    # simulation: real YouTubeProvider videos never set `format`, so
+                    # picking a majority over ALL target videos (UNKNOWN included) would
+                    # always resolve to UNKNOWN here in live mode, and
+                    # default_recipe(UNKNOWN, ...) raises a plain pydantic
+                    # ValidationError (Recipe's own stage_uniqueness validator) that
+                    # nothing in this pipeline catches -- a silent, uncaught crash.
+                    confirmed_formats = [
+                        video.format
+                        for video in target_videos
+                        if video.format != VideoFormat.UNKNOWN
+                    ]
                     video_format = (
-                        Counter(video.format for video in target_videos).most_common(1)[0][0]
-                        if target_videos
-                        else VideoFormat.LONG
+                        Counter(confirmed_formats).most_common(1)[0][0]
+                        if confirmed_formats
+                        else None
                     )
                     advertising = None
                     if profile.channel_analysis_advertising is not None:
@@ -656,24 +669,35 @@ class Pipeline:
                             # A malformed stored benchmark must degrade profit to
                             # "incomplete", never crash the whole analysis.
                             advertising = None
-                    scenario_result = simulate(
-                        Scenario(
-                            name="channel-analysis-cost-estimate",
-                            proposals=(
-                                Proposal(
-                                    channel_key="channel-analysis",
-                                    opportunity_keys=(),
-                                    recipe=default_recipe(video_format, profile.language),
-                                    videos_per_month=DEFAULT_VIDEOS_PER_MONTH,
+                    if advertising is not None and (
+                        video_format is None or advertising.format != video_format
+                    ):
+                        # A benchmark declared for a different format than the target's
+                        # own detected format (or declared when no confirmed format
+                        # exists at all) is not "formato/audiencia equivalente" -- treat
+                        # it as unset for this run rather than mixing a mismatched-format
+                        # rate into the estimate.
+                        advertising = None
+                    monthly_cost_usd = None
+                    if video_format is not None:
+                        scenario_result = simulate(
+                            Scenario(
+                                name="channel-analysis-cost-estimate",
+                                proposals=(
+                                    Proposal(
+                                        channel_key="channel-analysis",
+                                        opportunity_keys=(),
+                                        recipe=default_recipe(video_format, profile.language),
+                                        videos_per_month=DEFAULT_VIDEOS_PER_MONTH,
+                                    ),
                                 ),
+                                tools=default_template(video_format, profile.language).tools,
+                                radar_monthly_usd=DEFAULT_RADAR_MONTHLY_USD,
+                                reserve_usd=profile.monthly_reserve_usd,
                             ),
-                            tools=default_template(video_format, profile.language).tools,
-                            radar_monthly_usd=None,
-                            reserve_usd=profile.monthly_reserve_usd,
-                        ),
-                        profile,
-                    )
-                    monthly_cost_usd = scenario_result.monthly_usd
+                            profile,
+                        )
+                        monthly_cost_usd = scenario_result.monthly_usd
                     comparison = compute_comparison(
                         target_videos,
                         channel,
