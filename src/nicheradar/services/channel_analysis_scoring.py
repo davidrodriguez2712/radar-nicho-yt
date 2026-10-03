@@ -64,10 +64,8 @@ def compute_score(snapshot: dict[str, Any]) -> dict[str, Any]:
     growth = snapshot.get("growth", {})
     subs_per_day = growth.get("subscribers_per_day")
     components["growth"] = (
-        _clamp(subs_per_day / 365 / 50 * 100)
-        if growth.get("tier") == "lifetime_average" and subs_per_day is not None
-        else _clamp(subs_per_day / 50 * 100)
-        if growth.get("tier") == "measured" and subs_per_day is not None
+        _clamp(subs_per_day / 50 * 100)
+        if growth.get("tier") in ("measured", "lifetime_average") and subs_per_day is not None
         else None
     )
 

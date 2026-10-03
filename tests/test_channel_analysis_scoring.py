@@ -98,6 +98,47 @@ def test_score_missing_metrics_key_returns_none() -> None:
     assert result["components_used"] == []
 
 
+def test_score_growth_lifetime_average_uses_same_per_day_formula_as_measured() -> None:
+    # Regression for the Task 17 bug: pipeline.py's persist stage stores
+    # subscribers_per_day in genuine per-day units for BOTH tiers ("measured":
+    # (now - prior) / days; "lifetime_average": subscribers / age_days, age_days also a
+    # real day-count, not a year-count). compute_score used to divide "lifetime_average"
+    # by an extra 365, crushing its growth component to near-zero versus "measured" for
+    # the identical real daily growth rate. Both tiers must produce the identical
+    # component value for the same subscribers_per_day.
+    base_snapshot = {
+        "metrics": {
+            "panorama": {
+                "status": "computed",
+                "metrics": {"hhi": 0.2, "top5_share": 0.5, "breakout_rate": 0.3},
+            },
+            "matched_advertising_rate": None,
+        },
+    }
+    measured = compute_score(
+        base_snapshot
+        | {
+            "growth": {
+                "tier": "measured",
+                "subscribers_per_day": 25,
+                "days_between_observations": 10,
+            }
+        }
+    )
+    lifetime_average = compute_score(
+        base_snapshot
+        | {
+            "growth": {
+                "tier": "lifetime_average",
+                "subscribers_per_day": 25,
+                "days_between_observations": None,
+            }
+        }
+    )
+    assert measured["components"]["growth"] == 50.0
+    assert lifetime_average["components"]["growth"] == 50.0
+
+
 def test_score_rpm_and_growth_missing_reweights_across_three() -> None:
     # Both rpm and growth absent simultaneously: value must come purely from
     # concentration + breakout + demand, reweighted (not zero-filled) across those three.

@@ -310,23 +310,17 @@ suscriptores/día para el crecimiento) ver "Score de oportunidad" en
 pesos y la lista de componentes de esta sección ya coinciden exactamente con el código
 mergeado; las constantes de normalización no se duplican aquí a propósito.
 
-**Discrepancia encontrada entre el diseño y el código real (sin corregir, documentada
-aquí porque afecta la lectura del Score):** el diseño especifica la misma fórmula
-`subs_por_dia / 50 * 100` para el componente de crecimiento sin importar el nivel de
-confianza (Nivel 2 o 3), porque `subscribers_per_day` ya es, en ambos niveles, "suscriptores
-por día" (confirmado leyendo `workers/pipeline.py`, etapa `persist`: el nivel
-`"lifetime_average"` calcula `subscribers_per_day = suscriptores / días_desde_creación`,
-exactamente las mismas unidades que `"measured"`). Sin embargo
-`channel_analysis_scoring.py::compute_score` divide ese valor **una vez más entre 365**
-solo cuando `growth.tier == "lifetime_average"`, tratándolo como si fuera "por año" — no lo
-es. En la práctica, el componente de crecimiento sale ~365 veces más bajo para un canal en
-nivel `"lifetime_average"` que para uno `"measured"` con el mismo crecimiento real diario,
-y dado que la mayoría de análisis iniciales caen en `"lifetime_average"` (ver arriba), el
-componente de crecimiento queda efectivamente aplastado a ~0 en casi todos los análisis
-reales hasta que un canal se reinvestiga. Ningún test ejercita el valor numérico de este
-caso (`tests/test_channel_analysis_scoring.py` solo cubre `"measured"` con datos
-numéricos). No se corrigió como parte de esta tarea de documentación (alcance: solo
-`docs/`); queda como seguimiento recomendado.
+El componente de crecimiento usa la **misma fórmula** `subs_por_dia / 50 * 100` sin
+importar el nivel de confianza (Nivel 2 `"lifetime_average"` o Nivel 3 `"measured"`),
+porque `subscribers_per_day` ya es, en ambos niveles, "suscriptores por día" en unidades
+genuinas (confirmado leyendo `workers/pipeline.py`, etapa `persist`: `"lifetime_average"`
+calcula `subscribers_per_day = suscriptores / días_desde_creación`, con `días_desde_creación`
+un conteo de días real — no de años —, exactamente las mismas unidades que `"measured"`).
+Una versión anterior de `channel_analysis_scoring.py::compute_score` dividía ese valor una
+vez más entre 365 solo para `"lifetime_average"`, aplastando el componente a ~0 para la
+mayoría de análisis iniciales (Task 17 lo corrigió); `tests/test_channel_analysis_scoring.py`
+cubre ambos niveles con datos numéricos y verifica que producen el mismo valor de
+componente para el mismo `subscribers_per_day`, para que no regrese.
 
 ## Presupuesto real (`services/channel_analysis_providers.py`, `config.py`)
 
@@ -612,9 +606,10 @@ pestaña Configuración — se eliminó junto con el campo único que reemplazó
   incluyendo nicho desconocido y fila malformada.
 - `tests/test_channel_analysis_scoring.py` — `compute_score` puro (sin red ni base de
   datos): los cinco componentes presentes, exclusión/reponderación cuando falta demanda,
-  RPM, crecimiento o varios a la vez, y `value=None` sin panorama computado. **No cubre el
-  valor numérico del componente de crecimiento en nivel `"lifetime_average"`** — ver la
-  discrepancia documentada en "Score de oportunidad" arriba.
+  RPM, crecimiento o varios a la vez, `value=None` sin panorama computado, y que los
+  niveles `"measured"` y `"lifetime_average"` producen el mismo valor de componente de
+  crecimiento para el mismo `subscribers_per_day` (regresión de la Task 17 — ver "Score de
+  oportunidad" arriba).
 - `tests/test_channel_analysis_deep_history.py` — `estimate_deep_history_cost` contra el
   ejemplo real (184 videos → 8 unidades), paginación hasta agotar el historial o el tope
   de 100 unidades (`partial_by_cap`), y el caso sin `uploads_playlist`.
