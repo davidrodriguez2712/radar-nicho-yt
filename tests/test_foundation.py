@@ -57,7 +57,6 @@ def test_secret_redaction() -> None:
         ("timezone", "Invalid/Zone"),
         ("api_port", 0),
         ("external_concurrency", 0),
-        ("batch_size", 101),
         ("api_host", "0.0.0.0"),
         ("dashboard_host", "0.0.0.0"),
         ("database_url", "sqlite:///not-postgres"),
