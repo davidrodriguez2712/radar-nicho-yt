@@ -612,6 +612,25 @@ try {
       input:readFileSync(new URL('./seed_niche_match_policy.py',import.meta.url)),encoding:'utf8',timeout:60000,maxBuffer:1024*1024});
     if(result.error || result.status!==0) throw new Error(`Niche match policy seed failed (exit ${result.status}); output withheld`);
     console.log(JSON.stringify(JSON.parse(result.stdout)));
+  } else if(action==='set-radar-paused') {
+    const value=process.argv[3];
+    if(value!=='true' && value!=='false') throw new Error('pass true or false');
+    const query=spawnSync('ssh',[...sshArgs,'docker ps --filter label=com.docker.swarm.service.name=proy1-credito-riesgo_nicheradar-dashboard --format "{{.ID}}"'],{encoding:'utf8',timeout:20000});
+    const cid=query.stdout?.trim();
+    if(query.status!==0 || !/^[a-f0-9]{12}$/.test(cid)) throw new Error('Exactly one dashboard container required');
+    const args=['docker','exec','-i',cid,'python','-',value].map(quote).join(' ');
+    const code=`
+import json, os, sys
+import httpx
+base = os.environ["NR_API_URL"].rstrip("/") + "/api/v1"
+headers = {"Authorization": f"Bearer {os.environ['NR_SERVICE_TOKEN']}"}
+r = httpx.request("PUT", base + "/radar", json={"paused": sys.argv[1] == "true"}, headers=headers, timeout=15)
+if r.status_code >= 400: raise SystemExit(f"{r.status_code}: {r.text}")
+print(json.dumps(r.json()))
+`;
+    const result=spawnSync('ssh',[...sshArgs,args],{input:code,encoding:'utf8',timeout:30000,maxBuffer:1024*1024});
+    if(result.error || result.status!==0) throw new Error(`Radar pause toggle failed (exit ${result.status}); stderr: ${result.stderr}`);
+    console.log(result.stdout.trim());
   } else if(action==='run-scheduled-once') {
     const query=spawnSync('ssh',[...sshArgs,'docker ps --filter label=com.docker.swarm.service.name=proy1-credito-riesgo_nicheradar-dashboard --format "{{.ID}}"'],{encoding:'utf8',timeout:20000});
     const cid=query.stdout?.trim();
