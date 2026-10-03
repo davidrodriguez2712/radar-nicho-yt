@@ -36,6 +36,9 @@ const defaultRecipeDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:0
 const homeProfitBackend = 'davidrodriguez2712/nicheradar-backend@sha256:5b199af90c670649cb1856119abc01312abb07b2bf991b0624f478c68a759e19';
 const homeProfitWorker = 'davidrodriguez2712/nicheradar-worker@sha256:377b7750a89511115e0e1a8fe6d852b7581c4587fec5ba651a513c0f323d43eb';
 const homeProfitDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:503ca3e018a671d4133321c9cefd110120d825843861dfaa9e157aa648ba34e0';
+const channelAnalysisBackend = 'davidrodriguez2712/nicheradar-backend@sha256:6853852ef827b744c4859adf2d33314fc6b9ecb922ff825b10fc019475359956';
+const channelAnalysisWorker = 'davidrodriguez2712/nicheradar-worker@sha256:56d8e017f4967bde96eed8f1178ea4af24c164e343a4b0bca7e89c1773d18972';
+const channelAnalysisDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:9467acfa7849ef4ea45a2767f1e5f1cfe859a259f19d6321e1fdee30e3f587c3';
 const postgres = 'postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280';
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
@@ -380,6 +383,40 @@ try {
       encoding:'utf8',timeout:180000,maxBuffer:1024*1024});
     console.log(JSON.stringify({migrationExit:result.status,processError:result.error?.code ?? null}));
     if(result.error || result.status!==0) throw new Error('Migration failed; raw response withheld. Inspect only this migration safely.');
+  } else if(action==='migrate-live-0010') {
+    const env=appEnv('nicheradar-api');
+    if(env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true' || env.NR_DATABASE_URL!==dbURL())
+      throw new Error('Live migration preconditions failed');
+    const code='import json,os,subprocess,sys; os.environ.update(json.load(sys.stdin)); sys.exit(subprocess.call(["alembic","upgrade","head"]))';
+    const args=['docker','run','--rm','-i','--name','nicheradar-migration-20261002-011',
+      '--network','easypanel-proy1-credito-riesgo','--memory','512m','--cpus','1',
+      '--read-only','--tmpfs','/tmp:rw,noexec,nosuid,size=64m','--cap-drop','ALL',
+      '--security-opt','no-new-privileges',channelAnalysisBackend,'python','-c',code];
+    const result=spawnSync('ssh',[...sshArgs,args.map(quote).join(' ')],{
+      input:JSON.stringify({NR_DATABASE_URL:env.NR_DATABASE_URL}),
+      encoding:'utf8',timeout:180000,maxBuffer:1024*1024});
+    console.log(JSON.stringify({migrationExit:result.status,processError:result.error?.code ?? null}));
+    if(result.error || result.status!==0) throw new Error('Migration failed; raw response withheld. Inspect only this migration safely.');
+  } else if(action==='deploy-channel-analysis-code') {
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?homeProfitDashboard:name==='nicheradar-worker'?homeProfitWorker:homeProfitBackend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Channel analysis release preconditions failed');
+    const image=isDashboard?channelAnalysisDashboard:name==='nicheradar-worker'?channelAnalysisWorker:channelAnalysisBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
   } else if(action==='deploy-default-recipe-code') {
     const name=process.argv[3];
     if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
