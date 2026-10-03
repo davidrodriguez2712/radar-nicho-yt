@@ -25,7 +25,7 @@ from nicheradar.repositories.core import (
     update_profile,
 )
 from nicheradar.repositories.database import database_engine
-from nicheradar.repositories.schema import credit_balances
+from nicheradar.repositories.schema import channel_analyses, credit_balances
 from nicheradar.scoring.advertising import assess_advertising
 from nicheradar.services.backlog import ReviewState, decide
 from nicheradar.services.budget import balance_needs_refresh
@@ -463,6 +463,87 @@ def create_app(
 
         if not expire_now(connection, analysis_id, clock()):
             raise HTTPException(404, "Análisis no encontrado")
+
+    @router.get("/channel-analyses/{analysis_id}/deep-history/estimate")
+    def deep_history_estimate(
+        analysis_id: UUID, connection: Annotated[Connection, Depends(db)]
+    ) -> dict[str, int | None]:
+        from nicheradar.services.channel_analysis import channel_analysis_detail
+        from nicheradar.services.channel_analysis_deep_history import estimate_deep_history_cost
+
+        detail = channel_analysis_detail(connection, analysis_id, now=clock())
+        if detail is None or not detail["evidence_available"]:
+            raise HTTPException(404, "Análisis no encontrado o sin evidencia disponible")
+        channel = detail["snapshot"].get("resolve", {}).get("channel", {})
+        return {"quota_units": estimate_deep_history_cost(channel.get("video_count"))}
+
+    @router.post("/channel-analyses/{analysis_id}/deep-history")
+    async def deep_history_execute(analysis_id: UUID) -> dict[str, Any]:
+        from nicheradar.integrations.contracts import Channel
+        from nicheradar.integrations.synthetic import SyntheticProvider
+        from nicheradar.services.channel_analysis import channel_analysis_detail
+        from nicheradar.services.channel_analysis_deep_history import fetch_deep_history
+        from nicheradar.services.channel_analysis_providers import (
+            channel_analysis_youtube_limits,
+            channel_analysis_youtube_tariffs,
+        )
+        from nicheradar.services.gateway import Gateway
+        from nicheradar.services.youtube_enrichment import youtube_provider
+
+        if database is None:
+            raise HTTPException(503, "Configura PostgreSQL y aplica las migraciones.")
+        # Deliberately NOT Depends(db) here: that dependency holds ONE transaction open
+        # for the entire request (its generator only tears down after this handler
+        # returns), and seed_profile()'s `INSERT ... ON CONFLICT DO NOTHING` takes a lock
+        # on the creator_profiles row for that whole transaction. Gateway opens its OWN
+        # separate connections per call (services/budget.py::lock_profile does
+        # `SELECT ... FOR UPDATE` on that same row) -- combined with Depends(db), the two
+        # connections deadlock against each other until the statement timeout cancels it
+        # (confirmed while writing this endpoint's tests). So this short, explicit
+        # transaction reads everything it needs and closes BEFORE the Gateway call runs,
+        # exactly like the worker pipeline's own `with self.engine.begin() as connection:`
+        # read block (workers/pipeline.py) closes before its Gateway calls.
+        with database.begin() as connection:
+            profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
+            create_schedule(connection, profile_id, clock(), {"mode": config.mode})
+            expire(connection, clock())
+            detail = channel_analysis_detail(connection, analysis_id, now=clock())
+            if detail is None or not detail["evidence_available"]:
+                raise HTTPException(404, "Análisis no encontrado o sin evidencia disponible")
+            require_live_ready(connection, scheduled=False)
+            _, _, profile = get_profile(connection)
+        # Mirrors workers/pipeline.py::Pipeline's own synthetic/live split for the YouTube
+        # provider -- youtube_provider(config) requires real live credentials
+        # (youtube_api_key/youtube_auth_scope) and must never be constructed in synthetic
+        # mode, which this one-off call has to support same as the scheduled pipeline does.
+        synthetic = config.mode == "synthetic"
+        youtube = SyntheticProvider() if synthetic else youtube_provider(config)
+        youtube_auth_scope = "synthetic" if synthetic else config.youtube_auth_scope
+        if youtube_auth_scope is None:
+            raise HTTPException(409, "Configura el scope de cuenta de YouTube antes de continuar.")
+        channel = Channel.model_validate(detail["snapshot"]["resolve"]["channel"])
+        gateway = Gateway(
+            database,
+            youtube,
+            profile_id,
+            detail["run_id"],
+            youtube_auth_scope,
+            profile,
+            channel_analysis_youtube_limits(config),
+            channel_analysis_youtube_tariffs(),
+            maximum_calls=200,
+        )
+        result = await fetch_deep_history(gateway, channel, clock())
+        with database.begin() as write_connection:
+            snapshot = write_connection.execute(
+                select(channel_analyses.c.snapshot).where(channel_analyses.c.id == analysis_id)
+            ).scalar_one()
+            write_connection.execute(
+                update(channel_analyses)
+                .where(channel_analyses.c.id == analysis_id)
+                .values(snapshot=snapshot | {"deep_history": result})
+            )
+        return result
 
     @router.get("/jobs")
     def jobs(

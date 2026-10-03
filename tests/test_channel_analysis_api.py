@@ -1,6 +1,7 @@
 import os
 from datetime import timedelta
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -229,10 +230,11 @@ def test_post_rejects_unsupported_channel_input(isolated_engine: Engine) -> None
     assert response.status_code == 422
 
 
-def _seed_saved_analysis(engine: Engine) -> str:
+def _seed_saved_analysis(engine: Engine, *, channel: dict[str, Any] | None = None) -> str:
     """Persist a completed channel-analysis row directly (bypassing the async worker
-    pipeline, which this API test suite never runs), so DELETE has a real row to act
-    on."""
+    pipeline, which this API test suite never runs), so DELETE/deep-history have a real
+    row to act on."""
+    channel = channel if channel is not None else {"id": "UC1", "title": "Science"}
     with engine.begin() as db:
         profile_id = seed_profile(db, CreatorProfile(), initial_catalog())
         run_id = insert_record(
@@ -250,7 +252,7 @@ def _seed_saved_analysis(engine: Engine) -> str:
             db,
             run_id,
             profile_id,
-            {"resolve": {"channel": {"id": "UC1", "title": "Science"}}},
+            {"resolve": {"channel": channel}},
             NOW,
         )
     return str(analysis_id)
@@ -299,4 +301,103 @@ def test_delete_endpoint_404s_for_unknown_id(isolated_engine: Engine) -> None:
     )
     client.headers["Authorization"] = f"Bearer {TOKEN}"
     response = client.delete("/api/v1/channel-analyses/00000000-0000-0000-0000-000000000000")
+    assert response.status_code == 404
+
+
+@pytest.mark.postgres
+def test_deep_history_estimate_endpoint_returns_real_quota_units(isolated_engine: Engine) -> None:
+    analysis_id = _seed_saved_analysis(
+        isolated_engine, channel={"id": "UC1", "title": "Science", "video_count": 184}
+    )
+    client = TestClient(
+        create_app(
+            Settings(service_token=SecretStr(TOKEN)), engine=isolated_engine, clock=lambda: NOW
+        )
+    )
+    client.headers["Authorization"] = f"Bearer {TOKEN}"
+    response = client.get(f"/api/v1/channel-analyses/{analysis_id}/deep-history/estimate")
+    assert response.status_code == 200
+    # ceil(184/50) = 4 pages * 2 real quota units per page (playlistItems.list +
+    # videos.list) = 8 -- same real example as
+    # tests/test_channel_analysis_deep_history.py::test_estimate_cost_matches_real_example.
+    assert response.json() == {"quota_units": 8}
+
+
+@pytest.mark.postgres
+def test_deep_history_estimate_endpoint_returns_none_when_video_count_unknown(
+    isolated_engine: Engine,
+) -> None:
+    analysis_id = _seed_saved_analysis(isolated_engine)  # no video_count on this channel
+    client = TestClient(
+        create_app(
+            Settings(service_token=SecretStr(TOKEN)), engine=isolated_engine, clock=lambda: NOW
+        )
+    )
+    client.headers["Authorization"] = f"Bearer {TOKEN}"
+    response = client.get(f"/api/v1/channel-analyses/{analysis_id}/deep-history/estimate")
+    assert response.status_code == 200
+    assert response.json() == {"quota_units": None}
+
+
+@pytest.mark.postgres
+def test_deep_history_estimate_endpoint_404s_for_unknown_analysis(isolated_engine: Engine) -> None:
+    client = TestClient(
+        create_app(Settings(service_token=SecretStr(TOKEN)), engine=isolated_engine)
+    )
+    client.headers["Authorization"] = f"Bearer {TOKEN}"
+    response = client.get(
+        "/api/v1/channel-analyses/00000000-0000-0000-0000-000000000000/deep-history/estimate"
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.postgres
+def test_deep_history_execute_endpoint_runs_synthetic_fetch_and_merges_into_snapshot(
+    isolated_engine: Engine,
+) -> None:
+    # published_at far enough before the videos' synthetic published_at (NOW - 10 days,
+    # see SyntheticProvider.fetch's generic video fixture) for a real, unambiguous
+    # days_to_first_breakout.
+    channel = {
+        "id": "UC1",
+        "title": "Science",
+        "uploads_playlist": "UU1",
+        "published_at": (NOW - timedelta(days=365)).isoformat(),
+        "subscribers": 1000,
+    }
+    analysis_id = _seed_saved_analysis(isolated_engine, channel=channel)
+    client = TestClient(
+        create_app(
+            Settings(service_token=SecretStr(TOKEN)), engine=isolated_engine, clock=lambda: NOW
+        )
+    )
+    client.headers["Authorization"] = f"Bearer {TOKEN}"
+
+    response = client.post(f"/api/v1/channel-analyses/{analysis_id}/deep-history")
+    assert response.status_code == 200
+    body = response.json()
+    # One SyntheticProvider UPLOADS page (no next_page) + one VIDEOS batch for its ids.
+    assert body == {
+        "status": "computed",
+        "days_to_first_breakout": 355,
+        "quota_units_spent": 2,
+    }
+
+    detail = client.get(f"/api/v1/channel-analyses/{analysis_id}").json()
+    assert detail["snapshot"]["deep_history"] == body
+    # The pre-existing resolve.channel snapshot must survive untouched -- proves a real
+    # read-then-merge (`snapshot | {"deep_history": ...}`), not an overwrite that would
+    # have dropped it.
+    assert detail["snapshot"]["resolve"]["channel"]["id"] == "UC1"
+
+
+@pytest.mark.postgres
+def test_deep_history_execute_endpoint_404s_for_unknown_analysis(isolated_engine: Engine) -> None:
+    client = TestClient(
+        create_app(Settings(service_token=SecretStr(TOKEN)), engine=isolated_engine)
+    )
+    client.headers["Authorization"] = f"Bearer {TOKEN}"
+    response = client.post(
+        "/api/v1/channel-analyses/00000000-0000-0000-0000-000000000000/deep-history"
+    )
     assert response.status_code == 404
