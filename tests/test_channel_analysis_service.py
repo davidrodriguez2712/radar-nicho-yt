@@ -1,3 +1,4 @@
+from datetime import timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -5,8 +6,9 @@ import pytest
 from sqlalchemy import Connection
 
 from nicheradar.config import Settings
-from nicheradar.domain.profile import CreatorProfile, initial_catalog
-from nicheradar.integrations.contracts import Operation
+from nicheradar.discovery.channel_analysis import compute_panorama
+from nicheradar.domain.profile import CreatorProfile, VideoFormat, initial_catalog
+from nicheradar.integrations.contracts import Channel, Operation, Video
 from nicheradar.repositories.core import insert_record, seed_profile
 from nicheradar.services.budget import reserve, settle
 from nicheradar.services.channel_analysis import (
@@ -58,6 +60,66 @@ def test_save_then_list_then_detail(db: Connection) -> None:
     assert detail["snapshot"]["metrics"]["target_position"] == "within"
 
     assert channel_analysis_detail(db, "00000000-0000-0000-0000-000000000000") is None
+
+
+@pytest.mark.postgres
+def test_list_channel_analyses_includes_score(db: Connection) -> None:
+    # Builds a real snapshot the same way the pipeline's "metrics" stage does: a real
+    # compute_panorama() result (pure function, no DB/network needed) embedded under
+    # snapshot["metrics"]["panorama"], so compute_score (Task 9) sees genuine computed
+    # metrics rather than a hand-rolled stand-in dict.
+    profile_id = seed_profile(db, CreatorProfile(), initial_catalog())
+    run_id = insert_record(
+        db,
+        "analysis_runs",
+        {
+            "profile_id": profile_id,
+            "mode": "synthetic",
+            "trigger": "channel_analysis",
+            "status": "succeeded",
+            "configuration": {"channel_input": "@scienceexplained"},
+        },
+    )
+    comparable_videos: dict[str, tuple[Video, ...]] = {
+        "UC_a": (
+            Video(
+                id="a1",
+                channel_id="UC_a",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=1000,
+                format=VideoFormat.LONG,
+            ),
+        ),
+        "UC_b": (
+            Video(
+                id="b1",
+                channel_id="UC_b",
+                title="t",
+                published_at=NOW - timedelta(days=10),
+                views=2000,
+                format=VideoFormat.LONG,
+            ),
+        ),
+    }
+    panorama = compute_panorama(
+        comparable_videos,
+        (Channel(id="UC_a", title="A"), Channel(id="UC_b", title="B")),
+        50_000,
+        NOW,
+    )
+    assert panorama["status"] == "computed"  # sanity: the fixture must exercise the real path
+    checkpoints = {
+        "resolve": {"channel": {"id": "UC_target", "title": "Target"}},
+        "metrics": {"panorama": panorama},
+    }
+    save_channel_analysis(db, run_id, profile_id, checkpoints, NOW)
+
+    result = list_channel_analyses(db, limit=20, offset=0, now=NOW)
+    item = result["items"][0]
+    assert "score" in item
+    assert item["score"]["value"] is None or 0 <= item["score"]["value"] <= 100
+    assert set(item["score"]) == {"value", "components", "components_used"}
 
 
 def _run(db: Connection, profile_id: UUID) -> UUID:

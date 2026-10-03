@@ -11,6 +11,7 @@ from sqlalchemy.engine import Connection
 
 from nicheradar.repositories import schema_v1 as s
 from nicheradar.repositories.schema import channel_analyses
+from nicheradar.services.channel_analysis_scoring import compute_score
 
 
 def run_consumption(connection: Connection, run_id: UUID) -> dict[str, Any]:
@@ -101,6 +102,11 @@ def _view(row: Any, now: datetime | None) -> dict[str, Any]:
     if not available:
         view["snapshot"] = None
     view["evidence_available"] = available
+    view["score"] = (
+        compute_score(view["snapshot"])
+        if view["snapshot"]
+        else {"value": None, "components": {}, "components_used": []}
+    )
     return view
 
 
