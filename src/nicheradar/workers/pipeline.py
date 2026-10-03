@@ -442,8 +442,6 @@ class Pipeline:
     ) -> None:
         from collections import Counter
 
-        from pydantic import ValidationError
-
         from nicheradar.discovery.channel_analysis import (
             MAX_COMPARABLES,
             compute_comparison,
@@ -452,7 +450,8 @@ class Pipeline:
             fetch_channel_videos,
             resolve_channel,
         )
-        from nicheradar.scoring.advertising import AdvertisingBenchmark
+        from nicheradar.services.advertising_benchmarks import build_benchmark
+        from nicheradar.services.advertising_match import match_niche
         from nicheradar.services.channel_analysis import save_channel_analysis
         from nicheradar.services.channel_analysis_providers import (
             channel_analysis_vidiq_limits,
@@ -496,7 +495,14 @@ class Pipeline:
             for checkpoint in checkpoints.values():
                 if isinstance(checkpoint, dict) and "reason" in checkpoint:
                     reason = checkpoint["reason"]
-                    return reason if isinstance(reason, str) else None
+                    # Only a genuine budget/quota code ratchets every later stage straight
+                    # to partial. `advertising_match`'s checkpoint always carries a
+                    # "reason" too (e.g. "llm_disabled", "synthetic_mode",
+                    # "response_received" on a perfectly successful match) -- those are
+                    # routine, already-handled outcomes of an optional stage, never a
+                    # signal that the whole run ran out of budget.
+                    if isinstance(reason, str) and reason in budget_error_codes:
+                        return reason
             return None
 
         with self.engine.begin() as connection:
@@ -606,6 +612,12 @@ class Pipeline:
                             "vidiq_omitted": discovery.vidiq_omitted,
                         },
                     )
+                elif stage == "advertising_match":
+                    channel = Channel.model_validate(checkpoints["resolve"]["channel"])
+                    result = await match_niche(
+                        self.engine, run, profile, self.settings, channel, now
+                    )
+                    confirm_channel_analysis_stage(connection, job["id"], owner, now, stage, result)
                 elif stage == "comparable_videos":
                     discovered_channels = [
                         Channel.model_validate(c)
@@ -668,15 +680,9 @@ class Pipeline:
                         else None
                     )
                     advertising = None
-                    if profile.channel_analysis_advertising is not None:
-                        try:
-                            advertising = AdvertisingBenchmark.model_validate(
-                                profile.channel_analysis_advertising
-                            )
-                        except ValidationError:
-                            # A malformed stored benchmark must degrade profit to
-                            # "incomplete", never crash the whole analysis.
-                            advertising = None
+                    matched_niche = checkpoints.get("advertising_match", {}).get("matched_niche")
+                    if matched_niche is not None:
+                        advertising = build_benchmark(connection, matched_niche, now)
                     if advertising is not None and (
                         video_format is None or advertising.format != video_format
                     ):
@@ -721,13 +727,19 @@ class Pipeline:
                         profile.small_channel_subscribers,
                         now,
                     )
+                    matched_rate = (
+                        {"low": float(advertising.rate.low), "high": float(advertising.rate.high)}
+                        if advertising is not None
+                        else None
+                    )
                     confirm_channel_analysis_stage(
                         connection,
                         job["id"],
                         owner,
                         now,
                         stage,
-                        comparison | {"panorama": panorama},
+                        comparison
+                        | {"panorama": panorama, "matched_advertising_rate": matched_rate},
                     )
                 elif stage == "profit":
                     # Profit is already computed inside compute_comparison (Task 12); this

@@ -21,6 +21,7 @@ class Operation(StrEnum):
     SEARCH = "search"
     COMMENT_THREADS = "comment_threads"
     VIDEO_CATEGORIES = "video_categories"
+    NICHE_MATCH = "niche_match"
 
 
 class Contract(BaseModel):

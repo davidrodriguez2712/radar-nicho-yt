@@ -42,10 +42,11 @@ def test_channel_analysis_run_completes_through_every_stage(isolated_engine: Eng
             connection,
             CreatorProfile(
                 paid_limits_confirmed=True,
-                # channel_analysis_advertising is stored raw (dict[str, Any] | None,
-                # per Task 5); the pipeline re-validates it into a real
-                # AdvertisingBenchmark, so it must be seeded as its JSON-mode dump,
-                # not the model instance itself.
+                # `channel_analysis_advertising` is legacy (pre-Task 6): the `metrics`
+                # stage now sources its benchmark exclusively from the `advertising_match`
+                # stage's LLM-matched niche (via build_benchmark()), never from this
+                # profile field directly. Seeded here deliberately to prove it has no
+                # effect any more, not to make the estimate complete.
                 channel_analysis_advertising=benchmark.model_dump(mode="json"),
             ),
             initial_catalog(),
@@ -112,13 +113,18 @@ def test_channel_analysis_run_completes_through_every_stage(isolated_engine: Eng
     # counts aren't controlled by this test -- just that breakout classification
     # ran against real subscriber data without blowing up.
     assert "breakout_rate" in panorama["metrics"]
-    # Loose on purpose: whether profit fully resolves to "estimated" also depends on
-    # real comparable view-rate data existing in this synthetic run, which this test
-    # isn't changing. The point here is confirming the wiring runs without crashing
-    # and that videos_per_month/advertising are no longer unconditionally None.
+    # A synthetic-mode run never places the real, billable `advertising_match` LLM
+    # call (see services/advertising_match.py's "synthetic_mode" guard), so this run's
+    # matched niche is always None and the legacy profile-seeded benchmark above is
+    # correctly ignored -- "advertising_rate" is deterministically missing here, not
+    # merely allowed to be. videos_per_month is still unconditionally populated though.
+    assert job["checkpoints"]["advertising_match"] == {
+        "matched_niche": None,
+        "reason": "synthetic_mode",
+    }
     profit = analysis["snapshot"]["metrics"]["profit"]
-    assert profit["status"] in {"estimated", "incomplete"}
-    assert profit["status"] != "incomplete" or "advertising_rate" not in profit["missing"]
+    assert profit["status"] == "incomplete"
+    assert "advertising_rate" in profit["missing"]
 
 
 class _SearchQuotaExhaustedAfterFirstCall:

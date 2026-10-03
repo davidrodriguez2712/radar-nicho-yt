@@ -21,6 +21,7 @@ CHANNEL_ANALYSIS_STAGES = (
     "resolve",
     "target_videos",
     "discover_comparables",
+    "advertising_match",
     "comparable_videos",
     "metrics",
     "profit",
