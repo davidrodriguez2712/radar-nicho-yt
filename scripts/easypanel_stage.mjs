@@ -642,9 +642,11 @@ print(json.dumps(r.json()))
   } else if(action==='test-channel-analysis') {
     const channelInput=process.argv[3];
     if(!channelInput) throw new Error('A channel_input argument is required');
-    const query=spawnSync('ssh',[...sshArgs,'docker ps --filter label=com.docker.swarm.service.name=proy1-credito-riesgo_nicheradar-dashboard --format "{{.ID}}"'],{encoding:'utf8',timeout:20000});
+    // The api container, not dashboard: test_channel_analysis.py's defer_due_radar_schedule()
+    // needs direct NR_DATABASE_URL access, which only the api/worker containers have.
+    const query=spawnSync('ssh',[...sshArgs,'docker ps --filter label=com.docker.swarm.service.name=proy1-credito-riesgo_nicheradar-api --format "{{.ID}}"'],{encoding:'utf8',timeout:20000});
     const cid=query.stdout?.trim();
-    if(query.status!==0 || !/^[a-f0-9]{12}$/.test(cid)) throw new Error('Exactly one dashboard container required');
+    if(query.status!==0 || !/^[a-f0-9]{12}$/.test(cid)) throw new Error('Exactly one api container required');
     const args=['docker','exec','-i',cid,'python','-',channelInput].map(quote).join(' ');
     const result=spawnSync('ssh',[...sshArgs,args],{
       input:readFileSync(new URL('./test_channel_analysis.py',import.meta.url)),encoding:'utf8',timeout:450000,maxBuffer:1024*1024});

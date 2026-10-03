@@ -27,7 +27,11 @@ from nicheradar.repositories import schema_v1 as s
 from nicheradar.repositories.database import database_engine
 
 channel_input = sys.argv[1]
-base = os.environ["NR_API_URL"].rstrip("/") + "/api/v1"
+# This runs inside the API container (needed for defer_due_radar_schedule()'s direct
+# NR_DATABASE_URL access, which the dashboard container's environment does not have).
+# NR_API_URL is unset there; config.py's own api_url default (the API reaching itself
+# on its own loopback bind) is the correct fallback.
+base = os.environ.get("NR_API_URL", "http://127.0.0.1:8000").rstrip("/") + "/api/v1"
 headers = {"Authorization": f"Bearer {os.environ['NR_SERVICE_TOKEN']}"}
 
 
