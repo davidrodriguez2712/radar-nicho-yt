@@ -7,14 +7,12 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Connection, Engine, select
 
-from nicheradar.domain.production import EstimateRange
-from nicheradar.domain.profile import CreatorProfile, VideoFormat, initial_catalog
+from nicheradar.domain.profile import CreatorProfile, initial_catalog
 from nicheradar.integrations.contracts import Batch, Operation, ProviderError
 from nicheradar.integrations.synthetic import SyntheticProvider
 from nicheradar.repositories import schema_v1 as s
 from nicheradar.repositories.core import insert_record, seed_profile
 from nicheradar.repositories.schema import channel_analyses
-from nicheradar.scoring.advertising import AdvertisingBenchmark
 from nicheradar.workers.channel_analysis_queue import CHANNEL_ANALYSIS_STAGES
 from nicheradar.workers.pipeline import Pipeline
 from nicheradar.workers.queue import claim
@@ -24,30 +22,10 @@ from tests.test_persistence import NOW
 @pytest.mark.postgres
 def test_channel_analysis_run_completes_through_every_stage(isolated_engine: Engine) -> None:
     with isolated_engine.begin() as connection:
-        benchmark = AdvertisingBenchmark(
-            version="2026-10-02",
-            source="owner_declared_estimate",
-            origin="manual_assumption",
-            format=VideoFormat.LONG,
-            language="es",
-            audience_key="general",
-            unit="usd_ads_per_1000_views",
-            rate=EstimateRange(low=Decimal("1.0"), high=Decimal("3.0")),
-            revenue_scope="youtube_ads_only_after_revenue_share",
-            assumptions="Prueba.",
-            observed_at=NOW - timedelta(days=1),
-            valid_until=NOW + timedelta(days=180),
-        )
         profile_id = seed_profile(
             connection,
             CreatorProfile(
                 paid_limits_confirmed=True,
-                # `channel_analysis_advertising` is legacy (pre-Task 6): the `metrics`
-                # stage now sources its benchmark exclusively from the `advertising_match`
-                # stage's LLM-matched niche (via build_benchmark()), never from this
-                # profile field directly. Seeded here deliberately to prove it has no
-                # effect any more, not to make the estimate complete.
-                channel_analysis_advertising=benchmark.model_dump(mode="json"),
             ),
             initial_catalog(),
         )
@@ -115,9 +93,9 @@ def test_channel_analysis_run_completes_through_every_stage(isolated_engine: Eng
     assert "breakout_rate" in panorama["metrics"]
     # A synthetic-mode run never places the real, billable `advertising_match` LLM
     # call (see services/advertising_match.py's "synthetic_mode" guard), so this run's
-    # matched niche is always None and the legacy profile-seeded benchmark above is
-    # correctly ignored -- "advertising_rate" is deterministically missing here, not
-    # merely allowed to be. videos_per_month is still unconditionally populated though.
+    # matched niche is always None -- "advertising_rate" is deterministically missing
+    # here, not merely allowed to be. videos_per_month is still unconditionally
+    # populated though.
     assert job["checkpoints"]["advertising_match"] == {
         "matched_niche": None,
         "reason": "synthetic_mode",
@@ -491,22 +469,6 @@ def test_advertising_benchmark_with_mismatched_format_is_not_used(
             connection,
             CreatorProfile(
                 paid_limits_confirmed=True,
-                # Legacy (pre-Task 6) field, now inert: the `metrics` stage no longer
-                # reads it at all. Seeded as a decoy to make sure that's actually true.
-                channel_analysis_advertising=AdvertisingBenchmark(
-                    version="2026-10-02",
-                    source="owner_declared_estimate",
-                    origin="manual_assumption",
-                    format=VideoFormat.SHORTS,
-                    language="es",
-                    audience_key="general",
-                    unit="usd_ads_per_1000_engaged_views",
-                    rate=EstimateRange(low=Decimal("1.0"), high=Decimal("3.0")),
-                    revenue_scope="youtube_ads_only_after_revenue_share",
-                    assumptions="Prueba.",
-                    observed_at=NOW - timedelta(days=1),
-                    valid_until=NOW + timedelta(days=180),
-                ).model_dump(mode="json"),
             ),
             initial_catalog(),
         )

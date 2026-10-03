@@ -1,8 +1,11 @@
 from datetime import UTC, datetime
 
+import pytest
+from pydantic import ValidationError
 from sqlalchemy import Connection
 
 from nicheradar.domain.profile import VideoFormat
+from nicheradar.scoring.advertising import AdvertisingBenchmark
 from nicheradar.services.advertising_benchmarks import build_benchmark, list_niche_options
 
 
@@ -25,3 +28,8 @@ def test_build_benchmark_for_known_label(db: Connection) -> None:
 
 def test_build_benchmark_for_unknown_label(db: Connection) -> None:
     assert build_benchmark(db, "no_existe", datetime.now(UTC)) is None
+
+
+def test_advertising_benchmark_rejects_a_malformed_dict() -> None:
+    with pytest.raises(ValidationError):
+        AdvertisingBenchmark.model_validate({"not": "a real benchmark"})
