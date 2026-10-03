@@ -213,6 +213,58 @@ def test_second_analysis_same_week_hits_search_quota_cleanly(isolated_engine: En
     assert second_analysis["status"] == "partial"
 
 
+@pytest.mark.postgres
+def test_advertising_match_budget_error_does_not_cascade_to_partial(
+    isolated_engine: Engine,
+) -> None:
+    """Regression: a real ProviderError from reserve() inside match_niche() (e.g.
+    "run_budget_exhausted" -- this LLM USD budget is shared with
+    services/explanations.py's own usage) used to propagate out of the
+    `advertising_match` stage uncaught. Since that code is also a member of
+    `budget_error_codes`, pipeline.py's `budget_exhausted_reason()` then ratcheted
+    the ENTIRE REST OF THE RUN to partial, skipping `comparable_videos`, `metrics`
+    and `profit` -- even though advertising_match is documented as an optional,
+    soft-decline stage whose own reason must never be read as a run-wide signal.
+    Now match_niche() degrades cleanly and that reason must not poison the stages
+    still to come."""
+    with isolated_engine.begin() as connection:
+        profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
+        target_video = {
+            "id": "t1",
+            "channel_id": "UC_target",
+            "title": "Target video",
+            "published_at": (NOW - timedelta(days=10)).isoformat(),
+            "views": 1000,
+            "format": "long",
+        }
+        job_id = _channel_analysis_job(
+            connection,
+            profile_id,
+            "test-ca-advertising-match-budget",
+            "comparable_videos",
+            {
+                "resolve": {"channel": {"id": "UC_target", "title": "Target"}},
+                "target_videos": {"videos": [target_video]},
+                "discover_comparables": {
+                    "comparables": [
+                        {"id": "channel-0", "title": "Comparable", "subscribers": 1000}
+                    ],
+                    "vidiq_omitted": None,
+                },
+                "advertising_match": {"matched_niche": None, "reason": "run_budget_exhausted"},
+            },
+        )
+        assert claim(connection, "test-worker", NOW) is not None
+    pipeline = Pipeline(isolated_engine, clock=lambda: NOW, provider=SyntheticProvider())
+    asyncio.run(pipeline.process(job_id, "test-worker"))
+    job, analysis = _job_and_analysis(isolated_engine, job_id)
+    assert job["status"] == "succeeded"
+    assert "reason" not in job["checkpoints"]["comparable_videos"]
+    assert "metrics" in job["checkpoints"]
+    assert "profit" in job["checkpoints"]
+    assert analysis is not None and analysis["status"] == "completed"
+
+
 class _YouTubeQuotaOnSearch:
     """Real YouTubeProvider maps Google's 403 quotaExceeded / 429 to code "quota"."""
 

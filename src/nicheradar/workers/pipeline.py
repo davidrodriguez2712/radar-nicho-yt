@@ -492,15 +492,20 @@ class Pipeline:
         }
 
         def budget_exhausted_reason(checkpoints: dict[str, Any]) -> str | None:
-            for checkpoint in checkpoints.values():
+            for name, checkpoint in checkpoints.items():
+                # `advertising_match` is an optional, soft-decline stage: its checkpoint
+                # always carries a "reason" (e.g. "llm_disabled", "synthetic_mode",
+                # "response_received" on a perfectly successful match -- and, since its
+                # LLM USD budget is shared with services/explanations.py's own usage, a
+                # real reserve() budget error too, e.g. "run_budget_exhausted"). None of
+                # these are ever a signal that the whole RUN ran out of budget, so this
+                # stage is excluded here regardless of which reason string it carries.
+                if name == "advertising_match":
+                    continue
                 if isinstance(checkpoint, dict) and "reason" in checkpoint:
                     reason = checkpoint["reason"]
                     # Only a genuine budget/quota code ratchets every later stage straight
-                    # to partial. `advertising_match`'s checkpoint always carries a
-                    # "reason" too (e.g. "llm_disabled", "synthetic_mode",
-                    # "response_received" on a perfectly successful match) -- those are
-                    # routine, already-handled outcomes of an optional stage, never a
-                    # signal that the whole run ran out of budget.
+                    # to partial.
                     if isinstance(reason, str) and reason in budget_error_codes:
                         return reason
             return None

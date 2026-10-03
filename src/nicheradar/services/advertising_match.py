@@ -55,45 +55,60 @@ async def match_niche(
     tariff = configuration.tariff
     if not tariff.verified_at <= now < tariff.valid_until:
         return {"matched_niche": None, "reason": "llm_tariff_not_current"}
-    with engine.begin() as connection:
-        niches = list_niche_options(connection)
-        if not niches:
-            return {"matched_niche": None, "reason": "no_niches_configured"}
-        for usage in (Usage.QUERY, Usage.STORAGE, Usage.DERIVED, Usage.LLM_PROCESSING):
-            try:
-                require_usage(
-                    connection,
-                    "openai",
-                    Operation.NICHE_MATCH,
-                    usage,
-                    "channel_analysis_niche_match",
-                    now,
-                )
-            except ProviderError:
-                return {"matched_niche": None, "reason": "policy_not_enabled"}
-        key = cache_key(
-            "openai", Operation.NICHE_MATCH, {"channel_id": channel.id}, configuration.auth_scope
-        )
-        request_id = prepare_request(
-            connection,
-            run["id"],
-            "openai",
-            Operation.NICHE_MATCH,
-            configuration.auth_scope,
-            key,
-            f"niche_match:{run['id']}",
-            now,
-        )
-        reserve(
-            connection,
-            request_id,
-            run["profile_id"],
-            (Cost(unit="USD", maximum=tariff.maximum_usd(), source=tariff.source),),
-            {"USD": configuration.limits},
-            now,
-            config.timezone,
-        )
-        mark_sent(connection, request_id, now)
+    try:
+        with engine.begin() as connection:
+            niches = list_niche_options(connection)
+            if not niches:
+                return {"matched_niche": None, "reason": "no_niches_configured"}
+            for usage in (Usage.QUERY, Usage.STORAGE, Usage.DERIVED, Usage.LLM_PROCESSING):
+                try:
+                    require_usage(
+                        connection,
+                        "openai",
+                        Operation.NICHE_MATCH,
+                        usage,
+                        "channel_analysis_niche_match",
+                        now,
+                    )
+                except ProviderError:
+                    return {"matched_niche": None, "reason": "policy_not_enabled"}
+            key = cache_key(
+                "openai",
+                Operation.NICHE_MATCH,
+                {"channel_id": channel.id},
+                configuration.auth_scope,
+            )
+            request_id = prepare_request(
+                connection,
+                run["id"],
+                "openai",
+                Operation.NICHE_MATCH,
+                configuration.auth_scope,
+                key,
+                f"niche_match:{run['id']}",
+                now,
+            )
+            reserve(
+                connection,
+                request_id,
+                run["profile_id"],
+                (Cost(unit="USD", maximum=tariff.maximum_usd(), source=tariff.source),),
+                {"USD": configuration.limits},
+                now,
+                config.timezone,
+            )
+            mark_sent(connection, request_id, now)
+    except ProviderError as error:
+        # advertising_match is a soft-decline, optional stage (see
+        # workers/pipeline.py's budget_exhausted_reason docstring comment): a real
+        # budget error from reserve() (this LLM USD budget is shared with
+        # services/explanations.py) must degrade this stage, never ratchet the
+        # whole run to partial. Mirrors services/explanations.py::enrich()'s
+        # identical try/except ProviderError around its own reserve/mark_sent.
+        # This also covers a retried stage hitting "request_already_reserved"
+        # from a prior attempt's already-committed reservation -- that retry
+        # should decline, not double-reserve or fail the run.
+        return {"matched_niche": None, "reason": error.code}
     # The full catalog is ~218 real niches: embedding every real `niche_description`
     # verbatim (niche_match_request_body's "niche_options") pushes a realistic request
     # past OpenAISelector.select()'s fixed 32000-byte body cap on its own, before the
