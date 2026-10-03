@@ -12,6 +12,7 @@ from nicheradar.config import Settings
 from nicheradar.domain.profile import CreatorProfile, initial_catalog
 from nicheradar.repositories.core import insert_record, seed_profile
 from nicheradar.repositories.schema import credit_balances
+from nicheradar.services.channel_analysis import save_channel_analysis
 from tests.test_foundation import TOKEN
 from tests.test_persistence import NOW
 
@@ -226,3 +227,76 @@ def test_post_rejects_unsupported_channel_input(isolated_engine: Engine) -> None
         headers={"Idempotency-Key": "b" * 10},
     )
     assert response.status_code == 422
+
+
+def _seed_saved_analysis(engine: Engine) -> str:
+    """Persist a completed channel-analysis row directly (bypassing the async worker
+    pipeline, which this API test suite never runs), so DELETE has a real row to act
+    on."""
+    with engine.begin() as db:
+        profile_id = seed_profile(db, CreatorProfile(), initial_catalog())
+        run_id = insert_record(
+            db,
+            "analysis_runs",
+            {
+                "profile_id": profile_id,
+                "mode": "synthetic",
+                "trigger": "channel_analysis",
+                "status": "succeeded",
+                "configuration": {"channel_input": "@scienceexplained"},
+            },
+        )
+        analysis_id = save_channel_analysis(
+            db,
+            run_id,
+            profile_id,
+            {"resolve": {"channel": {"id": "UC1", "title": "Science"}}},
+            NOW,
+        )
+    return str(analysis_id)
+
+
+@pytest.mark.postgres
+def test_delete_endpoint_returns_204_then_404(isolated_engine: Engine) -> None:
+    analysis_id = _seed_saved_analysis(isolated_engine)
+    client = TestClient(
+        create_app(
+            Settings(service_token=SecretStr(TOKEN)), engine=isolated_engine, clock=lambda: NOW
+        )
+    )
+    path = f"/api/v1/channel-analyses/{analysis_id}"
+
+    assert client.delete(path).status_code == 401
+
+    client.headers["Authorization"] = f"Bearer {TOKEN}"
+    response = client.delete(path)
+    assert response.status_code == 204
+    assert response.content == b""
+
+    # The now-expired row's content must be withheld (same convention as retention.expire()
+    # -- detail endpoint stays 200 but snapshot is gone) and it must drop out of the
+    # default list, not just become un-deletable again -- proves this is the service's
+    # real expire_now(), not a stub that only flips a status code.
+    detail = client.get(path)
+    assert detail.status_code == 200
+    assert detail.json()["snapshot"] is None
+    assert detail.json()["evidence_available"] is False
+
+    listing = client.get("/api/v1/channel-analyses")
+    assert analysis_id not in {item["id"] for item in listing.json()["items"]}
+    listing_all = client.get("/api/v1/channel-analyses", params={"include_expired": True})
+    assert analysis_id in {item["id"] for item in listing_all.json()["items"]}
+
+    # A second delete of the same (now-expired) row must 404, not succeed again.
+    response_again = client.delete(path)
+    assert response_again.status_code == 404
+
+
+@pytest.mark.postgres
+def test_delete_endpoint_404s_for_unknown_id(isolated_engine: Engine) -> None:
+    client = TestClient(
+        create_app(Settings(service_token=SecretStr(TOKEN)), engine=isolated_engine)
+    )
+    client.headers["Authorization"] = f"Bearer {TOKEN}"
+    response = client.delete("/api/v1/channel-analyses/00000000-0000-0000-0000-000000000000")
+    assert response.status_code == 404

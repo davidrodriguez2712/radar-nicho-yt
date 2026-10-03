@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Connection
 
@@ -110,20 +110,36 @@ def _view(row: Any, now: datetime | None) -> dict[str, Any]:
     return view
 
 
-def list_channel_analyses(
-    connection: Connection, *, limit: int = 20, offset: int = 0, now: datetime | None = None
-) -> dict[str, Any]:
-    total = connection.execute(select(func.count()).select_from(channel_analyses)).scalar_one()
-    rows = (
-        connection.execute(
-            select(channel_analyses)
-            .order_by(channel_analyses.c.created_at.desc())
-            .limit(limit)
-            .offset(offset)
-        )
-        .mappings()
-        .all()
+def expire_now(connection: Connection, analysis_id: UUID, now: datetime) -> bool:
+    """Soft-delete one analysis immediately (the UI's "delete"), following the same
+    convention as integrations/retention.py::expire() -- never a physical DELETE FROM,
+    just an early, single-row null-out of `snapshot` plus `expired_at`. The
+    `expired_at.is_(None)` guard makes this idempotent: an already-expired row (whether
+    expired by this function or by the later retention sweep) reports False, not a
+    second "success"."""
+    result = connection.execute(
+        update(channel_analyses)
+        .where(channel_analyses.c.id == analysis_id, channel_analyses.c.expired_at.is_(None))
+        .values(snapshot=None, expired_at=now)
     )
+    return result.rowcount > 0
+
+
+def list_channel_analyses(
+    connection: Connection,
+    *,
+    limit: int = 20,
+    offset: int = 0,
+    now: datetime | None = None,
+    include_expired: bool = False,
+) -> dict[str, Any]:
+    total_query = select(func.count()).select_from(channel_analyses)
+    rows_query = select(channel_analyses).order_by(channel_analyses.c.created_at.desc())
+    if not include_expired:
+        total_query = total_query.where(channel_analyses.c.expired_at.is_(None))
+        rows_query = rows_query.where(channel_analyses.c.expired_at.is_(None))
+    total = connection.execute(total_query).scalar_one()
+    rows = connection.execute(rows_query.limit(limit).offset(offset)).mappings().all()
     return {
         "items": [_view(row, now) for row in rows],
         "total": total,

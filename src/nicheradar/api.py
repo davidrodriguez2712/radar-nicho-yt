@@ -432,10 +432,17 @@ def create_app(
         connection: Annotated[Connection, Depends(db)],
         limit: Annotated[int, Query(ge=1, le=100)] = 20,
         offset: Annotated[int, Query(ge=0)] = 0,
+        include_expired: Annotated[bool, Query()] = False,
     ) -> dict[str, Any]:
         from nicheradar.services.channel_analysis import list_channel_analyses
 
-        return list_channel_analyses(connection, limit=limit, offset=offset, now=clock())
+        return list_channel_analyses(
+            connection,
+            limit=limit,
+            offset=offset,
+            now=clock(),
+            include_expired=include_expired,
+        )
 
     @router.get("/channel-analyses/{analysis_id}")
     def channel_analysis_detail_endpoint(
@@ -447,6 +454,15 @@ def create_app(
         if result is None:
             raise HTTPException(404, "Análisis no encontrado")
         return result
+
+    @router.delete("/channel-analyses/{analysis_id}", status_code=204)
+    def delete_channel_analysis(
+        analysis_id: UUID, connection: Annotated[Connection, Depends(db)]
+    ) -> None:
+        from nicheradar.services.channel_analysis import expire_now
+
+        if not expire_now(connection, analysis_id, clock()):
+            raise HTTPException(404, "Análisis no encontrado")
 
     @router.get("/jobs")
     def jobs(

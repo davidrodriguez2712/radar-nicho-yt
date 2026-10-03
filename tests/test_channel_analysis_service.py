@@ -13,6 +13,7 @@ from nicheradar.repositories.core import insert_record, seed_profile
 from nicheradar.services.budget import reserve, settle
 from nicheradar.services.channel_analysis import (
     channel_analysis_detail,
+    expire_now,
     list_channel_analyses,
     save_channel_analysis,
 )
@@ -240,11 +241,20 @@ def test_expire_nulls_snapshot_only_when_retention_is_due(db: Connection) -> Non
     assert kept["expired_at"] is None
     assert kept["evidence_available"] is True
 
-    # Expired reports stay listed (same convention as the backlog), flagged unavailable.
+    # Task 11: expired reports are now hidden from the default list entirely (not just
+    # flagged unavailable, as channel_analysis_detail still does above) -- but remain
+    # reachable with include_expired=True, still flagged unavailable there.
     listed = {row["id"]: row for row in list_channel_analyses(db, now=later)["items"]}
-    assert listed[due]["evidence_available"] is False
-    assert listed[due]["snapshot"] is None
+    assert due not in listed
     assert listed[fresh]["evidence_available"] is True
+
+    listed_all = {
+        row["id"]: row
+        for row in list_channel_analyses(db, now=later, include_expired=True)["items"]
+    }
+    assert listed_all[due]["evidence_available"] is False
+    assert listed_all[due]["snapshot"] is None
+    assert listed_all[fresh]["evidence_available"] is True
 
 
 @pytest.mark.postgres
@@ -257,3 +267,58 @@ def test_detail_hides_snapshot_past_retention_before_expire_runs(db: Connection)
     assert detail is not None
     assert detail["snapshot"] is None
     assert detail["evidence_available"] is False
+
+
+@pytest.mark.postgres
+def test_expire_now_hides_snapshot_immediately(db: Connection) -> None:
+    profile_id = seed_profile(db, CreatorProfile(), initial_catalog())
+    checkpoints = {"resolve": {"channel": {"id": "UC1", "title": "Science"}}}
+    analysis_id = save_channel_analysis(
+        db, _run(db, profile_id), profile_id, checkpoints, NOW, configuration={"a": 1}
+    )
+
+    # Immediate soft-delete, well before the 180-day retain_until -- must not depend on
+    # retention.expire()'s due-date sweep at all.
+    assert expire_now(db, analysis_id, NOW) is True
+
+    row = channel_analysis_detail(db, analysis_id, now=NOW)
+    assert row is not None
+    assert row["snapshot"] is None
+    assert row["evidence_available"] is False
+    assert row["expired_at"] == NOW
+    # Small audit trail survives, same as the bulk retention.expire() convention.
+    assert row["configuration"] == {"a": 1}
+    assert row["score"] == {"value": None, "components": {}, "components_used": []}
+
+    # Idempotency guard: a second call against an already-expired row must not report
+    # success again (mirrors the WHERE expired_at IS NULL guard in retention.expire()).
+    assert expire_now(db, analysis_id, NOW) is False
+
+    # A nonexistent id must also report False, not raise.
+    assert expire_now(db, UUID("00000000-0000-0000-0000-000000000000"), NOW) is False
+
+
+@pytest.mark.postgres
+def test_list_excludes_expired_by_default(db: Connection) -> None:
+    profile_id = seed_profile(db, CreatorProfile(), initial_catalog())
+    checkpoints = {"resolve": {"channel": {"id": "UC1", "title": "Science"}}}
+    expired_id = save_channel_analysis(db, _run(db, profile_id), profile_id, checkpoints, NOW)
+    kept_id = save_channel_analysis(
+        db, _run(db, profile_id), profile_id, checkpoints, NOW + timedelta(seconds=1)
+    )
+    assert expire_now(db, expired_id, NOW) is True
+
+    result = list_channel_analyses(db, limit=20, offset=0, now=NOW)
+    ids = {item["id"] for item in result["items"]}
+    assert expired_id not in ids
+    assert kept_id in ids
+    # total must reflect the same default filtering as the returned rows, not just the
+    # page -- a regression that filtered `rows` but not `total` would still pass a
+    # looser assertion here.
+    assert result["total"] == 1
+
+    result_all = list_channel_analyses(db, limit=20, offset=0, now=NOW, include_expired=True)
+    ids_all = {item["id"] for item in result_all["items"]}
+    assert expired_id in ids_all
+    assert kept_id in ids_all
+    assert result_all["total"] == 2
