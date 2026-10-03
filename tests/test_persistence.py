@@ -152,6 +152,36 @@ def test_migration_and_round_trip(db: Connection) -> None:
     assert set(s.metadata.tables) <= set(inspect(db).get_table_names())
 
 
+def test_migration_0012_strips_legacy_channel_analysis_advertising_key(
+    db: Connection,
+) -> None:
+    """Regression for a stale key that commit 179d29c briefly added to the model.
+
+    `CreatorProfile` now forbids extra fields, so any row persisted while that
+    field existed (real production rows included) must have the key dropped by
+    migration 0012 before `get_profile` can validate it again.
+    """
+    config = Config("alembic.ini")
+    config.attributes["connection"] = db
+    command.downgrade(config, "0011")
+    legacy_configuration = CreatorProfile().model_dump(mode="json")
+    legacy_configuration["channel_analysis_advertising"] = None
+    db.execute(
+        insert(s.creator_profiles).values(
+            profile_key="personal", configuration=legacy_configuration, version=1
+        )
+    )
+    command.upgrade(config, "head")
+    row = db.execute(
+        select(s.creator_profiles.c.configuration).where(
+            s.creator_profiles.c.profile_key == "personal"
+        )
+    ).scalar_one()
+    assert "channel_analysis_advertising" not in row
+    _, _, profile = get_profile(db)
+    assert "channel_analysis_advertising" not in profile.model_dump(mode="json")
+
+
 def test_profile_seed_is_idempotent_and_preserves_edits(db: Connection) -> None:
     first = seed_profile(db, CreatorProfile(), initial_catalog())
     assert first == seed_profile(db, CreatorProfile(), initial_catalog())
