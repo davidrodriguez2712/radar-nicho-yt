@@ -11,9 +11,20 @@ from nicheradar.integrations.contracts import Batch, Operation
 from nicheradar.integrations.youtube import YouTubeProvider
 from nicheradar.services.gateway import Gateway
 
+NOW = datetime(2026, 10, 3, 12, 0, 0, tzinfo=UTC)
+
 
 def _provider(transport: httpx.MockTransport) -> YouTubeProvider:
     return YouTubeProvider(SecretStr("key"), "scope", enabled=True, transport=transport)
+
+
+def fixture_transport(response_json: dict[str, Any]) -> httpx.MockTransport:
+    """Create a mock transport that returns the given JSON response."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=response_json)
+
+    return httpx.MockTransport(handler)
 
 
 def test_search_channels_maps_nested_id_shape() -> None:
@@ -221,3 +232,25 @@ def test_channels_list_keywords_default_to_empty_tuple_when_absent() -> None:
     provider = _provider(httpx.MockTransport(handler))
     batch = asyncio.run(provider.fetch(Operation.CHANNELS, {"id": "UC2"}, datetime.now(UTC)))
     assert batch.channels[0].keywords == ()
+
+
+def test_channels_normalize_published_at_and_video_count() -> None:
+    transport = fixture_transport(
+        {
+            "items": [
+                {
+                    "id": "UCabc",
+                    "snippet": {"title": "T", "publishedAt": "2026-05-07T08:19:19.261163Z"},
+                    "statistics": {"subscriberCount": "903", "videoCount": "184"},
+                    "contentDetails": {"relatedPlaylists": {"uploads": "UUabc"}},
+                }
+            ]
+        }
+    )
+    provider = YouTubeProvider(
+        api_key=SecretStr("k"), auth_scope="scope", enabled=True, transport=transport
+    )
+    batch = asyncio.run(provider.fetch(Operation.CHANNELS, {"id": "UCabc"}, NOW))
+    channel = batch.channels[0]
+    assert channel.published_at == datetime(2026, 5, 7, 8, 19, 19, 261163, tzinfo=UTC)
+    assert channel.video_count == 184

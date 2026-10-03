@@ -73,6 +73,8 @@ class Channel(Contract):
     uploads_playlist: str | None = None
     subtopics: tuple[str, ...] = ()
     keywords: tuple[str, ...] = ()
+    published_at: AwareDatetime | None = None
+    video_count: int | None = Field(default=None, ge=0)
     metrics: dict[str, Metric] = Field(default_factory=dict)
 
 

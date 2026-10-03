@@ -236,6 +236,8 @@ class YouTubeProvider:
                     keywords=_parse_keywords(
                         row.get("brandingSettings", {}).get("channel", {}).get("keywords")
                     ),
+                    published_at=row["snippet"].get("publishedAt"),
+                    video_count=row.get("statistics", {}).get("videoCount"),
                 )
                 for row in rows
             )
