@@ -11,8 +11,13 @@ from streamlit.testing.v1 import AppTest
 
 from nicheradar.api import create_app
 from nicheradar.config import Settings
+from nicheradar.discovery.channel_analysis import compute_panorama
+from nicheradar.domain.profile import CreatorProfile, VideoFormat, initial_catalog
+from nicheradar.integrations.contracts import Channel, Video
 from nicheradar.repositories import schema_v1 as s
+from nicheradar.repositories.core import insert_record, seed_profile
 from nicheradar.services.backlog import append_evaluation
+from nicheradar.services.channel_analysis import save_channel_analysis
 from nicheradar.workers.main import tick
 from tests.test_foundation import TOKEN
 
@@ -164,3 +169,157 @@ def test_dashboard_navigation_and_operation(
     assert not app.exception
     assert "URL, handle o ID" in str(app.text_input[-1].label)
     assert any("Todavía no hay análisis de canal guardados" in item.value for item in app.info)
+
+    # Task 15: comparison table, filter, executive summary, delete and deep-history,
+    # seeded directly (bypassing the async worker) the same way
+    # tests/test_channel_analysis_service.py and tests/test_channel_analysis_api.py do,
+    # since this suite never runs the real channel-analysis pipeline.
+    comparable_videos: dict[str, tuple[Video, ...]] = {
+        "UC_a": (
+            Video(
+                id="a1",
+                channel_id="UC_a",
+                title="t",
+                published_at=datetime.now(UTC) - timedelta(days=10),
+                views=1000,
+                format=VideoFormat.LONG,
+            ),
+        ),
+        "UC_b": (
+            Video(
+                id="b1",
+                channel_id="UC_b",
+                title="t",
+                published_at=datetime.now(UTC) - timedelta(days=10),
+                views=2000,
+                format=VideoFormat.LONG,
+            ),
+        ),
+    }
+    panorama = compute_panorama(
+        comparable_videos,
+        (Channel(id="UC_a", title="A"), Channel(id="UC_b", title="B")),
+        50_000,
+        datetime.now(UTC),
+    )
+    assert panorama["status"] == "computed"  # sanity: must exercise a real scored snapshot
+    with isolated_engine.begin() as connection:
+        profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
+        scored_run_id = insert_record(
+            connection,
+            "analysis_runs",
+            {
+                "profile_id": profile_id,
+                "mode": "synthetic",
+                "trigger": "channel_analysis",
+                "status": "succeeded",
+                "configuration": {"channel_input": "@scored-channel"},
+            },
+        )
+        scored_id = save_channel_analysis(
+            connection,
+            scored_run_id,
+            profile_id,
+            {
+                # No uploads_playlist: fetch_deep_history() short-circuits immediately
+                # (status="no_breakout_found") without needing a real gateway/provider,
+                # while still exercising the real estimate+execute endpoints end to end.
+                "resolve": {
+                    "channel": {"id": "UC_target", "title": "Scored Channel", "video_count": 10}
+                },
+                "metrics": {"panorama": panorama, "target_position": "within"},
+                "advertising_match": {"matched_niche": "Finanzas personales"},
+                "growth": {"tier": "measured", "subscribers_per_day": 12.5},
+            },
+            datetime.now(UTC),
+            configuration={"channel_input": "@scored-channel"},
+        )
+        unscored_run_id = insert_record(
+            connection,
+            "analysis_runs",
+            {
+                "profile_id": profile_id,
+                "mode": "synthetic",
+                "trigger": "channel_analysis",
+                "status": "completed",
+                "configuration": {"channel_input": "@unscored-channel"},
+            },
+        )
+        unscored_id = save_channel_analysis(
+            connection,
+            unscored_run_id,
+            profile_id,
+            {"resolve": {"channel": {"id": "UC_other", "title": "Unscored Channel"}}},
+            datetime.now(UTC),
+            configuration={"channel_input": "@unscored-channel"},
+        )
+
+    app.run()
+    assert not app.exception
+    assert "Resumen ejecutivo" in {item.value for item in app.subheader}
+    # Comparison table: sorted by Score, the real score outranks the None one.
+    table = next(df for df in app.dataframe if "Score" in df.value.columns)
+    assert list(table.value["Canal"]) == ["Scored Channel", "Unscored Channel"]
+
+    # The filter defaults to the top-ranked (highest-score) row, and its executive
+    # summary shows the LLM-matched niche, not a raw render_structured() dump.
+    filter_box = next(select for select in app.selectbox if select.label == "Ver detalle")
+    assert filter_box.value == str(scored_id)
+    assert any(metric.value == "Finanzas personales" for metric in app.metric)
+    # Pinned via compute_score() on this exact fixture (concentration ~22.2222 weighted
+    # 25, growth=25.0 weighted 15 -> 23.263.. -> rounds to 23.3). Metric.value is the
+    # rendered body string (streamlit.string_util.from_number), not the raw float.
+    assert any(metric.value == "23.3" for metric in app.metric)
+    components_table = next(df for df in app.dataframe if "Componente" in df.value.columns)
+    assert set(components_table.value["Componente"]) == {
+        "Concentración",
+        "Tasa de breakout",
+        "Demanda",
+        "RPM publicitario",
+        "Crecimiento",
+    }
+    used = dict(
+        zip(
+            components_table.value["Componente"],
+            components_table.value["Usado en el Score"],
+            strict=True,
+        )
+    )
+    assert used["Concentración"] is True
+    assert used["Crecimiento"] is True
+    assert used["Demanda"] is False
+
+    # Deep-history: the button's own label must show the real cost BEFORE it is clicked
+    # (ceil(10 / 50) pages * 2 real quota units/page = 2, per estimate_deep_history_cost).
+    deep_history_button = next(
+        button for button in app.button if button.label.startswith("Ver historial completo")
+    )
+    assert "~2 unidades de cuota real" in deep_history_button.label
+    # st.rerun() (called right after the real POST, on success) restarts the script from
+    # the top within this same click().run() -- the st.success() call just before it is
+    # never part of the settled tree, same as every other rerun-driven button already in
+    # this file (e.g. "Reanudar radar sintético" above never asserts on a flash message
+    # either). What's verified instead is the real, persisted effect.
+    deep_history_button.click().run()
+    assert not app.exception
+    assert any(item.value == "Historial completo" for item in app.subheader)
+    deep_history_detail = backend.get(f"/api/v1/channel-analyses/{scored_id}").json()
+    assert deep_history_detail["snapshot"]["deep_history"]["status"] == "no_breakout_found"
+
+    # Switching the filter to the unscored channel renders a sane executive summary
+    # (no Score, no matched niche) instead of crashing on missing snapshot keys.
+    filter_box = next(select for select in app.selectbox if select.label == "Ver detalle")
+    filter_box.set_value(str(unscored_id)).run()
+    assert not app.exception
+    assert any(metric.value == "ninguno" for metric in app.metric)
+
+    # Delete calls the real DELETE endpoint (204, no body -- the api_request() fix) and
+    # the row drops out of the comparison table on the next render.
+    next(button for button in app.button if button.label == "Eliminar este análisis").click().run()
+    assert not app.exception
+    remaining_ids = {item["id"] for item in backend.get("/api/v1/channel-analyses").json()["items"]}
+    assert str(unscored_id) not in remaining_ids
+    assert str(scored_id) in remaining_ids
+    # The UI's own comparison table reflects the same post-delete state, not just the API.
+    table = next(df for df in app.dataframe if "Score" in df.value.columns)
+    assert list(table.value["Canal"]) == ["Scored Channel"]

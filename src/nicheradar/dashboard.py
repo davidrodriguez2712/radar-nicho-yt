@@ -53,6 +53,11 @@ def api_request(
         ) as client:
             response = client.request(method, "/api/v1" + path, json=body, headers=headers)
             response.raise_for_status()
+            # DELETE /channel-analyses/{id} (and any future 204 endpoint) returns no
+            # body at all -- response.json() raises json.JSONDecodeError on an empty
+            # payload, so this must be checked before attempting to decode it.
+            if response.status_code == 204 or not response.content:
+                return {}
             result: dict[str, Any] = response.json()
             return result
     except httpx.HTTPStatusError as error:
@@ -982,6 +987,20 @@ def render_scenarios(config: Settings) -> None:
             render_structured(item["result"])
 
 
+SCORE_COMPONENT_LABELS = {
+    "concentration": "Concentración",
+    "breakout": "Tasa de breakout",
+    "demand": "Demanda",
+    "rpm": "RPM publicitario",
+    "growth": "Crecimiento",
+}
+GROWTH_TIER_LABELS = {
+    "measured": "medido",
+    "lifetime_average": "promedio de vida",
+    "insufficient_evidence": "sin datos",
+}
+
+
 def render_channel_analysis(config: Settings) -> None:
     st.subheader("Análisis de canal")
     st.caption(
@@ -1003,58 +1022,155 @@ def render_channel_analysis(config: Settings) -> None:
                 headers={"Idempotency-Key": str(uuid4())},
             )
             st.success("Análisis encolado. Aparecerá abajo cuando el radar lo procese.")
-    result = api_request(config, "GET", "/channel-analyses?limit=20")
+
+    result = api_request(config, "GET", "/channel-analyses?limit=50")
     if not result["items"]:
         st.info("Todavía no hay análisis de canal guardados.")
         return
+
+    st.subheader("Comparativa de oportunidad")
+    # None (no score yet, e.g. panorama still incomplete) sorts last, never first --
+    # a real 0-100 score always outranks "unknown" rather than tying with a high score.
+    overview = sorted(
+        result["items"],
+        key=lambda item: item["score"]["value"] if item["score"]["value"] is not None else -1.0,
+        reverse=True,
+    )
     st.dataframe(
         [
             {
                 "Canal": item.get("channel_input"),
+                "Score": item["score"]["value"],
+                "Posición": (item.get("snapshot") or {}).get("metrics", {}).get("target_position"),
+                "Nicho": (item.get("snapshot") or {})
+                .get("advertising_match", {})
+                .get("matched_niche"),
                 "Estado": item.get("status"),
                 "Creado": local_time(str(item.get("created_at")), config.timezone),
             }
-            for item in result["items"]
+            for item in overview
         ],
         hide_index=True,
         width="stretch",
     )
-    selected_id = st.selectbox(
+
+    channel_filter = st.selectbox(
         "Ver detalle",
-        [item["id"] for item in result["items"]],
+        [item["id"] for item in overview],
         format_func=lambda analysis_id: next(
-            item["channel_input"] for item in result["items"] if item["id"] == analysis_id
+            item["channel_input"] for item in overview if item["id"] == analysis_id
         ),
     )
-    if selected_id:
-        detail = api_request(config, "GET", f"/channel-analyses/{selected_id}")
-        if not detail.get("evidence_available", True):
-            st.caption(
-                "La evidencia de este análisis expiró por retención; solo se conservan "
-                "su configuración y su consumo."
+    if not channel_filter:
+        return
+
+    detail = api_request(config, "GET", f"/channel-analyses/{channel_filter}")
+    evidence_available = detail.get("evidence_available", True)
+    if not evidence_available:
+        st.caption(
+            "La evidencia de este análisis expiró por retención; solo se conservan su "
+            "configuración y su consumo."
+        )
+
+    snapshot = detail.get("snapshot") or {}
+    metrics = snapshot.get("metrics", {})
+    score = detail["score"]
+
+    st.subheader("Resumen ejecutivo")
+    cols = st.columns(4)
+    cols[0].metric("Score de oportunidad", score["value"] if score["value"] is not None else "—")
+    cols[1].metric("Posición", metrics.get("target_position") or "—")
+    cols[2].metric(
+        "Nicho asignado",
+        snapshot.get("advertising_match", {}).get("matched_niche") or "ninguno",
+    )
+    growth = snapshot.get("growth", {})
+    cols[3].metric("Crecimiento", GROWTH_TIER_LABELS.get(growth.get("tier"), "—"))
+
+    if score["components_used"]:
+        st.caption("Componentes del Score (0-100; solo los disponibles cuentan):")
+        st.dataframe(
+            [
+                {
+                    "Componente": SCORE_COMPONENT_LABELS.get(key, key),
+                    "Valor": round(value, 1) if value is not None else None,
+                    "Usado en el Score": key in score["components_used"],
+                }
+                for key, value in score["components"].items()
+            ],
+            hide_index=True,
+            width="stretch",
+        )
+
+    panorama = metrics.get("panorama")
+    if panorama:
+        st.subheader("Panorama del nicho")
+        if panorama["status"] == "computed":
+            pmetrics = panorama["metrics"]
+            pcols = st.columns(3)
+            pcols[0].metric("Videos analizados", pmetrics["videos"])
+            pcols[1].metric("Canales comparables", pmetrics["channels"])
+            pcols[2].metric(
+                "Tasa de breakout",
+                f"{pmetrics['breakout_rate']:.1%}"
+                if pmetrics["breakout_rate"] is not None
+                else "—",
             )
-        snapshot = detail.get("snapshot") or {}
-        panorama = snapshot.get("metrics", {}).get("panorama")
-        if panorama:
-            st.subheader("Panorama del nicho")
-            if panorama["status"] == "computed":
-                metrics = panorama["metrics"]
-                cols = st.columns(3)
-                cols[0].metric("Videos analizados", metrics["videos"])
-                cols[1].metric("Canales comparables", metrics["channels"])
-                if metrics["breakout_rate"] is not None:
-                    breakout_text = f"{metrics['breakout_rate']:.1%}"
-                else:
-                    breakout_text = "—"
-                cols[2].metric("Tasa de breakout", breakout_text)
-                st.caption(
-                    f"Concentración (HHI): {metrics['hhi']:.3f}"
-                    if metrics["hhi"] is not None
-                    else "Concentración: sin datos suficientes."
-                )
-            else:
-                st.info(f"Panorama incompleto: {panorama['reason']}")
-        render_structured(snapshot)
+            st.caption(
+                f"Concentración (HHI): {pmetrics['hhi']:.3f}"
+                if pmetrics["hhi"] is not None
+                else "Concentración: sin datos suficientes."
+            )
+        else:
+            st.info(f"Panorama incompleto: {panorama['reason']}")
+
+    profit = metrics.get("profit")
+    if profit:
+        st.subheader("Ganancia mensual estimada")
+        if profit["status"] == "estimated":
+            revenue, change = profit["monthly_revenue_usd"], profit["monthly_profit_usd"]
+            # monthly_revenue_usd/monthly_profit_usd round-trip through the API as
+            # Decimal-backed JSON strings (ProfitEstimate serializes with
+            # model_dump(mode="json")), never floats -- format() rejects a str operand.
+            st.write(
+                f"Ingreso: ${float(revenue['low']):.2f} - ${float(revenue['high']):.2f} · "
+                f"Ganancia: ${float(change['low']):.2f} - ${float(change['high']):.2f}"
+            )
+        else:
+            st.info(f"Ganancia incompleta: falta {', '.join(profit.get('missing', ['dato']))}.")
+
+    deep_history = snapshot.get("deep_history")
+    if deep_history:
+        st.subheader("Historial completo")
+        if deep_history["days_to_first_breakout"] is not None:
+            st.write(
+                f"Días hasta el primer video breakout: {deep_history['days_to_first_breakout']}"
+            )
+        else:
+            st.caption(f"Sin resultado concluyente ({deep_history['status']}).")
+    elif evidence_available:
+        # Calling /deep-history/estimate when evidence_available is False would 404
+        # (the endpoint requires real evidence to size the request), so this is only
+        # attempted while there is a live snapshot to estimate against.
+        estimate = api_request(
+            config, "GET", f"/channel-analyses/{channel_filter}/deep-history/estimate"
+        )
+        units = estimate.get("quota_units")
+        label = (
+            f"Ver historial completo (~{units} unidades de cuota real)"
+            if units is not None
+            else "Ver historial completo (costo desconocido)"
+        )
+        st.caption("El costo real se muestra en el botón antes de ejecutar la consulta.")
+        if st.button(label, key=f"deep-history-{channel_filter}"):
+            api_request(config, "POST", f"/channel-analyses/{channel_filter}/deep-history")
+            st.success("Historial completo obtenido.")
+            st.rerun()
+
+    if st.button("Eliminar este análisis", key=f"delete-{channel_filter}"):
+        api_request(config, "DELETE", f"/channel-analyses/{channel_filter}")
+        st.success("Análisis eliminado.")
+        st.rerun()
 
 
 def render_pilot_preflight(config: Settings) -> None:
