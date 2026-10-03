@@ -323,3 +323,140 @@ def test_dashboard_navigation_and_operation(
     # The UI's own comparison table reflects the same post-delete state, not just the API.
     table = next(df for df in app.dataframe if "Score" in df.value.columns)
     assert list(table.value["Canal"]) == ["Scored Channel"]
+
+
+def test_deep_history_partial_cap_surfaces_warnings(
+    monkeypatch: pytest.MonkeyPatch, isolated_engine: Engine
+) -> None:
+    """Regression: a `partial_by_cap` deep-history result used to render identically to
+    a complete one (just a plain "Días hasta el primer video breakout: N"), even though
+    playlistItems.list pages newest-first with no way to request oldest-first, so a
+    capped fetch only ever saw the channel's MOST RECENT videos -- a materially
+    different, potentially misleading claim. Also covers the pre-execution cost
+    estimate: fetch_deep_history's own internal loop always caps actual execution at
+    100 quota units regardless of what the estimate reports, so the button must warn
+    when the estimate exceeds that cap."""
+    backend = TestClient(
+        create_app(Settings(service_token=SecretStr(TOKEN)), engine=isolated_engine)
+    )
+    backend.headers["Authorization"] = f"Bearer {TOKEN}"
+
+    class LocalClient:
+        def __init__(self, *args: Any, **kwargs: Any):
+            pass
+
+        def __enter__(self) -> "LocalClient":
+            return self
+
+        def __exit__(self, *args: Any) -> None:
+            pass
+
+        def get(self, path: str) -> httpx.Response:
+            response: httpx.Response = backend.get(path)
+            return response
+
+        def request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+            response: httpx.Response = backend.request(method, path, **kwargs)
+            return response
+
+    monkeypatch.setattr("nicheradar.dashboard.httpx.Client", LocalClient)
+    monkeypatch.setenv("NR_DASHBOARD_PASSWORD", TOKEN)
+    monkeypatch.setenv("NR_SERVICE_TOKEN", TOKEN)
+    app = AppTest.from_file("../apps/dashboard/main.py", default_timeout=30).run()
+    app.text_input[0].set_value(TOKEN)
+    app.button[0].click().run()
+    app.radio[0].set_value("Análisis de canal").run()
+
+    comparable_videos: dict[str, tuple[Video, ...]] = {
+        "UC_a": (
+            Video(
+                id="a1",
+                channel_id="UC_a",
+                title="t",
+                published_at=datetime.now(UTC) - timedelta(days=10),
+                views=1000,
+                format=VideoFormat.LONG,
+            ),
+        ),
+    }
+    panorama = compute_panorama(
+        comparable_videos, (Channel(id="UC_a", title="A"),), 50_000, datetime.now(UTC)
+    )
+    assert panorama["status"] == "computed"  # sanity: a real score, so this row sorts first
+    with isolated_engine.begin() as connection:
+        profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
+        partial_run_id = insert_record(
+            connection,
+            "analysis_runs",
+            {
+                "profile_id": profile_id,
+                "mode": "synthetic",
+                "trigger": "channel_analysis",
+                "status": "succeeded",
+                "configuration": {"channel_input": "@partial-history"},
+            },
+        )
+        partial_id = save_channel_analysis(
+            connection,
+            partial_run_id,
+            profile_id,
+            {
+                "resolve": {
+                    "channel": {"id": "UC_partial", "title": "Partial Channel", "video_count": 10}
+                },
+                "metrics": {"panorama": panorama, "target_position": "within"},
+                # Already-executed deep-history result, capped before the full upload
+                # history was fetched.
+                "deep_history": {
+                    "status": "partial_by_cap",
+                    "days_to_first_breakout": 42,
+                    "quota_units_spent": 100,
+                },
+            },
+            datetime.now(UTC),
+            configuration={"channel_input": "@partial-history"},
+        )
+        # No score/panorama here on purpose: it sorts after the row above, so the filter
+        # needs to be switched to it below to see its deep-history estimate/button.
+        big_run_id = insert_record(
+            connection,
+            "analysis_runs",
+            {
+                "profile_id": profile_id,
+                "mode": "synthetic",
+                "trigger": "channel_analysis",
+                "status": "completed",
+                "configuration": {"channel_input": "@big-channel"},
+            },
+        )
+        big_id = save_channel_analysis(
+            connection,
+            big_run_id,
+            profile_id,
+            {"resolve": {"channel": {"id": "UC_big", "title": "Big Channel", "video_count": 3000}}},
+            datetime.now(UTC),
+            configuration={"channel_input": "@big-channel"},
+        )
+
+    app.run()
+    assert not app.exception
+    filter_box = next(select for select in app.selectbox if select.label == "Ver detalle")
+    filter_box.set_value(str(partial_id)).run()
+    assert not app.exception
+    note_shown = any(
+        "Días hasta el primer video breakout: 42" in item.value
+        and "resultado parcial" in item.value
+        for item in app.markdown
+    )
+    assert note_shown
+
+    filter_box = next(select for select in app.selectbox if select.label == "Ver detalle")
+    filter_box.set_value(str(big_id)).run()
+    assert not app.exception
+    # ceil(3000 / 50) pages * 2 real quota units/page = 120, per estimate_deep_history_cost
+    # -- well above fetch_deep_history's own 100-unit execution cap.
+    deep_history_button = next(
+        button for button in app.button if button.label.startswith("Ver historial completo")
+    )
+    assert "~120 unidades de cuota real" in deep_history_button.label
+    assert "se detiene en 100" in deep_history_button.label

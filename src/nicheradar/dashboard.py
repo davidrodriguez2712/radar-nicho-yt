@@ -1142,12 +1142,24 @@ def render_channel_analysis(config: Settings) -> None:
     deep_history = snapshot.get("deep_history")
     if deep_history:
         st.subheader("Historial completo")
+        status = deep_history["status"]
         if deep_history["days_to_first_breakout"] is not None:
+            # playlistItems.list pages newest-first with no way to request oldest-first,
+            # so a "partial_by_cap" fetch only ever saw the channel's MOST RECENT videos --
+            # its days_to_first_breakout is really "first breakout among the most recent
+            # videos fetched," not a confirmed first breakout of the whole channel history.
+            note = (
+                " (resultado parcial: no se alcanzó a revisar todo el historial, "
+                "solo los videos más recientes)"
+                if status == "partial_by_cap"
+                else ""
+            )
             st.write(
                 f"Días hasta el primer video breakout: {deep_history['days_to_first_breakout']}"
+                f"{note}"
             )
         else:
-            st.caption(f"Sin resultado concluyente ({deep_history['status']}).")
+            st.caption(f"Sin resultado concluyente ({status}).")
     elif evidence_available:
         # Calling /deep-history/estimate when evidence_available is False would 404
         # (the endpoint requires real evidence to size the request), so this is only
@@ -1156,11 +1168,20 @@ def render_channel_analysis(config: Settings) -> None:
             config, "GET", f"/channel-analyses/{channel_filter}/deep-history/estimate"
         )
         units = estimate.get("quota_units")
-        label = (
-            f"Ver historial completo (~{units} unidades de cuota real)"
-            if units is not None
-            else "Ver historial completo (costo desconocido)"
-        )
+        # fetch_deep_history's own internal loop caps actual execution at 100 quota
+        # units (its max_quota_units default) regardless of what the estimate says, so
+        # a channel with enough videos can get a capped, incomplete result even though
+        # the estimate accurately reported a higher number up front.
+        DEEP_HISTORY_QUOTA_CAP = 100
+        if units is not None:
+            label = f"Ver historial completo (~{units} unidades de cuota real)"
+            if units > DEEP_HISTORY_QUOTA_CAP:
+                label += (
+                    f" -- la estimación son {units} unidades, pero la acción se "
+                    f"detiene en {DEEP_HISTORY_QUOTA_CAP}: el resultado puede quedar incompleto"
+                )
+        else:
+            label = "Ver historial completo (costo desconocido)"
         st.caption("El costo real se muestra en el botón antes de ejecutar la consulta.")
         if st.button(label, key=f"deep-history-{channel_filter}"):
             api_request(config, "POST", f"/channel-analyses/{channel_filter}/deep-history")
