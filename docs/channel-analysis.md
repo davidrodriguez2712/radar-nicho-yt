@@ -64,23 +64,32 @@ despacha `Pipeline._process_channel_analysis_stage` (`workers/pipeline.py`):
    (confirmado que YouTube nunca los rellena): usa la primera palabra clave declarada en
    `Channel.keywords` (ver "Consulta de descubrimiento" más abajo) si existe; si no, un
    hashtag de su `description`; si tampoco hay, su título como último recurso.
-4. **`comparable_videos`**: `fetch_channel_videos` se repite para cada comparable
+4. **`advertising_match`**: `services/advertising_match.py::match_niche` hace **una sola
+   llamada real al LLM** (mismo proveedor ya habilitado para `explanation`) para elegir,
+   de entre los 218 nichos reales de `advertising_benchmarks`, el `niche_label` que mejor
+   describe al canal objetivo (por `keywords`/`description`) — o declina limpiamente, sin
+   bloquear el análisis. Ver "Benchmark publicitario" más abajo para el detalle completo
+   de la tabla, los motivos de declinación y una nota operativa importante sobre una
+   política pendiente de activar en producción.
+5. **`comparable_videos`**: `fetch_channel_videos` se repite para cada comparable
    encontrado (con heartbeat entre cada uno).
-5. **`metrics`**: `compute_comparison` calcula la velocidad de vistas/día del canal
+6. **`metrics`**: `compute_comparison` calcula la velocidad de vistas/día del canal
    objetivo y del conjunto comparable (mediana de vistas/día por canal, excluyendo al
    objetivo del rango mejor/peor), la posición del objetivo (`above`/`below`/`within`/
    `unknown`), la ganancia estimada (`scoring/profit.py::estimate_profit`, ver
    "Ganancia estimada" más abajo) y el panorama del nicho (`compute_panorama`, ver
    "Panorama del nicho" más abajo) a partir de los videos comparables.
-6. **`profit`**: la ganancia ya se calculó dentro de `compute_comparison` en la etapa
+7. **`profit`**: la ganancia ya se calculó dentro de `compute_comparison` en la etapa
    `metrics`; esta etapa existe solo para que la secuencia coincida 1:1 con el diseño
    original y deja espacio a una mejora futura sin tener que renumerar stages — hoy solo
    reenvía el checkpoint de `metrics`.
-7. **`persist`**: `save_channel_analysis` guarda canal objetivo, comparables, métricas,
+8. **`persist`**: `save_channel_analysis` guarda canal objetivo, comparables, métricas,
    posición y ganancia estimada en `channel_analyses.snapshot`, con `status`
-   `completed`/`partial`. `consumption` refleja el gasto real de la ejecución con el
-   mismo criterio que la vista de jobs: `confirmed` (libro de costos, por unidad:
-   `youtube_search_quota`, `youtube_quota`, `vidiq_credit`) y `reservations`
+   `completed`/`partial`. Antes de guardar también calcula el crecimiento real (ver
+   "Crecimiento real" más abajo) y lo agrega al snapshot como `growth`. `consumption`
+   refleja el gasto real de la ejecución con el mismo criterio que la vista de jobs:
+   `confirmed` (libro de costos, por unidad: `youtube_search_quota`, `youtube_quota`,
+   `vidiq_credit`, y `USD` cuando `advertising_match` sí llamó al LLM) y `reservations`
    todavía abiertas (`reserved`/`unknown_charge`); las liberadas no cuentan.
    `configuration` guarda los parámetros reales (`channel_input`, `mode`,
    `max_comparables`, `maximum_calls`).
@@ -184,23 +193,140 @@ valor inventado:
    `default_template`, según el formato mayoritario de los videos del canal objetivo y el
    idioma del perfil), vía `services/scenarios.py::simulate`, para obtener un
    `monthly_cost_usd` real — no una suposición de costo cero.
-4. **`advertising_rate`**: requiere que el propietario haya declarado un
-   `CreatorProfile.channel_analysis_advertising` (ver "Benchmark publicitario" abajo). Si
-   es `None`, o si el valor guardado no valida como `AdvertisingBenchmark` (dato
-   corrupto/incompleto), la ganancia degrada a `"incomplete"` — nunca interrumpe el
-   análisis completo.
+4. **`advertising_rate`**: requiere que la etapa `advertising_match` haya encontrado un
+   nicho real (ver "Benchmark publicitario" abajo) **y** que su `format` coincida con el
+   formato real detectado del canal analizado (si no hay formato confirmado, o el formato
+   no coincide, el benchmark encontrado se descarta para esta corrida — nunca se mezcla un
+   RPM de un formato distinto). Si no hay match, o el match no pasa ese filtro de formato,
+   la ganancia degrada a `"incomplete"` — nunca interrumpe el análisis completo.
 
-**Benchmark publicitario (`CreatorProfile.channel_analysis_advertising`, Configuración):**
-campo opcional (`dict[str, Any] | None`, guardado crudo y revalidado como
-`AdvertisingBenchmark` en el momento de usarlo) que el propietario declara una sola vez,
-no por análisis, desde la pestaña Configuración del dashboard (formulario "Benchmark
-publicitario para análisis de canal", `dashboard.py`). El formulario permite declarar
-versión/fecha, fuente, RPM mínimo/máximo (USD por 1000 vistas), audiencia y supuestos; un
-checkbox sin marcar al guardar limpia el benchmark de vuelta a `None`. El formulario fija
-`format="long"` y `unit="usd_ads_per_1000_views"` siempre — el pipeline no cruza este
-`format` contra el formato real detectado del canal analizado, así que un benchmark
-declarado para contenido largo se aplica igual si el canal analizado resulta ser
-mayoritariamente Shorts.
+**Benchmark publicitario (tabla `advertising_benchmarks` + etapa `advertising_match`):**
+**reemplaza por completo** el antiguo campo único `CreatorProfile.channel_analysis_advertising`
+y su formulario en Configuración ("Benchmark publicitario para análisis de canal") —
+ambos se eliminaron, no quedan como alternativa de respaldo.
+
+La tabla `advertising_benchmarks` (migración `0011_advertising_benchmarks`) se siembra
+**una sola vez**, leyendo los 218 nichos reales de
+`src/nicheradar/data/youtube_niches_rpm_longform_2026.json` (investigación propia del
+propietario): `niche_label`, `niche_description`, `format` (`long`/`shorts`), `rate_low`/
+`rate_high` (USD por 1000 vistas), `source`, `assumptions`. Editar o agregar nichos después
+de la siembra es un seguimiento pendiente, no parte de esta entrega —
+`services/advertising_benchmarks.py::list_niche_options`/`build_benchmark` solo leen la
+tabla.
+
+La etapa `advertising_match` (`services/advertising_match.py::match_niche`) hace, por
+análisis (nunca por vista del dashboard), **una sola llamada real y acotada al LLM** ya
+habilitado en producción para `explanation` (mismo proveedor), pidiéndole el `niche_label`
+que mejor calza con `keywords`/`description` del canal investigado entre los 218 reales.
+Declina limpiamente, sin levantar error ni bloquear el análisis, guardando
+`{"matched_niche": None, "reason": "<motivo>"}` en el checkpoint cuando:
+
+- `llm_disabled`: `Settings.llm_enabled` es falso.
+- `synthetic_mode`: la corrida no es `"live"` (mismo criterio que `services/explanations.py`
+  — un análisis sintético nunca debe emitir una llamada real facturable).
+- `configuration_missing`: falta `llm_configuration`/`llm_api_key`.
+- `llm_tariff_not_current`: la tarifa configurada ya venció o aún no es válida.
+- `no_niches_configured`: la tabla `advertising_benchmarks` está vacía.
+- `policy_not_enabled`: no existe una fila `provider_policies` habilitada para
+  `(provider="openai", operation="niche_match")` para alguno de los usos requeridos
+  (`query`/`storage`/`derived`/`llm_processing`).
+- `llm_failed`: la llamada al LLM lanzó una excepción (se libera la reserva de costo).
+
+Cuando sí hay match, el checkpoint guarda `{"matched_niche": "<niche_label>", "reason":
+"<lo que devuelva el proveedor>"}` y la etapa `metrics` construye un
+`AdvertisingBenchmark` real (`scoring/advertising.py`, sin cambios de contrato) a partir de
+la fila encontrada vía `build_benchmark` (`audience_key=niche_label`,
+`origin="manual_assumption"`, `valid_until` a 180 días).
+
+> **Nota operativa importante:** `scripts/activate_live.py` hoy **solo** siembra una
+> política `provider_policies` para `(provider="openai", operation="explanation")` — no
+> existe todavía la fila equivalente para `operation="niche_match"`
+> (`provider=openai, operation=niche_match, data_type=channel_analysis_niche_match`, los
+> mismos cinco `usage` que ya cubre `explanation`). **Hasta que se agregue esa fila en
+> producción, `advertising_match` siempre declina con `reason: "policy_not_enabled"`** —de
+> forma segura, nunca bloqueando el análisis, pero también nunca aportando un RPM real— y
+> por tanto el componente RPM del Score (ver abajo) queda excluido en todo análisis `live`
+> hasta que se siembre esa política.
+
+## Crecimiento real (Nivel 2/3, etapa `persist`)
+
+Antes de guardar la fila nueva, `persist` busca en `channel_analyses` la fila **más
+antigua** con el mismo `channel_external_id`, `status != "failed"` y `snapshot` todavía no
+vaciado por retención (una fila vieja puede haber expirado mientras una más reciente aún
+conserva el suyo; se busca la más antigua que **sí** tenga datos reales que leer, no la más
+antigua a secas). El resultado se guarda como `growth` dentro del snapshot, con tres
+niveles de confianza:
+
+- **`"measured"`** (Nivel 3 — crecimiento real medido): existe una fila previa real.
+  `subscribers_per_day = (suscriptores_ahora - suscriptores_fila_previa) / días`, con
+  `days_between_observations` igual a los días reales entre ambas corridas. Solo existe
+  para canales reinvestigados manualmente — nunca de un job programado nuevo (no hay
+  reconsulta automática de canales ya analizados).
+- **`"lifetime_average"`** (Nivel 2 — proxy de promedio de vida): no hay fila previa
+  utilizable. Usa `channel.published_at` (gratis, ya viene en la respuesta de
+  `channels.list`, ver abajo): `subscribers_per_day = suscriptores_ahora /
+  días_desde_published_at`. Es el caso más común, al menos al principio (la mayoría de
+  canales solo se investigan una vez).
+- **`"insufficient_evidence"`**: no hay fila previa **y** `channel.published_at` vino nulo
+  (campo opcional de la API, puede faltar). `subscribers_per_day` y
+  `days_between_observations` quedan `None`; el componente de crecimiento del Score se
+  excluye como cualquier otro dato faltante (nunca se rellena con 0).
+
+`Channel.published_at`/`Channel.video_count` (`integrations/contracts.py`) son dos campos
+nuevos, ambos opcionales: vienen gratis de `channels.list` (`snippet.publishedAt`/
+`statistics.videoCount`), que esta etapa ya pedía (`part=snippet,...,statistics,...`) sin
+costo adicional — antes se descartaban al no estar en el contrato.
+
+## Score de oportunidad (0-100)
+
+Responde "¿qué tan explotable está este nicho?", no "¿qué tan fuerte es el canal puntual
+investigado?" — un competidor fuerte dentro de un nicho es evidencia de que el nicho
+funciona, no una señal negativa. Se calcula **al vuelo** desde el `snapshot` ya guardado,
+tanto en `GET /channel-analyses` (tabla comparativa) como en el detalle —
+**nunca se almacena**, así la fórmula puede ajustarse después sin reprocesar análisis
+viejos (`services/channel_analysis_scoring.py::compute_score`).
+
+Cinco componentes, cada uno normalizado 0-100 y combinado en promedio ponderado:
+
+| Componente | Peso | Nivel / fuente |
+|---|---|---|
+| Baja concentración (HHI + top5 share) | 25 | 0 — `panorama.metrics` |
+| Tasa de breakout | 20 | 0 — `panorama.metrics.breakout_rate` |
+| Demanda (vistas promedio + pool de vistas, escala log) | 20 | 1 — `comparable_videos` |
+| RPM investigado (vs. rango de los 218 nichos) | 20 | match de `advertising_match` |
+| Crecimiento real | 15 | 2/3 — `growth` (ver arriba) |
+
+**Un componente sin dato se excluye por completo**, nunca se rellena con 0: su peso se
+reparte proporcionalmente entre los componentes que sí están disponibles. Si ningún
+componente tiene dato (p. ej. panorama `"incomplete"`), `value` es `None`. El resultado
+siempre expone `components` (el valor crudo de cada uno, o `None`) y `components_used`
+(cuáles entraron realmente al promedio), para que la cifra sea auditable y no una caja
+negra — el dashboard muestra ambos.
+
+Para el detalle exacto de cada fórmula de normalización (demanda logarítmica, rango RPM
+0.9-13.0 USD/1000 vistas calibrado contra los 218 nichos propios, tope de 50
+suscriptores/día para el crecimiento) ver "Score de oportunidad" en
+`docs/superpowers/specs/2026-10-03-channel-analysis-insights-and-scoring-design.md` — los
+pesos y la lista de componentes de esta sección ya coinciden exactamente con el código
+mergeado; las constantes de normalización no se duplican aquí a propósito.
+
+**Discrepancia encontrada entre el diseño y el código real (sin corregir, documentada
+aquí porque afecta la lectura del Score):** el diseño especifica la misma fórmula
+`subs_por_dia / 50 * 100` para el componente de crecimiento sin importar el nivel de
+confianza (Nivel 2 o 3), porque `subscribers_per_day` ya es, en ambos niveles, "suscriptores
+por día" (confirmado leyendo `workers/pipeline.py`, etapa `persist`: el nivel
+`"lifetime_average"` calcula `subscribers_per_day = suscriptores / días_desde_creación`,
+exactamente las mismas unidades que `"measured"`). Sin embargo
+`channel_analysis_scoring.py::compute_score` divide ese valor **una vez más entre 365**
+solo cuando `growth.tier == "lifetime_average"`, tratándolo como si fuera "por año" — no lo
+es. En la práctica, el componente de crecimiento sale ~365 veces más bajo para un canal en
+nivel `"lifetime_average"` que para uno `"measured"` con el mismo crecimiento real diario,
+y dado que la mayoría de análisis iniciales caen en `"lifetime_average"` (ver arriba), el
+componente de crecimiento queda efectivamente aplastado a ~0 en casi todos los análisis
+reales hasta que un canal se reinvestiga. Ningún test ejercita el valor numérico de este
+caso (`tests/test_channel_analysis_scoring.py` solo cubre `"measured"` con datos
+numéricos). No se corrigió como parte de esta tarea de documentación (alcance: solo
+`docs/`); queda como seguimiento recomendado.
 
 ## Presupuesto real (`services/channel_analysis_providers.py`, `config.py`)
 
@@ -238,6 +364,17 @@ flujo**, más alto que el `credits_per_run` por defecto del resto del radar (5),
 (`credits_per_week`/`credits_per_cycle` del mismo `CreatorProfile`) — pedir varios
 análisis de canal seguidos puede agotar ese cupo compartido antes de llegar al tope de
 50 créditos de un análisis individual.
+
+**`batch_size` (`Settings.batch_size`, `src/nicheradar/config.py`): techo elevado de 100 a
+10.000.** Este valor es el tope compartido de llamadas a proveedores por ejecución de
+cualquier flujo del radar — nunca fue la protección real de gasto, solo un freno
+estructural que con `le=100` resultaba insuficiente: un análisis real de channel-analysis
+necesita ~21-25 llamadas para completar las 8 etapas con `MAX_COMPARABLES=8`, dejando poco
+margen. Con el techo en 10.000 deja de tener efecto práctico en el flujo normal (que
+jamás se acerca a ese número). La protección real de gasto sigue siendo, sin cambios,
+`services/budget.py::reserve()` (créditos/cuota por run/semana/mes, tabla de arriba). La
+acción manual de historial completo (ver abajo) usa su **propio** tope dedicado de 100
+unidades, independiente de `batch_size`.
 
 ## Manejo de errores y degradación
 
@@ -337,31 +474,111 @@ live), no una comprobación de saldo vidIQ específica para este tope. Es un hue
 — se recomienda no depender del camino vidIQ en vivo de esta función en producción sin
 resolverlo primero.
 
+## Acción manual: historial completo (`services/channel_analysis_deep_history.py`)
+
+Botón por canal, **nunca automático ni parte del pipeline por defecto** — una acción
+explícita, separada, que el propietario dispara a mano desde el detalle de un análisis ya
+guardado. Resuelve un dato que ningún atajo barato puede aproximar: `playlistItems.list`
+siempre entrega los videos del más reciente al más antiguo, sin parámetro de orden ni
+filtro de fecha, así que llegar a los primeros videos de un canal siempre implica paginar
+todo el historial intermedio.
+
+**Breakout aquí es un concepto relativo a un solo canal**, deliberadamente distinto del
+breakout cruzado entre canales que ya usa `calculate()`/`compute_panorama` (ese mide un
+canal contra todo un cohorte de comparables; este mide un video contra la propia mediana
+de vistas del mismo canal): un video califica como "breakout" si sus vistas son **al menos
+3x la mediana** de las vistas ya obtenidas de ese canal.
+
+Flujo (`GET .../deep-history/estimate` + `POST .../deep-history`, ver "API privada"
+abajo):
+
+1. Con `channel.video_count` (ya disponible, gratis — ver "Crecimiento real" arriba) se
+   calcula el costo real estimado **antes de ejecutar nada**:
+   `estimate_deep_history_cost = ceil(video_count / 50) * 2` (una `playlistItems.list` +
+   una `videos.list` por página de 50 videos). El dashboard muestra ese número en el propio
+   botón ("Ver historial completo (~N unidades de cuota real)").
+2. Al ejecutar, pagina `playlistItems.list` (`maxResults=50`) desde el video más reciente
+   hacia atrás, acumulando IDs, y por cada lote de hasta 50 IDs hace una `videos.list`.
+3. **Tope de seguridad propio: 100 unidades de cuota por ejecución de esta acción**,
+   independiente de `batch_size` (ver arriba) — precisamente para que un solo clic no
+   pueda agotar de un golpe el cupo diario compartido con el resto del radar. Si el costo
+   real supera el tope a mitad de paginación, la acción se detiene ahí mismo y el
+   resultado queda marcado `status: "partial_by_cap"` en vez de fallar o truncar en
+   silencio.
+4. Con el historial real disponible (o lo que se alcanzó a traer), busca el video más
+   antiguo que califica como breakout (umbral del punto anterior) y calcula
+   `days_to_first_breakout = (video.published_at - channel.published_at).days`.
+5. Si no hay `uploads_playlist`, no hay videos recuperables, o ninguno califica como
+   breakout, el resultado queda `status: "no_breakout_found"` (o `"partial_by_cap"` si
+   además se agotó el tope antes de poder concluir) con `days_to_first_breakout: None` —
+   nunca se inventa un valor.
+
+El resultado se guarda en el mismo `channel_analyses.snapshot`, bajo una clave nueva
+`deep_history` (no en una tabla aparte). **No entra en la fórmula del Score** — el Score
+debe seguir funcionando igual de bien para la mayoría de análisis, donde esta acción nunca
+se ejecuta.
+
+## Borrado suave
+
+`DELETE /api/v1/channel-analyses/{id}` reutiliza exactamente la misma convención de
+expiración que ya usa `integrations/retention.py::expire()` — **nunca un `DELETE FROM`
+físico**: pone `expired_at=ahora` y vacía `snapshot` de inmediato, sin esperar a que venza
+`retain_until` (`services/channel_analysis.py::expire_now`). Es idempotente: una fila ya
+expirada (por este botón o por el barrido de retención normal) devuelve 404 la segunda vez,
+no un "éxito" repetido.
+
+`GET /channel-analyses` **excluye por defecto** las filas con `expired_at` no nulo;
+`include_expired=true` las vuelve a mostrar para quien de verdad necesite auditarlas. El
+rastro de auditoría (`channel_input`, `configuration`, `consumption`, fechas) nunca se
+borra físicamente — mismo principio que ya rige el resto del proyecto.
+
 ## API privada
 
 - `POST /api/v1/channel-analyses` — body `{"channel_input": str}`, requiere header
   `Idempotency-Key`. Valida el formato de entrada (422 si no se reconoce), exige
   `require_live_ready` si el radar está en modo live, y encola el job devolviendo
   `job_id`/`status_url` (mismo patrón que `POST /runs`).
-- `GET /api/v1/channel-analyses` — lista paginada de análisis guardados.
-- `GET /api/v1/channel-analyses/{id}` — detalle completo (snapshot + estado), 404 si no
-  existe.
+- `GET /api/v1/channel-analyses` — lista paginada de análisis guardados (`limit`/`offset`);
+  excluye expirados salvo `include_expired=true`. Cada item incluye `score` (ver "Score de
+  oportunidad" arriba), calculado al vuelo.
+- `GET /api/v1/channel-analyses/{id}` — detalle completo (snapshot + estado + `score`),
+  404 si no existe.
+- `DELETE /api/v1/channel-analyses/{id}` — borrado suave inmediato (ver "Borrado suave"
+  arriba), 204 si existía y no estaba ya expirada, 404 si no.
+- `GET /api/v1/channel-analyses/{id}/deep-history/estimate` — costo real estimado en
+  unidades de cuota, sin hacer ninguna llamada a proveedor; 404 si el análisis no existe o
+  su evidencia ya expiró.
+- `POST /api/v1/channel-analyses/{id}/deep-history` — ejecuta la acción manual de
+  historial completo (ver arriba) y devuelve el resultado; mismas condiciones 404, además
+  de `require_live_ready`.
 
 ## UI (dashboard)
 
-Pestaña "Análisis de canal" (`render_channel_analysis`, separada del Home): formulario
-de texto para URL/handle/ID con el costo máximo real declarado antes de confirmar
-("hasta 50 créditos vidIQ y 1 búsqueda —100 unidades— de cuota de YouTube"), tabla de
-análisis previos (canal, estado, fecha) y detalle del seleccionado. Antes del `snapshot`
-completo (vía `render_structured`), si `snapshot.metrics.panorama` existe se muestra un
-subtítulo "Panorama del nicho" con videos analizados, canales comparables, tasa de
-breakout (`"—"` si `breakout_rate is None` — p. ej. cuando ningún comparable resolvió un
-estrato `"small"`, como se documenta arriba) y concentración (HHI); o un aviso con la
-razón exacta si el panorama quedó `"incomplete"`.
+Pestaña "Análisis de canal" (`render_channel_analysis`, separada del Home), rediseñada
+como vista ejecutiva en vez de un volcado del `snapshot` interno completo:
 
-La pestaña Configuración (`dashboard.py`) agrega un formulario "Benchmark publicitario
-para análisis de canal" (ver "Ganancia estimada" arriba) debajo de los límites de
-presupuesto existentes, antes de la receta de producción por defecto.
+- **Formulario** de texto para URL/handle/ID con el costo máximo real declarado antes de
+  confirmar ("hasta 50 créditos vidIQ y 1 búsqueda —100 unidades— de cuota de YouTube").
+- **Tabla comparativa** ("Comparativa de oportunidad"), ordenada por Score descendente
+  (un análisis sin Score todavía calculable ordena al final, nunca empata con uno real):
+  canal, Score, posición, nicho asignado por el LLM, estado, fecha.
+- **Filtro por canal** (`selectbox`) que dispara el detalle de un análisis.
+- **Resumen ejecutivo** del seleccionado: Score y sus componentes (marcando cuáles
+  realmente entraron al promedio), posición, nicho asignado, nivel de confianza del
+  crecimiento ("medido" vs. "promedio de vida" vs. "sin datos"), panorama del nicho
+  (videos, canales, tasa de breakout, HHI — igual que antes), y ganancia estimada con su
+  rango o la razón exacta si quedó incompleta. El volcado crudo de
+  `resolve`/`target_videos`/`comparable_videos`/`views_subscriber_ratios` por video ya no
+  se muestra en la UI (sigue en `snapshot` para quien lo audite vía API).
+- **Botón "Eliminar este análisis"**: llama al `DELETE` nuevo y refresca la tabla.
+- **Botón "Ver historial completo"**: solo aparece cuando hay evidencia disponible;
+  muestra el costo real estimado en su propia etiqueta antes de confirmar, ejecuta, y
+  agrega "Días hasta el primer video breakout" (o el estado sin resultado concluyente) al
+  resumen ejecutivo.
+
+**Ya no existe** el formulario "Benchmark publicitario para análisis de canal" en la
+pestaña Configuración — se eliminó junto con el campo único que reemplazó
+`advertising_benchmarks` (ver "Ganancia estimada" arriba).
 
 ## Pruebas
 
@@ -376,29 +593,56 @@ presupuesto existentes, antes de la receta de producción por defecto.
   `test_compute_panorama_incomplete_when_no_comparable_videos`,
   `test_compute_panorama_skips_mixed_formats_without_crashing`).
 - `tests/test_channel_analysis_pipeline.py` — secuencia completa de stages en modo
-  sintético (incluyendo panorama y ganancia con un benchmark publicitario sembrado en el
-  perfil) y el camino de cupo YouTube `search.list` agotado a mitad de un segundo
-  análisis en la misma semana, dejando el job `"partial"` sin truncar en silencio.
-- `tests/test_channel_analysis_advertising_benchmark.py` — `CreatorProfile` acepta,
-  omite por defecto y rechaza (si está malformado) `channel_analysis_advertising` — a
-  nivel de dominio, no del formulario de Configuración (ver abajo).
+  sintético (incluyendo panorama y ganancia con un benchmark real asignado por
+  `advertising_match`) y el camino de cupo YouTube `search.list` agotado a mitad de un
+  segundo análisis en la misma semana, dejando el job `"partial"` sin truncar en
+  silencio. También cubre los tres niveles de `growth` en la etapa `persist`:
+  `test_growth_first_analysis_uses_lifetime_average`,
+  `test_growth_reinvestigation_uses_measured_delta`,
+  `test_growth_no_published_at_is_insufficient_evidence`,
+  `test_growth_prior_analysis_expired_falls_back_to_lifetime_average` (una fila previa
+  expirada por retención no cuenta como "previa utilizable", se sigue a la que sí
+  conserve `snapshot`).
+- `tests/test_channel_analysis_advertising_match.py` — las etapas de declinación limpia
+  de `match_niche` (`llm_disabled`, `policy_not_enabled`, etc.) y el camino exitoso con un
+  `OpenAISelector` mockeado.
+- `tests/test_advertising_benchmarks_migration.py` — la migración `0011` siembra las 218
+  filas reales desde el JSON empaquetado.
+- `tests/test_advertising_benchmarks_service.py` — `list_niche_options`/`build_benchmark`,
+  incluyendo nicho desconocido y fila malformada.
+- `tests/test_channel_analysis_scoring.py` — `compute_score` puro (sin red ni base de
+  datos): los cinco componentes presentes, exclusión/reponderación cuando falta demanda,
+  RPM, crecimiento o varios a la vez, y `value=None` sin panorama computado. **No cubre el
+  valor numérico del componente de crecimiento en nivel `"lifetime_average"`** — ver la
+  discrepancia documentada en "Score de oportunidad" arriba.
+- `tests/test_channel_analysis_deep_history.py` — `estimate_deep_history_cost` contra el
+  ejemplo real (184 videos → 8 unidades), paginación hasta agotar el historial o el tope
+  de 100 unidades (`partial_by_cap`), y el caso sin `uploads_playlist`.
 - `tests/test_channel_analysis_queue.py` — avance y finalización de
-  `CHANNEL_ANALYSIS_STAGES`, confirmación parcial.
+  `CHANNEL_ANALYSIS_STAGES` (incluyendo `advertising_match` en la secuencia),
+  confirmación parcial.
 - `tests/test_channel_analysis_budget.py` — valores por defecto conservadores, tope de
   ejecución propio distinto del `credits_per_run` general, tarifas cubren todas las
   operaciones usadas.
-- `tests/test_channel_analysis_contracts.py` — nuevas `Operation`s y que el proveedor
-  sintético las soporta.
+- `tests/test_channel_analysis_contracts.py` — nuevas `Operation`s (incluyendo
+  `NICHE_MATCH`) y que el proveedor sintético las soporta.
 - `tests/test_channel_analysis_youtube.py` — mapeo de respuestas YouTube reales
   (`search`, `commentThreads`, `videoCategories`, `channels`) a los contratos internos,
-  incluyendo `keywords` desde `brandingSettings` (presente, ausente o malformado).
-- `tests/test_channel_analysis_service.py` — guardar/listar/detallar un análisis.
+  incluyendo `keywords` desde `brandingSettings` (presente, ausente o malformado) y los
+  nuevos `published_at`/`video_count` desde `snippet`/`statistics`.
+- `tests/test_channel_analysis_service.py` — guardar/listar/detallar un análisis,
+  `expire_now` (borrado suave) y `include_expired`.
 - `tests/test_channel_analysis_api.py` — encolado autenticado y rechazo 422 de entrada
   no soportada.
+- `tests/test_dashboard_navigation.py::test_dashboard_navigation_and_operation` —
+  cobertura `AppTest` de punta a punta del dashboard rediseñado: tabla comparativa
+  ordenada por Score (una fila sin Score calculable ordena al final), filtro por canal,
+  resumen ejecutivo con componentes del Score y nicho asignado, botón de historial
+  completo mostrando el costo real en su propia etiqueta antes de ejecutar, y borrado
+  (la fila desaparece de la tabla tras el `DELETE` real).
 
-**Hueco de cobertura aceptado conscientemente:** no existe un test a nivel de dashboard
-(`AppTest`) que ejercite el formulario "Benchmark publicitario para análisis de canal" en
-sí — ni su envío ni su camino de limpiar el checkbox para volver a `None` —, solo el
-modelo de dominio subyacente (arriba). Se aceptó como hueco menor porque replicaría el
-patrón de prueba de envío de formularios ya existente en el archivo de pruebas del
-dashboard sin aportar cobertura nueva significativa.
+Ya no existe `tests/test_channel_analysis_advertising_benchmark.py` (probaba el campo
+único `CreatorProfile.channel_analysis_advertising`, eliminado junto con su formulario);
+su cobertura de dominio quedó reemplazada por
+`tests/test_advertising_benchmarks_service.py`/`tests/test_advertising_benchmarks_migration.py`
+contra la tabla real.
