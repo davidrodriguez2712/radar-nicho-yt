@@ -233,7 +233,7 @@ def load_backup(root: Path, archive: Path) -> tuple[dict[str, object], bytes]:
     report = data["metadata"]
     if (
         report.get("scope") != "bootstrap-only"
-        or report.get("revision") != "0010"
+        or report.get("revision") != "0011"
         or hashlib.sha256(dump).hexdigest() != report.get("dump_sha256")
         or not dump.startswith(b"PGDMP")
     ):

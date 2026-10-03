@@ -23,7 +23,7 @@ def test_bootstrap_snapshot_guard_and_active_schedule(db: Connection) -> None:
     create_schedule(db, profile, NOW, {})
     report = inspect_snapshot(db)
     assert report["scope"] == "bootstrap-only"
-    assert report["revision"] == "0010"
+    assert report["revision"] == "0011"
     db.execute(update(s.radar_schedules).values(paused=False))
     with pytest.raises(ValueError, match="radar_not_paused"):
         inspect_snapshot(db)
@@ -90,7 +90,7 @@ def test_encrypted_archive_roundtrip_tamper_and_wrong_key(tmp_path: Path) -> Non
     payload = b"PGDMP synthetic private fixture; not a database"
     report: dict[str, object] = {
         "scope": "bootstrap-only",
-        "revision": "0010",
+        "revision": "0011",
         "created_at": NOW.isoformat(),
         "dump_sha256": hashlib.sha256(payload).hexdigest(),
     }

@@ -173,6 +173,21 @@ channel_analyses = sa.Table(
         "status IN ('completed', 'partial', 'failed')", name="channel_analysis_status"
     ),
 )
+advertising_benchmarks = sa.Table(
+    "advertising_benchmarks",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid4),
+    sa.Column("niche_label", sa.String(120), nullable=False, unique=True),
+    sa.Column("niche_description", sa.Text, nullable=False),
+    sa.Column("format", sa.String(20), nullable=False),
+    sa.Column("rate_low", sa.Numeric, nullable=False),
+    sa.Column("rate_high", sa.Numeric, nullable=False),
+    sa.Column("source", sa.Text, nullable=False),
+    sa.Column("assumptions", sa.Text, nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.CheckConstraint("format IN ('long', 'shorts')", name="advertising_benchmark_format"),
+    sa.CheckConstraint("rate_low <= rate_high", name="advertising_benchmark_rate_order"),
+)
 topic_artifact_sources = sa.Table(
     "topic_artifact_sources",
     metadata,

@@ -22,6 +22,7 @@ BOOTSTRAP_TABLES = {
     "production_recipes",
     "production_recipe_defaults",
     "radar_schedules",
+    "advertising_benchmarks",
 }
 
 
@@ -50,7 +51,7 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
     ).scalar_one():
         raise ValueError("real_provider_enabled")
     revision = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-    if revision != "0010":
+    if revision != "0011":
         raise ValueError("unreviewed_schema_revision")
     return {"scope": "bootstrap-only", "revision": revision, "counts": counts}
 
