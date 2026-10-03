@@ -188,7 +188,7 @@ class Pipeline:
         self.clock = clock
         self.provider: Provider = provider or SyntheticProvider()
         self._provider_override = provider is not None
-        if not 1 <= maximum_calls <= 100:
+        if not 1 <= maximum_calls <= 10_000:
             raise ValueError("bounded query batch required")
         self.maximum_calls = maximum_calls
         self.settings = settings or Settings()

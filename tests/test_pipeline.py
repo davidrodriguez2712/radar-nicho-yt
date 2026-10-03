@@ -159,6 +159,20 @@ def enable_live_requirements(engine: Engine) -> tuple[UUID, UUID]:
     return profile_id, job_id
 
 
+def test_pipeline_accepts_maximum_calls_up_to_configured_batch_size_ceiling(
+    isolated_engine: Engine,
+) -> None:
+    # Settings.batch_size's own Field(le=10_000) is the real production ceiling (workers/
+    # main.py's tick() passes config.batch_size straight through as maximum_calls); this
+    # independent, hand-maintained check must stay in lockstep or a legitimately-configured
+    # batch size crashes every worker tick before any job is ever processed (confirmed live:
+    # NR_BATCH_SIZE=10000 crash-looped the worker with "bounded query batch required").
+    assert Settings.model_fields["batch_size"].metadata[-1].le == 10_000
+    Pipeline(isolated_engine, maximum_calls=10_000)
+    with pytest.raises(ValueError, match="bounded query batch required"):
+        Pipeline(isolated_engine, maximum_calls=10_001)
+
+
 def test_live_pipeline_fails_closed_before_provider_call(isolated_engine: Engine) -> None:
     with isolated_engine.begin() as connection:
         profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
