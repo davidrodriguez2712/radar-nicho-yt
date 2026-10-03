@@ -463,27 +463,50 @@ def test_advertising_benchmark_with_mismatched_format_is_not_used(
     """Spec step 9 requires 'formato/audiencia equivalente' -- a declared Shorts-format
     benchmark must not be used for a target whose detected format is Long; it must be
     treated as unset for this run (profit degrades to "incomplete" with
-    "advertising_rate" missing), never silently mixed into a mismatched-format estimate."""
+    "advertising_rate" missing), never silently mixed into a mismatched-format estimate.
+
+    The `metrics` stage now sources its benchmark exclusively via `build_benchmark()`
+    from the `advertising_match` checkpoint's `matched_niche` (see Task 6), so this must
+    exercise that real path end to end: a real (test-only) Shorts-format row is inserted
+    directly into `advertising_benchmarks`, and the job's seeded checkpoints carry an
+    `advertising_match` entry pointing at it, exactly like a real completed stage would.
+    All 218 real seeded niches are `format="long"`, so a mismatched-format row has to be
+    added here rather than reused from the real catalog."""
     with isolated_engine.begin() as connection:
-        benchmark = AdvertisingBenchmark(
-            version="2026-10-02",
-            source="owner_declared_estimate",
-            origin="manual_assumption",
-            format=VideoFormat.SHORTS,
-            language="es",
-            audience_key="general",
-            unit="usd_ads_per_1000_engaged_views",
-            rate=EstimateRange(low=Decimal("1.0"), high=Decimal("3.0")),
-            revenue_scope="youtube_ads_only_after_revenue_share",
-            assumptions="Prueba.",
-            observed_at=NOW - timedelta(days=1),
-            valid_until=NOW + timedelta(days=180),
+        insert_record(
+            connection,
+            "advertising_benchmarks",
+            {
+                "niche_label": "test_shorts_mismatch_niche",
+                "niche_description": "Test-only niche for format-mismatch rejection coverage.",
+                "format": "shorts",
+                "rate_low": Decimal("1.0"),
+                "rate_high": Decimal("3.0"),
+                "source": "test fixture, not a real advertising benchmark",
+                "assumptions": "Test fixture only.",
+                "created_at": NOW,
+            },
         )
         profile_id = seed_profile(
             connection,
             CreatorProfile(
                 paid_limits_confirmed=True,
-                channel_analysis_advertising=benchmark.model_dump(mode="json"),
+                # Legacy (pre-Task 6) field, now inert: the `metrics` stage no longer
+                # reads it at all. Seeded as a decoy to make sure that's actually true.
+                channel_analysis_advertising=AdvertisingBenchmark(
+                    version="2026-10-02",
+                    source="owner_declared_estimate",
+                    origin="manual_assumption",
+                    format=VideoFormat.SHORTS,
+                    language="es",
+                    audience_key="general",
+                    unit="usd_ads_per_1000_engaged_views",
+                    rate=EstimateRange(low=Decimal("1.0"), high=Decimal("3.0")),
+                    revenue_scope="youtube_ads_only_after_revenue_share",
+                    assumptions="Prueba.",
+                    observed_at=NOW - timedelta(days=1),
+                    valid_until=NOW + timedelta(days=180),
+                ).model_dump(mode="json"),
             ),
             initial_catalog(),
         )
@@ -505,6 +528,10 @@ def test_advertising_benchmark_with_mismatched_format_is_not_used(
                 "target_videos": {"videos": [target_video]},
                 "discover_comparables": {"comparables": [], "vidiq_omitted": None},
                 "comparable_videos": {"videos_by_channel": {}},
+                "advertising_match": {
+                    "matched_niche": "test_shorts_mismatch_niche",
+                    "reason": "response_received",
+                },
             },
         )
         assert claim(connection, "test-worker", NOW) is not None
