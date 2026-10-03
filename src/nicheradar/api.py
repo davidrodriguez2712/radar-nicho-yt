@@ -479,7 +479,7 @@ def create_app(
 
     @router.post("/channel-analyses/{analysis_id}/deep-history")
     async def deep_history_execute(analysis_id: UUID) -> dict[str, Any]:
-        from nicheradar.integrations.contracts import Channel
+        from nicheradar.integrations.contracts import Channel, ProviderError
         from nicheradar.integrations.synthetic import SyntheticProvider
         from nicheradar.services.channel_analysis import channel_analysis_detail
         from nicheradar.services.channel_analysis_deep_history import fetch_deep_history
@@ -504,6 +504,13 @@ def create_app(
         # safely, because it never also locks creator_profiles via seed_profile), this
         # endpoint closes its read transaction entirely before the Gateway call, since it
         # does need that lock earlier in the same request.
+        # Also: this Gateway reuses the original run's existing `youtube_detail_quota_per_run`
+        # budget envelope (via `detail["run_id"]` below) rather than having a truly
+        # independent cap -- a run that already spent quota reaching this stage can hit
+        # that shared cap well before fetch_deep_history's own internal 100-unit loop cap
+        # does. Either way, a ProviderError here is mapped to 409 below rather than
+        # persisting a partial fetch; quota already spent by this call before the error is
+        # not recoverable -- an accepted, documented limitation, not fixed in this pass.
         with database.begin() as connection:
             profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
             create_schedule(connection, profile_id, clock(), {"mode": config.mode})
@@ -522,7 +529,14 @@ def create_app(
         youtube_auth_scope = "synthetic" if synthetic else config.youtube_auth_scope
         if youtube_auth_scope is None:
             raise HTTPException(409, "Configura el scope de cuenta de YouTube antes de continuar.")
-        channel = Channel.model_validate(detail["snapshot"]["resolve"]["channel"])
+        # Not guaranteed by `evidence_available` alone: a hard-failed run (e.g. the
+        # channel was never resolved) can have a non-expired snapshot with no "resolve"
+        # key at all (see workers/pipeline.py's failure-report write), which would
+        # otherwise KeyError into an unhandled 500 here instead of a clean 404.
+        channel_payload = detail["snapshot"].get("resolve", {}).get("channel")
+        if channel_payload is None:
+            raise HTTPException(404, "Análisis no encontrado o sin evidencia disponible")
+        channel = Channel.model_validate(channel_payload)
         gateway = Gateway(
             database,
             youtube,
@@ -534,7 +548,10 @@ def create_app(
             channel_analysis_youtube_tariffs(),
             maximum_calls=200,
         )
-        result = await fetch_deep_history(gateway, channel, clock())
+        try:
+            result = await fetch_deep_history(gateway, channel, clock())
+        except ProviderError as error:
+            raise HTTPException(409, f"No se pudo completar el historial: {error.code}") from error
         # Plain read-then-write, no row lock: acceptable here because this is a rare,
         # manual, single-operator action with no intervening await between the SELECT
         # and UPDATE -- a concurrent writer to the same analysis_id in that narrow window

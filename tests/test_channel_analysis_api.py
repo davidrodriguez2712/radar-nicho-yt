@@ -11,6 +11,8 @@ from sqlalchemy import Engine, insert
 from nicheradar.api import create_app
 from nicheradar.config import Settings
 from nicheradar.domain.profile import CreatorProfile, initial_catalog
+from nicheradar.integrations.cache import cache_key
+from nicheradar.integrations.contracts import Operation
 from nicheradar.repositories.core import insert_record, seed_profile
 from nicheradar.repositories.schema import credit_balances
 from nicheradar.services.channel_analysis import save_channel_analysis
@@ -400,4 +402,108 @@ def test_deep_history_execute_endpoint_404s_for_unknown_analysis(isolated_engine
     response = client.post(
         "/api/v1/channel-analyses/00000000-0000-0000-0000-000000000000/deep-history"
     )
+    assert response.status_code == 404
+
+
+@pytest.mark.postgres
+def test_deep_history_execute_endpoint_maps_provider_error_to_409(
+    isolated_engine: Engine,
+) -> None:
+    """Regression: `fetch_deep_history`/the `Gateway` construction above it had no
+    try/except, so a `ProviderError` there (budget/quota exhaustion, an unresolved
+    prior attempt, etc.) became an unhandled exception -- a raw 500 -- with whatever
+    quota was already spent before the error unrecoverable either way. Forces a real
+    `ProviderError` via the Gateway's own "unresolved prior attempt" guard: a stuck
+    "sent" request already exists for the exact same first call `fetch_deep_history`
+    makes (`playlistItems.list` on this channel's uploads playlist), so Gateway raises
+    `ProviderError("unknown_charge")` immediately -- and the endpoint must now turn
+    that into a clean 409, not a crash."""
+    channel = {
+        "id": "UC1",
+        "title": "Science",
+        "uploads_playlist": "UU1",
+        "published_at": (NOW - timedelta(days=365)).isoformat(),
+        "subscribers": 1000,
+    }
+    with isolated_engine.begin() as db:
+        profile_id = seed_profile(db, CreatorProfile(), initial_catalog())
+        run_id = insert_record(
+            db,
+            "analysis_runs",
+            {
+                "profile_id": profile_id,
+                "mode": "synthetic",
+                "trigger": "channel_analysis",
+                "status": "succeeded",
+                "configuration": {"channel_input": "@scienceexplained"},
+            },
+        )
+        analysis_id = save_channel_analysis(
+            db, run_id, profile_id, {"resolve": {"channel": channel}}, NOW
+        )
+        stuck_key = cache_key(
+            "synthetic", Operation.UPLOADS, {"playlistId": "UU1", "maxResults": "50"}, "synthetic"
+        )
+        insert_record(
+            db,
+            "provider_requests",
+            {
+                "run_id": run_id,
+                "provider": "synthetic",
+                "operation": Operation.UPLOADS.value,
+                "auth_scope": "synthetic",
+                "cache_key": stuck_key,
+                "idempotency_key": "stuck-deep-history-request",
+                "state": "sent",
+                "sent_at": NOW,
+            },
+        )
+    client = TestClient(
+        create_app(
+            Settings(service_token=SecretStr(TOKEN)), engine=isolated_engine, clock=lambda: NOW
+        )
+    )
+    client.headers["Authorization"] = f"Bearer {TOKEN}"
+    response = client.post(f"/api/v1/channel-analyses/{analysis_id}/deep-history")
+    assert response.status_code == 409
+    assert "unknown_charge" in response.json()["detail"]
+
+
+@pytest.mark.postgres
+def test_deep_history_execute_endpoint_404s_when_channel_missing_from_snapshot(
+    isolated_engine: Engine,
+) -> None:
+    """Regression: `evidence_available` alone does not guarantee `snapshot["resolve"]`
+    exists -- a hard-failed run (e.g. channel never resolved) can have a non-expired
+    snapshot with no "resolve" key at all (see workers/pipeline.py's failure-report
+    write, `checkpoints | {"failure": {...}}`). Direct `detail["snapshot"]["resolve"]
+    ["channel"]` indexing would KeyError into an unhandled 500 instead of a clean 404."""
+    with isolated_engine.begin() as db:
+        profile_id = seed_profile(db, CreatorProfile(), initial_catalog())
+        run_id = insert_record(
+            db,
+            "analysis_runs",
+            {
+                "profile_id": profile_id,
+                "mode": "synthetic",
+                "trigger": "channel_analysis",
+                "status": "failed",
+                "configuration": {"channel_input": "@__none__"},
+            },
+        )
+        analysis_id = save_channel_analysis(
+            db,
+            run_id,
+            profile_id,
+            {"failure": {"stage": "resolve", "error_code": "channel_not_found"}},
+            NOW,
+            status="failed",
+        )
+    client = TestClient(
+        create_app(
+            Settings(service_token=SecretStr(TOKEN)), engine=isolated_engine, clock=lambda: NOW
+        )
+    )
+    client.headers["Authorization"] = f"Bearer {TOKEN}"
+    response = client.post(f"/api/v1/channel-analyses/{analysis_id}/deep-history")
     assert response.status_code == 404
