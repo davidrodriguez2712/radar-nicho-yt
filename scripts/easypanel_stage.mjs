@@ -457,6 +457,22 @@ try {
     if(after.source?.image!==image) throw new Error('Image setting not persisted');
     cli(['app','deploy',`${project}/${name}`,'--yes']);
     console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='set-batch-size') {
+    const value=Number(process.argv[3]);
+    if(!Number.isInteger(value) || value<1 || value>100) throw new Error('batch size must be an integer between 1 and 100');
+    const name='nicheradar-worker';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    if(before.source?.image!==channelAnalysisWorker || env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Batch size configuration preconditions failed');
+    cli(['app','update-env',`${project}/${name}`,'--yes'],{
+      env:Object.entries({...env,NR_BATCH_SIZE:String(value)}).map(([key,val])=>`${key}=${val}`).join('\n')});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['source','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected non-environment change');
+    }
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,batchSize:value,configured:true,mode:'live',paused:true}));
   } else if(action==='configure-youtube-paused') {
     const youtube=localYouTubeConfig();
     for(const name of ['nicheradar-api','nicheradar-worker']) {
@@ -559,6 +575,17 @@ try {
       input:readFileSync(new URL('./run_scheduled_once.py',import.meta.url)),encoding:'utf8',timeout:300000,maxBuffer:1024*1024});
     if(result.error || result.status!==0) throw new Error(`Scheduled observation failed (exit ${result.status}); output withheld; verify pause immediately`);
     console.log(JSON.stringify(JSON.parse(result.stdout)));
+  } else if(action==='test-channel-analysis') {
+    const channelInput=process.argv[3];
+    if(!channelInput) throw new Error('A channel_input argument is required');
+    const query=spawnSync('ssh',[...sshArgs,'docker ps --filter label=com.docker.swarm.service.name=proy1-credito-riesgo_nicheradar-dashboard --format "{{.ID}}"'],{encoding:'utf8',timeout:20000});
+    const cid=query.stdout?.trim();
+    if(query.status!==0 || !/^[a-f0-9]{12}$/.test(cid)) throw new Error('Exactly one dashboard container required');
+    const args=['docker','exec','-i',cid,'python','-',channelInput].map(quote).join(' ');
+    const result=spawnSync('ssh',[...sshArgs,args],{
+      input:readFileSync(new URL('./test_channel_analysis.py',import.meta.url)),encoding:'utf8',timeout:450000,maxBuffer:1024*1024});
+    if(result.error || result.status!==0) throw new Error(`Channel analysis test failed (exit ${result.status}); verify pause immediately; stderr: ${result.stderr}`);
+    console.log(JSON.stringify(JSON.parse(result.stdout)));
   } else if(action==='scheduled-evidence') {
     const offset=process.argv[3] ?? '0';
     if(!/^(?:[0-9]|1[0-9]|20)$/.test(offset)) throw new Error('Invalid scheduled evidence offset');
@@ -576,6 +603,17 @@ try {
     const result=spawnSync('ssh',[...sshArgs,`docker exec -i ${cid} python -`],{
       input:readFileSync(new URL('./read_llm_enrichment.py',import.meta.url)),encoding:'utf8',timeout:120000,maxBuffer:1024*1024});
     if(result.error || result.status!==0) throw new Error(`LLM enrichment read failed (exit ${result.status}); output withheld`);
+    console.log(JSON.stringify(JSON.parse(result.stdout)));
+  } else if(action==='read-channel-analysis') {
+    const analysisId=process.argv[3];
+    if(!analysisId) throw new Error('An analysis id argument is required');
+    const query=spawnSync('ssh',[...sshArgs,'docker ps --filter label=com.docker.swarm.service.name=proy1-credito-riesgo_nicheradar-api --format "{{.ID}}"'],{encoding:'utf8',timeout:20000});
+    const cid=query.stdout?.trim();
+    if(query.status!==0 || !/^[a-f0-9]{12}$/.test(cid)) throw new Error('Exactly one API container required');
+    const args=['docker','exec','-i',cid,'python','-',analysisId].map(quote).join(' ');
+    const result=spawnSync('ssh',[...sshArgs,args],{
+      input:readFileSync(new URL('./read_channel_analysis.py',import.meta.url)),encoding:'utf8',timeout:120000,maxBuffer:1024*1024});
+    if(result.error || result.status!==0) throw new Error(`Channel analysis read failed (exit ${result.status}); stderr: ${result.stderr}`);
     console.log(JSON.stringify(JSON.parse(result.stdout)));
   } else if(action==='read-backlog-ranking') {
     const query=spawnSync('ssh',[...sshArgs,'docker ps --filter label=com.docker.swarm.service.name=proy1-credito-riesgo_nicheradar-api --format "{{.ID}}"'],{encoding:'utf8',timeout:20000});
