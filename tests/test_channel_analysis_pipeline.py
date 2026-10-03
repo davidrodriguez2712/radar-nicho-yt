@@ -290,6 +290,73 @@ def _job_and_analysis(engine: Engine, job_id: UUID) -> tuple[Any, Any]:
     return job, analysis
 
 
+@pytest.fixture
+def pipeline_fixture(isolated_engine: Engine) -> tuple[Engine, UUID]:
+    """Parks a channel-analysis job right at the `metrics` stage with one comparable
+    channel of a known subscriber count (channel-0, 1000 subscribers) and a
+    matching-format comparable video -- reusable by any test that only wants to
+    exercise `metrics` stage wiring, not the full stage sequence."""
+    with isolated_engine.begin() as connection:
+        profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
+        target_video = {
+            "id": "t1",
+            "channel_id": "UC_target",
+            "title": "Target video",
+            "published_at": (NOW - timedelta(days=10)).isoformat(),
+            "views": 1000,
+            "format": "long",
+        }
+        comparable_video = {
+            "id": "c1",
+            "channel_id": "channel-0",
+            "title": "Comparable video",
+            "published_at": (NOW - timedelta(days=10)).isoformat(),
+            "views": 5000,
+            "format": "long",
+        }
+        job_id = _channel_analysis_job(
+            connection,
+            profile_id,
+            "test-ca-metrics-stage",
+            "metrics",
+            {
+                "resolve": {"channel": {"id": "UC_target", "title": "Target"}},
+                "target_videos": {"videos": [target_video]},
+                "discover_comparables": {
+                    "comparables": [
+                        {"id": "channel-0", "title": "Comparable", "subscribers": 1000}
+                    ],
+                    "vidiq_omitted": None,
+                },
+                "comparable_videos": {"videos_by_channel": {"channel-0": [comparable_video]}},
+            },
+        )
+        assert claim(connection, "test-worker", NOW) is not None
+    return isolated_engine, job_id
+
+
+def run_metrics_stage(pipeline_fixture: tuple[Engine, UUID]) -> dict[str, Any]:
+    engine, job_id = pipeline_fixture
+    pipeline = Pipeline(engine, clock=lambda: NOW, provider=SyntheticProvider())
+    asyncio.run(pipeline.process(job_id, "test-worker"))
+    job, _ = _job_and_analysis(engine, job_id)
+    result: dict[str, Any] = job["checkpoints"]["metrics"]
+    return result
+
+
+@pytest.mark.postgres
+def test_metrics_stage_populates_views_subscriber_ratios(
+    pipeline_fixture: tuple[Engine, UUID],
+) -> None:
+    """Regression for the bug confirmed in a live production run: comparable channels'
+    `subscribers` (already fetched into `comparable_channels`) never got copied onto
+    each `Video.subscriber_count` before `compute_panorama`/`calculate()` ran, so
+    `views_subscriber_ratios` always came back all-None."""
+    result = run_metrics_stage(pipeline_fixture)
+    ratios = result["panorama"]["metrics"]["views_subscriber_ratios"]
+    assert any(value is not None for value in ratios.values())
+
+
 @pytest.mark.postgres
 def test_real_youtube_quota_code_degrades_to_clean_partial(isolated_engine: Engine) -> None:
     with isolated_engine.begin() as connection:

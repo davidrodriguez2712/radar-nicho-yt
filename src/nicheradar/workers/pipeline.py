@@ -632,16 +632,24 @@ class Pipeline:
                         Video.model_validate(v) for v in checkpoints["target_videos"]["videos"]
                     )
                     channel = Channel.model_validate(checkpoints["resolve"]["channel"])
-                    comparable_videos = {
-                        channel_id: tuple(Video.model_validate(v) for v in videos)
-                        for channel_id, videos in checkpoints["comparable_videos"][
-                            "videos_by_channel"
-                        ].items()
-                    }
                     comparable_channels = tuple(
                         Channel.model_validate(c)
                         for c in checkpoints["discover_comparables"]["comparables"]
                     )
+                    subscribers_by_channel_id = {c.id: c.subscribers for c in comparable_channels}
+                    comparable_videos = {
+                        channel_id: tuple(
+                            video.model_copy(
+                                update={
+                                    "subscriber_count": subscribers_by_channel_id.get(channel_id)
+                                }
+                            )
+                            for video in (Video.model_validate(v) for v in videos)
+                        )
+                        for channel_id, videos in checkpoints["comparable_videos"][
+                            "videos_by_channel"
+                        ].items()
+                    }
                     # Only a CONFIRMED (non-UNKNOWN) format may drive the recipe/profit
                     # simulation: real YouTubeProvider videos never set `format`, so
                     # picking a majority over ALL target videos (UNKNOWN included) would
