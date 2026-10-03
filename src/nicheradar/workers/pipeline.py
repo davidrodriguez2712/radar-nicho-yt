@@ -36,7 +36,7 @@ from nicheradar.repositories.core import (
     insert_record,
     video_identity,
 )
-from nicheradar.repositories.schema import topic_artifact_sources
+from nicheradar.repositories.schema import channel_analyses, topic_artifact_sources
 from nicheradar.scoring.advertising import assess_advertising
 from nicheradar.scoring.combined import combine
 from nicheradar.scoring.market import MarketEvaluation, evaluate_market
@@ -751,11 +751,65 @@ class Pipeline:
                         connection, job["id"], owner, now, stage, checkpoints["metrics"]
                     )
                 elif stage == "persist":
+                    channel = Channel.model_validate(checkpoints["resolve"]["channel"])
+                    growth: dict[str, Any] = {
+                        "tier": "insufficient_evidence",
+                        "subscribers_per_day": None,
+                        "days_between_observations": None,
+                    }
+                    prior = (
+                        connection.execute(
+                            select(channel_analyses.c.created_at, channel_analyses.c.snapshot)
+                            .where(
+                                channel_analyses.c.channel_external_id == channel.id,
+                                channel_analyses.c.status != "failed",
+                                # La fila más antigua puede haber expirado (snapshot
+                                # vaciado por retención) mientras una más reciente todavía
+                                # lo conserva -- se busca la más antigua que SIGA teniendo
+                                # datos reales que leer, no la más antigua a secas.
+                                channel_analyses.c.snapshot.is_not(None),
+                            )
+                            .order_by(channel_analyses.c.created_at.asc())
+                            .limit(1)
+                        )
+                        .mappings()
+                        .first()
+                    )
+                    if (
+                        prior is not None
+                        and prior["snapshot"] is not None
+                        and channel.subscribers is not None
+                    ):
+                        prior_subscribers = (
+                            prior["snapshot"]
+                            .get("resolve", {})
+                            .get("channel", {})
+                            .get("subscribers")
+                        )
+                        days = (now - prior["created_at"]).days
+                        if prior_subscribers is not None and days > 0:
+                            growth = {
+                                "tier": "measured",
+                                "subscribers_per_day": (channel.subscribers - prior_subscribers)
+                                / days,
+                                "days_between_observations": days,
+                            }
+                    if (
+                        growth["tier"] == "insufficient_evidence"
+                        and channel.published_at is not None
+                    ):
+                        age_days = (now - channel.published_at).days
+                        if age_days > 0 and channel.subscribers is not None:
+                            growth = {
+                                "tier": "lifetime_average",
+                                "subscribers_per_day": channel.subscribers / age_days,
+                                "days_between_observations": None,
+                            }
                     save_channel_analysis(
                         connection,
                         run["id"],
                         run["profile_id"],
-                        checkpoints,
+                        checkpoints | {"growth": growth},
                         now,
                         configuration=configuration,
                     )

@@ -546,3 +546,224 @@ def test_failed_analysis_row_is_replaced_when_retry_later_succeeds(
     assert first == second
     assert [row["status"] for row in rows] == ["completed"]
     assert rows[0]["channel_external_id"] == "UC1"
+
+
+def _seed_prior_channel_analysis(
+    connection: Connection,
+    profile_id: UUID,
+    channel_external_id: str,
+    created_at: datetime,
+    snapshot: dict[str, Any] | None,
+    *,
+    expired_at: datetime | None = None,
+) -> None:
+    """Inserts a real (test-only) prior `channel_analyses` row directly, the way a
+    previously completed analysis run for the same channel would have left one --
+    `growth`'s "reinvestigation" path reads this table for itself, so it must be
+    exercised against a genuine row rather than a mock."""
+    run_id = insert_record(
+        connection,
+        "analysis_runs",
+        {
+            "profile_id": profile_id,
+            "mode": "synthetic",
+            "trigger": "channel_analysis",
+            "status": "running",
+            "configuration": {"channel_input": channel_external_id},
+        },
+    )
+    insert_record(
+        connection,
+        "channel_analyses",
+        {
+            "profile_id": profile_id,
+            "run_id": run_id,
+            "channel_input": channel_external_id,
+            "channel_external_id": channel_external_id,
+            "status": "completed",
+            "configuration": {},
+            "snapshot": snapshot,
+            "consumption": {},
+            "created_at": created_at,
+            "retain_until": created_at + timedelta(days=180),
+            "expired_at": expired_at,
+        },
+    )
+
+
+@pytest.fixture
+def growth_first_analysis_fixture(isolated_engine: Engine) -> tuple[Engine, UUID]:
+    """Parks a channel-analysis job right at the `persist` stage for a channel never
+    seen before in this test database, published 100 days ago with 1000 subscribers --
+    no prior `channel_analyses` row exists, so `growth` must fall back to the
+    lifetime-average (Level 2) proxy."""
+    with isolated_engine.begin() as connection:
+        profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
+        job_id = _channel_analysis_job(
+            connection,
+            profile_id,
+            "test-ca-growth-first",
+            "persist",
+            {
+                "resolve": {
+                    "channel": {
+                        "id": "UC_growth_first",
+                        "title": "Growth First",
+                        "subscribers": 1000,
+                        "published_at": (NOW - timedelta(days=100)).isoformat(),
+                    }
+                }
+            },
+        )
+        assert claim(connection, "test-worker", NOW) is not None
+    return isolated_engine, job_id
+
+
+@pytest.fixture
+def growth_reinvestigation_fixture(isolated_engine: Engine) -> tuple[Engine, UUID]:
+    """A prior, still-real `channel_analyses` row exists for the same
+    `channel_external_id`, created 10 days ago with 500 subscribers in its snapshot --
+    `growth` must use the REAL measured delta between the two observations, not the
+    lifetime-average proxy."""
+    with isolated_engine.begin() as connection:
+        profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
+        _seed_prior_channel_analysis(
+            connection,
+            profile_id,
+            "UC_growth_reinvestigate",
+            NOW - timedelta(days=10),
+            {"resolve": {"channel": {"id": "UC_growth_reinvestigate", "subscribers": 500}}},
+        )
+        job_id = _channel_analysis_job(
+            connection,
+            profile_id,
+            "test-ca-growth-reinvestigation",
+            "persist",
+            {
+                "resolve": {
+                    "channel": {
+                        "id": "UC_growth_reinvestigate",
+                        "title": "Growth Reinvestigation",
+                        "subscribers": 1000,
+                        "published_at": (NOW - timedelta(days=400)).isoformat(),
+                    }
+                }
+            },
+        )
+        assert claim(connection, "test-worker", NOW) is not None
+    return isolated_engine, job_id
+
+
+@pytest.fixture
+def growth_no_published_at_fixture(isolated_engine: Engine) -> tuple[Engine, UUID]:
+    """No prior `channel_analyses` row and no `published_at` on the channel --
+    neither a real measured delta nor a lifetime-average proxy can be computed, so
+    `growth` must land on `insufficient_evidence`."""
+    with isolated_engine.begin() as connection:
+        profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
+        job_id = _channel_analysis_job(
+            connection,
+            profile_id,
+            "test-ca-growth-no-published-at",
+            "persist",
+            {
+                "resolve": {
+                    "channel": {
+                        "id": "UC_growth_no_published_at",
+                        "title": "Growth No Published At",
+                        "subscribers": 1000,
+                    }
+                }
+            },
+        )
+        assert claim(connection, "test-worker", NOW) is not None
+    return isolated_engine, job_id
+
+
+@pytest.fixture
+def growth_expired_prior_fixture(isolated_engine: Engine) -> tuple[Engine, UUID]:
+    """A prior `channel_analyses` row exists for the same `channel_external_id`, but
+    retention has since expired it (`snapshot=None`, `expired_at` set) -- the oldest
+    row by period, but no longer the oldest with real data to read. `growth` must skip
+    it (never KeyError on a None snapshot) and fall back to the lifetime-average proxy,
+    exactly as if no prior row existed at all."""
+    with isolated_engine.begin() as connection:
+        profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
+        _seed_prior_channel_analysis(
+            connection,
+            profile_id,
+            "UC_growth_expired",
+            NOW - timedelta(days=10),
+            None,
+            expired_at=NOW - timedelta(days=1),
+        )
+        job_id = _channel_analysis_job(
+            connection,
+            profile_id,
+            "test-ca-growth-expired-prior",
+            "persist",
+            {
+                "resolve": {
+                    "channel": {
+                        "id": "UC_growth_expired",
+                        "title": "Growth Expired Prior",
+                        "subscribers": 1000,
+                        "published_at": (NOW - timedelta(days=100)).isoformat(),
+                    }
+                }
+            },
+        )
+        assert claim(connection, "test-worker", NOW) is not None
+    return isolated_engine, job_id
+
+
+def run_persist_stage(pipeline_fixture: tuple[Engine, UUID]) -> dict[str, Any]:
+    engine, job_id = pipeline_fixture
+    pipeline = Pipeline(engine, clock=lambda: NOW, provider=SyntheticProvider())
+    asyncio.run(pipeline.process(job_id, "test-worker"))
+    _, analysis = _job_and_analysis(engine, job_id)
+    assert analysis is not None
+    result: dict[str, Any] = dict(analysis)
+    return result
+
+
+@pytest.mark.postgres
+def test_growth_first_analysis_uses_lifetime_average(
+    growth_first_analysis_fixture: tuple[Engine, UUID],
+) -> None:
+    saved = run_persist_stage(growth_first_analysis_fixture)
+    growth = saved["snapshot"]["growth"]
+    assert growth["tier"] == "lifetime_average"
+    assert growth["subscribers_per_day"] == pytest.approx(1000 / 100, rel=0.01)
+    assert growth["days_between_observations"] is None
+
+
+@pytest.mark.postgres
+def test_growth_reinvestigation_uses_measured_delta(
+    growth_reinvestigation_fixture: tuple[Engine, UUID],
+) -> None:
+    saved = run_persist_stage(growth_reinvestigation_fixture)
+    growth = saved["snapshot"]["growth"]
+    assert growth["tier"] == "measured"
+    assert growth["days_between_observations"] == 10
+    assert growth["subscribers_per_day"] == pytest.approx((1000 - 500) / 10, rel=0.01)
+
+
+@pytest.mark.postgres
+def test_growth_no_published_at_is_insufficient_evidence(
+    growth_no_published_at_fixture: tuple[Engine, UUID],
+) -> None:
+    saved = run_persist_stage(growth_no_published_at_fixture)
+    assert saved["snapshot"]["growth"] == {
+        "tier": "insufficient_evidence",
+        "subscribers_per_day": None,
+        "days_between_observations": None,
+    }
+
+
+@pytest.mark.postgres
+def test_growth_prior_analysis_expired_falls_back_to_lifetime_average(
+    growth_expired_prior_fixture: tuple[Engine, UUID],
+) -> None:
+    saved = run_persist_stage(growth_expired_prior_fixture)
+    assert saved["snapshot"]["growth"]["tier"] == "lifetime_average"
