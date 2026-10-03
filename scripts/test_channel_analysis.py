@@ -1,12 +1,30 @@
-"""Unpause, queue one real channel analysis, observe it to completion, and always pause again."""
+"""Unpause, queue one real channel analysis, observe it to completion, and always pause again.
+
+PUT /radar toggles a single global pause flag shared with the scheduled catalog-
+discovery radar (workers/main.py's tick() claims from the SAME job queue for both,
+with external_concurrency=1 serializing them) -- unpausing here can accidentally wake
+a real, overdue scheduled discovery run that then starves this test's own job of the
+worker's single concurrency slot (observed directly: a due "radar" schedule woke up the
+moment this unpaused, and every channel-analysis attempt failed with attempts_exhausted
+while that real job monopolized the worker). Deferring the schedule's own next_due_at
+past "now" before unpausing -- only when it is currently due -- avoids this without
+touching any real scheduling semantics: the scheduled run still fires at its next
+regular interval, just not inside this test's brief window.
+"""
 
 import json
 import os
 import sys
 import time
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import httpx
+from sqlalchemy import select, update
+
+from nicheradar.config import Settings
+from nicheradar.repositories import schema_v1 as s
+from nicheradar.repositories.database import database_engine
 
 channel_input = sys.argv[1]
 base = os.environ["NR_API_URL"].rstrip("/") + "/api/v1"
@@ -21,9 +39,32 @@ def request(method: str, path: str, **kwargs: object) -> dict[str, object]:
     return response.json()
 
 
+def defer_due_radar_schedule() -> None:
+    engine = database_engine(Settings())
+    now = datetime.now(UTC)
+    with engine.begin() as connection:
+        schedule = (
+            connection.execute(
+                select(s.radar_schedules.c.next_due_at, s.radar_schedules.c.interval_seconds).where(
+                    s.radar_schedules.c.schedule_key == "radar"
+                )
+            )
+            .mappings()
+            .one()
+        )
+        if schedule["next_due_at"] <= now:
+            connection.execute(
+                update(s.radar_schedules)
+                .where(s.radar_schedules.c.schedule_key == "radar")
+                .values(next_due_at=now + timedelta(seconds=schedule["interval_seconds"]))
+            )
+    engine.dispose()
+
+
 result: dict[str, object] | None = None
 job_id: str | None = None
 try:
+    defer_due_radar_schedule()
     request("PUT", "/radar", json={"paused": False})
     queued = request(
         "POST",
