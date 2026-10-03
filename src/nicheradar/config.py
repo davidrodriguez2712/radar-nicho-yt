@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     worker_poll_seconds: int = Field(default=30, ge=1, le=3600)
     worker_maximum_attempts: int = Field(default=3, ge=1, le=10)
     external_concurrency: int = Field(default=1, ge=1, le=4)
-    batch_size: int = Field(default=20, ge=1, le=100)
+    batch_size: int = Field(default=100, ge=1, le=100)
     trend_interval_tolerance: float = Field(default=0.1, ge=0, le=0.25)
     trend_lookback_days: int = Field(default=90, ge=1, le=90)
     embedding_model_directory: Path | None = None
