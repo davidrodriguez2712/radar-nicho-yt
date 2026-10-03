@@ -117,9 +117,22 @@ def test_list_channel_analyses_includes_score(db: Connection) -> None:
 
     result = list_channel_analyses(db, limit=20, offset=0, now=NOW)
     item = result["items"][0]
-    assert "score" in item
-    assert item["score"]["value"] is None or 0 <= item["score"]["value"] <= 100
-    assert set(item["score"]) == {"value", "components", "components_used"}
+    # Pin the actual compute_score() outcome for this fixture's real numbers (2 channels,
+    # 1 video each -> hhi=0.5556, top5_share=1.0 -> concentration-only score of 22.2), not
+    # just "a value in range" -- a regression that silently stopped calling compute_score
+    # and always fell through to the None-score default would still satisfy a looser
+    # assertion here, so this must pin the real, specific result.
+    assert item["score"] == {
+        "value": 22.2,
+        "components": {
+            "concentration": pytest.approx(22.22222222222222),
+            "breakout": None,
+            "demand": None,
+            "rpm": None,
+            "growth": None,
+        },
+        "components_used": ["concentration"],
+    }
 
 
 def _run(db: Connection, profile_id: UUID) -> UUID:
@@ -213,6 +226,10 @@ def test_expire_nulls_snapshot_only_when_retention_is_due(db: Connection) -> Non
     assert expired["snapshot"] is None
     assert expired["expired_at"] == later
     assert expired["evidence_available"] is False
+    # _view() must never call compute_score(None) once the snapshot is withheld -- it
+    # has to fall back to the default null-score shape instead of crashing or silently
+    # scoring stale/partial data.
+    assert expired["score"] == {"value": None, "components": {}, "components_used": []}
     # Small audit trail survives: what was asked and what it cost.
     assert expired["configuration"] == {"a": 1}
     assert expired["status"] == "completed"
