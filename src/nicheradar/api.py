@@ -499,10 +499,11 @@ def create_app(
         # separate connections per call (services/budget.py::lock_profile does
         # `SELECT ... FOR UPDATE` on that same row) -- combined with Depends(db), the two
         # connections deadlock against each other until the statement timeout cancels it
-        # (confirmed while writing this endpoint's tests). So this short, explicit
-        # transaction reads everything it needs and closes BEFORE the Gateway call runs,
-        # exactly like the worker pipeline's own `with self.engine.begin() as connection:`
-        # read block (workers/pipeline.py) closes before its Gateway calls.
+        # (confirmed while writing this endpoint's tests). Unlike workers/pipeline.py's
+        # stage processing (which keeps a transaction open across its own Gateway calls
+        # safely, because it never also locks creator_profiles via seed_profile), this
+        # endpoint closes its read transaction entirely before the Gateway call, since it
+        # does need that lock earlier in the same request.
         with database.begin() as connection:
             profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
             create_schedule(connection, profile_id, clock(), {"mode": config.mode})
@@ -534,6 +535,10 @@ def create_app(
             maximum_calls=200,
         )
         result = await fetch_deep_history(gateway, channel, clock())
+        # Plain read-then-write, no row lock: acceptable here because this is a rare,
+        # manual, single-operator action with no intervening await between the SELECT
+        # and UPDATE -- a concurrent writer to the same analysis_id in that narrow window
+        # is an accepted, documented risk, not a case this endpoint guards against.
         with database.begin() as write_connection:
             snapshot = write_connection.execute(
                 select(channel_analyses.c.snapshot).where(channel_analyses.c.id == analysis_id)
