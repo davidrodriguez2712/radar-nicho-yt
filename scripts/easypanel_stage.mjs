@@ -42,6 +42,9 @@ const channelAnalysisDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256
 const insightsScoreBackend = 'davidrodriguez2712/nicheradar-backend@sha256:8d2ed4997c5f0cd80d3427c36cc65b54a2a174847c3c7dbf243c4d2021a2223b';
 const insightsScoreWorker = 'davidrodriguez2712/nicheradar-worker@sha256:84173a9da7bbd7f106b56a0b2187f49b60c554090f9b930f343a64c189e5c780';
 const insightsScoreDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:81244accb27f77b7456abfc4d68fffc2e46b5393a5f8a524aa16783e2bcc1cfe';
+const batchSizeCrashFixBackend = 'davidrodriguez2712/nicheradar-backend@sha256:dc3b1c10066bf1a10aa30adf5b9e9f32f9300801a825b50f4198e745218aa6b6';
+const batchSizeCrashFixWorker = 'davidrodriguez2712/nicheradar-worker@sha256:d93066845bd95efdd187333c02fba7e2026957e8a6c65e194dfda0be51eefbdd';
+const batchSizeCrashFixDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:94f028e561f89943d6f1cd3c7110d089159a04612838580578b9020751d4335f';
 const postgres = 'postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280';
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
@@ -414,6 +417,26 @@ try {
       encoding:'utf8',timeout:180000,maxBuffer:1024*1024});
     console.log(JSON.stringify({migrationExit:result.status,processError:result.error?.code ?? null}));
     if(result.error || result.status!==0) throw new Error('Migration failed; raw response withheld. Inspect only this migration safely.');
+  } else if(action==='deploy-batch-size-crash-fix-code') {
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?insightsScoreDashboard:name==='nicheradar-worker'?insightsScoreWorker:insightsScoreBackend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Batch size crash fix release preconditions failed');
+    const image=isDashboard?batchSizeCrashFixDashboard:name==='nicheradar-worker'?batchSizeCrashFixWorker:batchSizeCrashFixBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
   } else if(action==='deploy-channel-analysis-insights-code') {
     const name=process.argv[3];
     if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
