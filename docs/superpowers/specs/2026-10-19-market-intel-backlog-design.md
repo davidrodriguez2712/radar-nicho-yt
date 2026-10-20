@@ -293,3 +293,17 @@ Prevalecen sobre las secciones anteriores si hay contradicción.
     `0012` y fallan cerrado ante datos de investigación; se actualizan a `0013` y las tablas
     de mercado cuentan como datos de investigación (sin respaldo en el v1; la tarea 9.4 de
     OpenSpec sigue abierta).
+12. **Compuerta de Términos de Servicio como configuración.** `NR_MARKET_INTEL_LIVE_ENABLED`
+    (por defecto `false`) impide que el scraper corra o se reanude en modo live; la API
+    responde 409 al intentar reanudarlo sin ella. Una corrida manual acotada
+    (`scripts/run_market_scrape_once.py`) ignora la pausa de la programación pero no esta
+    compuerta.
+13. **Estado de verificación `unverifiable`** (recuento oculto o URL no soportada): neutro, no
+    se cuenta como verificado ni excluye el ingreso de la ficha. `mismatch` y `not_found` sí lo
+    excluyen de las estadísticas.
+14. **Múltiplo precio/ingreso en años.** Se mantiene la definición del spec (precio ÷ ingreso
+    anual) y el score de validación usa 0,5 años (6 meses de ingreso) como 0 y 2,5 años
+    (30 meses) como 100.
+15. **Aislamiento del radar.** Las corridas `market_scrape` se excluyen de `last_success_at` en
+    `GET /status` y del conteo de solicitudes por tipo de `plan_family` (nuevo
+    `request_counts_by_kind`), para no alterar el balance exploración/refresco del radar.
