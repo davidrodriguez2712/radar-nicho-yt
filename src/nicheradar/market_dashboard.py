@@ -132,10 +132,10 @@ def render_market(config: Settings, api: ApiRequest) -> None:
     if with_channel:
         st.caption("Analizar el canal usa el flujo existente y su presupuesto vidIQ.")
     for index, row in enumerate(with_channel):
+        st.text(row["title"])  # plain text: a seller title is never rendered as Markdown
         st.button(
             "Analizar canal",
             key=f"analyze-{index}",
-            help=row["title"],
             on_click=prefill_analysis,
             args=(row["channel_url"],),
         )

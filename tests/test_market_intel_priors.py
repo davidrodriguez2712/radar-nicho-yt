@@ -128,3 +128,27 @@ def test_budget_decline_stops_the_batch_before_any_call(isolated_engine: Engine)
         )
     )
     assert result == {"pending": 5, "saved": 0, "stopped_reason": "run_budget_exhausted"}
+
+
+def test_a_persistently_invalid_niche_does_not_starve_the_batch(isolated_engine: Engine) -> None:
+    with isolated_engine.begin() as connection:
+        profile_id = seed_profile(connection, funded_profile(), initial_catalog())
+        run = seed_run(connection, profile_id)
+        seed_policies(connection)
+        stubborn = pending_priors(connection, 1)[0]["niche_label"]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        options = body["text"]["format"]["schema"]["properties"]["niche_label"]["enum"]
+        text = answer(niche_label="made_up_niche" if options[0] == stubborn else options[0])
+        return httpx.Response(200, json=payload(text))
+
+    selector = OpenAISelector(
+        SecretStr("secret-for-mocked-http-only"), transport=httpx.MockTransport(handler)
+    )
+    result = asyncio.run(
+        label_niche_priors(
+            isolated_engine, run, settings_llm_enabled(), NOW, limit=2, selector=selector
+        )
+    )
+    assert result["saved"] == 2

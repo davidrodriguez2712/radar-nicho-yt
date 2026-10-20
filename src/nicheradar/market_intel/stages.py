@@ -3,9 +3,12 @@
 
 import asyncio
 from collections.abc import Callable
+from datetime import datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import Connection
+import httpx
+from sqlalchemy import Connection, func, select
 
 from nicheradar.market_intel.classify import (
     classify_listing,
@@ -36,6 +39,7 @@ from nicheradar.market_intel.runs import (
     set_paused,
 )
 from nicheradar.market_intel.verification import stage_verify
+from nicheradar.repositories.schema import market_scrape_runs
 
 MAXIMUM_PARSE_ERROR_SHARE = 0.2
 MINIMUM_PARSE_ERRORS = 3
@@ -100,6 +104,22 @@ def stage_reconcile(ctx: RunContext, connection: Connection) -> dict[str, Any]:
     if not listed.get("complete"):
         # Never infer a sale or removal from a crawl that did not reach the end of the list.
         return {"skipped": "crawl_incomplete", "disappeared": 0, "partial": True}
+    day = local_date(ctx.started_at, ctx.config.timezone)
+    zone = ZoneInfo(ctx.config.timezone)
+    day_start = datetime.combine(day, time.min, tzinfo=zone)
+    already = connection.execute(
+        select(func.count())
+        .select_from(market_scrape_runs)
+        .where(
+            market_scrape_runs.c.id != ctx.run_id,
+            market_scrape_runs.c.started_at >= day_start,
+            market_scrape_runs.c.started_at < day_start + timedelta(days=1),
+            market_scrape_runs.c.checkpoints.has_key("reconcile"),
+        )
+    ).scalar_one()
+    if already:
+        # One absence is one day: a second complete crawl the same local day never counts again.
+        return {"skipped": "already_reconciled_today", "disappeared": 0}
     started = ctx.started_at.fromisoformat(listed["started_at"])
     return {"disappeared": reconcile(connection, ctx.source.name, started)}
 
@@ -137,6 +157,9 @@ def stage_classify(ctx: RunContext) -> dict[str, Any]:
             if classification is None:
                 outcome["stopped_reason"] = answer["reason"]
                 return
+            if classification.reason == "incomplete_response":
+                outcome["transient_skips"] = outcome.get("transient_skips", 0) + 1
+                continue  # a truncated answer says nothing about the listing: retry tomorrow
             if format_from_category(item["category"]) == "shorts":
                 classification = classification.model_copy(update={"format": "shorts"})
             with ctx.engine.begin() as connection:
@@ -208,14 +231,14 @@ def execute_run(ctx: RunContext) -> str:
                 status=status,
                 stats=_summary(final["checkpoints"]),
             )
-            advance_schedule(connection, ctx.clock())
+            advance_schedule(connection, ctx.started_at)
         return status
-    except SourceError as error:
-        status = "blocked" if error.code == "blocked" else "failed"
+    except (SourceError, httpx.HTTPError) as error:
+        # A network failure is a transient source outage: the day fails and tomorrow retries.
+        code = error.code if isinstance(error, SourceError) else "source_unavailable"
+        status = "blocked" if code == "blocked" else "failed"
         with ctx.engine.begin() as connection:
-            finish(
-                connection, ctx.run_id, ctx.owner, ctx.clock(), status=status, error_code=error.code
-            )
+            finish(connection, ctx.run_id, ctx.owner, ctx.clock(), status=status, error_code=code)
             if status == "blocked":
                 set_paused(connection, True, ctx.clock())
         return status

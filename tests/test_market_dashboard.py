@@ -133,6 +133,7 @@ def test_market_tab_decisions_prefill_and_scraper_controls(
     assert stored["decision"] == "tentativo" and stored["note"] == "investigar"
 
     analyze = next(button for button in app.button if button.label == "Analizar canal")
+    assert not analyze.help  # a seller title must never reach a Markdown-rendered tooltip
     analyze.click().run()
     assert not app.exception
     assert app.radio[0].value == "Análisis de canal"

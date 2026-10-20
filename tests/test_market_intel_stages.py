@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+import httpx
 import pytest
 import sqlalchemy as sa
 from sqlalchemy import Engine
@@ -18,6 +19,7 @@ from nicheradar.market_intel.contracts import (
     ListingDetail,
     SourceError,
 )
+from nicheradar.market_intel.manual import run_once
 from nicheradar.market_intel.runs import (
     LEASE_SECONDS,
     STAGES,
@@ -36,6 +38,7 @@ from nicheradar.repositories.core import seed_profile
 from nicheradar.repositories.schema import (
     listing_classifications,
     listing_observations,
+    market_intel_schedule,
     market_niche_snapshots,
     market_scrape_runs,
     marketplace_listings,
@@ -230,6 +233,20 @@ def test_an_isolated_unparseable_detail_is_tolerated_and_not_retried(
     assert listing(isolated_engine, "3")["detail_fetched_at"] is not None
 
 
+def test_a_network_error_fails_the_run_instead_of_leaving_it_running(
+    isolated_engine: Engine,
+) -> None:
+    class Unreachable(ScriptedSource):
+        def crawl(self) -> CrawlResult:
+            raise httpx.ConnectError("no route")
+
+    resume(isolated_engine)
+    assert tick(isolated_engine, Unreachable())["status"] == "failed"
+    with isolated_engine.connect() as connection:
+        run = connection.execute(sa.select(market_scrape_runs)).mappings().one()
+    assert run["status"] == "failed" and run["error_code"] == "source_unavailable"
+
+
 def test_one_unavailable_detail_does_not_freeze_the_run(isolated_engine: Engine) -> None:
     resume(isolated_engine)
     ids = [str(i) for i in range(1, 11)]
@@ -348,3 +365,37 @@ def test_worker_main_runs_the_scraper_and_survives_its_failure(
     assert calls == ["radar", "market"]
     output = capsys.readouterr().out
     assert '"error_code": "unexpected"' in output and "private detail" not in output
+
+
+def test_a_second_complete_crawl_the_same_local_day_is_not_a_second_miss(
+    isolated_engine: Engine,
+) -> None:
+    resume(isolated_engine)
+    assert tick(isolated_engine, ScriptedSource(crawl_of("A", "B")))["status"] == "succeeded"
+    daily = ScriptedSource(crawl_of("A"), crawl_of("A"))
+    assert tick(isolated_engine, daily, days=1)["status"] == "succeeded"
+    assert listing(isolated_engine, "B")["consecutive_misses"] == 1
+    manual = run_once(
+        SYNTHETIC, isolated_engine, source=daily, clock=lambda: NOW + DAY + timedelta(hours=1)
+    )
+    assert manual["status"] == "succeeded"
+    assert listing(isolated_engine, "B")["consecutive_misses"] == 1  # still one day of absence
+    assert listing(isolated_engine, "B")["status"] == "active"
+
+
+def test_next_due_counts_from_the_run_start_so_a_long_run_never_drifts(
+    isolated_engine: Engine,
+) -> None:
+    resume(isolated_engine)
+    moments = iter(NOW + timedelta(minutes=10 * step) for step in range(1000))
+    tick_market(
+        SYNTHETIC,
+        isolated_engine,
+        source=ScriptedSource(crawl_of("A")),
+        clock=lambda: next(moments),
+        owner="test-worker",
+    )
+    with isolated_engine.connect() as connection:
+        started = connection.execute(sa.select(market_scrape_runs.c.started_at)).scalar_one()
+        due = connection.execute(sa.select(market_intel_schedule.c.next_due_at)).scalar_one()
+    assert due == started + DAY

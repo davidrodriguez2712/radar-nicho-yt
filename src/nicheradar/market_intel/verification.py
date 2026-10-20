@@ -36,10 +36,8 @@ Resolver = Callable[[str], Awaitable[Channel]]
 
 
 def verification_status(declared: int | None, real: int | None) -> str:
-    if real is None:
-        return "unverifiable"
-    if declared is None:
-        return "verified"
+    if real is None or declared is None:
+        return "unverifiable"  # a comparison needs both numbers
     gap = abs(declared - real) / max(real, 1)
     return "mismatch" if gap > SUBS_MISMATCH_TOLERANCE else "verified"
 

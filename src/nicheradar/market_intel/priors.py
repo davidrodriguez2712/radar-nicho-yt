@@ -58,10 +58,15 @@ async def label_niche_priors(
     selector: OpenAISelector | None = None,
 ) -> dict[str, Any]:
     with engine.connect() as connection:
-        pending = pending_priors(connection, limit)
+        # Every pending niche is a candidate: one that keeps answering invalid must not take a
+        # slot of the batch forever. The limit counts saved priors, not attempts.
+        candidates = pending_priors(connection, 10_000)
+    pending = candidates[:limit]
     saved = 0
     stopped: str | None = None
-    for option in pending:
+    for option in candidates:
+        if saved >= limit:
+            break
         label = option["niche_label"]
         answer = await classify_listing(
             engine,

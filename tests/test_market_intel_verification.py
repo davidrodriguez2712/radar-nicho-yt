@@ -34,7 +34,7 @@ SOURCE = "dealbaron"
         (100_000, 130_000, "verified"),  # 23% apart: inside the 25% tolerance
         (100_000, 140_000, "mismatch"),
         (100_000, 50_000, "mismatch"),
-        (None, 5_000, "verified"),
+        (None, 5_000, "unverifiable"),  # nothing declared, nothing compared
         (5_000, None, "unverifiable"),
         (0, 0, "verified"),
     ],

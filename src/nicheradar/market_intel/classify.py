@@ -168,7 +168,7 @@ def _actual_usd(payload: dict[str, Any], tariff: LLMTariff) -> Decimal | None:
         return None
 
 
-def _unusable(actual: Decimal | None) -> ListingClassification:
+def _unusable(actual: Decimal | None, reason: str = "invalid_response") -> ListingClassification:
     return ListingClassification(
         niche_label=None,
         other_label=None,
@@ -176,7 +176,7 @@ def _unusable(actual: Decimal | None) -> ListingClassification:
         language="unknown",
         traits=dict.fromkeys(TRAIT_KEYS),
         actual_usd=actual,
-        reason="invalid_response",
+        reason=reason,
     )
 
 
@@ -185,7 +185,7 @@ def parse_classification_response(
 ) -> ListingClassification:
     actual = _actual_usd(payload, tariff)
     if payload.get("status") != "completed":
-        return _unusable(actual)
+        return _unusable(actual, "incomplete_response")
     try:
         messages = [item for item in payload["output"] if item["type"] == "message"]
         if len(messages) != 1 or len(messages[0]["content"]) != 1:

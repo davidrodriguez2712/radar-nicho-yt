@@ -125,11 +125,6 @@ def test_parse_language_must_be_iso_code_or_unknown() -> None:
     assert result.language == "unknown"
 
 
-def test_parse_incomplete_response_is_invalid() -> None:
-    result = parse_classification_response(payload(answer(), status="incomplete"), TARIFF, LABELS)
-    assert result.reason == "invalid_response" and result.niche_label is None
-
-
 def test_shorts_category_fixes_format_without_the_llm() -> None:
     assert format_from_category("YouTube shorts & Facebook reels") == "shorts"
     assert format_from_category("Games") is None and format_from_category(None) is None
@@ -385,3 +380,8 @@ def test_injected_label_outside_the_list_comes_back_invalid(isolated_engine: Eng
     classification = result["classification"]
     assert classification is not None and classification.reason == "invalid_response"
     assert classification.niche_label is None
+
+
+def test_an_incomplete_response_is_marked_as_transient() -> None:
+    result = parse_classification_response(payload(answer(), status="incomplete"), TARIFF, LABELS)
+    assert result.reason == "incomplete_response" and result.niche_label is None
