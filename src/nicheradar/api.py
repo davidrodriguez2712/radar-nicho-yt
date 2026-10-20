@@ -886,7 +886,5 @@ def create_app(
         return {"items": [dict(row) for row in rows]}
 
     app.include_router(router)
-    app.include_router(
-        market_router(authenticate=authenticate, db=db, config=config, clock=clock)
-    )
+    app.include_router(market_router(authenticate=authenticate, db=db, config=config, clock=clock))
     return app

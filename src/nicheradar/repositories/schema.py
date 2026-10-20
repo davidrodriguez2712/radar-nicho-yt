@@ -339,9 +339,7 @@ listing_classifications = sa.Table(
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.UniqueConstraint("listing_id", "prompt_version"),
     sa.CheckConstraint("format IN ('long', 'shorts', 'unknown')", name="classification_format"),
-    sa.CheckConstraint(
-        "source IN ('llm', 'synthetic_category_map')", name="classification_source"
-    ),
+    sa.CheckConstraint("source IN ('llm', 'synthetic_category_map')", name="classification_source"),
 )
 listing_verifications = sa.Table(
     "listing_verifications",
@@ -393,8 +391,6 @@ market_niche_decisions = sa.Table(
     sa.Column("decision", sa.String(20), nullable=False),
     sa.Column("note", sa.Text),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-    sa.CheckConstraint(
-        "decision IN ('nuevo', 'tentativo', 'descartado')", name="decision_value"
-    ),
+    sa.CheckConstraint("decision IN ('nuevo', 'tentativo', 'descartado')", name="decision_value"),
     sa.Index("ix_market_niche_decisions_lookup", "niche_label", "format", "created_at"),
 )

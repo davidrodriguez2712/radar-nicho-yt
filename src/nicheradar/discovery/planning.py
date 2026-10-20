@@ -17,6 +17,27 @@ from nicheradar.services.backlog import latest_decision
 from nicheradar.services.budget import lock_profile
 
 
+def request_counts_by_kind(
+    connection: Connection, profile_id: UUID, mode: str
+) -> list[tuple[str | None, int]]:
+    """Sent provider requests per discovery kind, for the exploration/refresh balance."""
+    rows = connection.execute(
+        select(
+            s.analysis_runs.c.configuration["discovery_kind"].astext.label("kind"),
+            func.count(s.provider_requests.c.id),
+        )
+        .join(s.provider_requests, s.provider_requests.c.run_id == s.analysis_runs.c.id)
+        .where(
+            s.analysis_runs.c.profile_id == profile_id,
+            s.analysis_runs.c.mode == mode,
+            s.analysis_runs.c.trigger != "market_scrape",
+            s.provider_requests.c.sent_at.is_not(None),
+        )
+        .group_by("kind")
+    ).all()
+    return [(kind, count) for kind, count in rows]
+
+
 def plan_family(
     connection: Connection,
     profile_id: UUID,
@@ -151,19 +172,7 @@ def plan_family(
             str(row["id"]),
         ),
     )
-    calls = connection.execute(
-        select(
-            s.analysis_runs.c.configuration["discovery_kind"].astext.label("kind"),
-            func.count(s.provider_requests.c.id),
-        )
-        .join(s.provider_requests, s.provider_requests.c.run_id == s.analysis_runs.c.id)
-        .where(
-            s.analysis_runs.c.profile_id == profile_id,
-            s.analysis_runs.c.mode == run["mode"],
-            s.provider_requests.c.sent_at.is_not(None),
-        )
-        .group_by("kind")
-    ).all()
+    calls = request_counts_by_kind(connection, profile_id, run["mode"])
     total = sum(count for _, count in calls)
     explored = sum(count for kind, count in calls if kind != "refresh")
     exploration_slot = total == 0 or Decimal(explored) < exploration_share * total
