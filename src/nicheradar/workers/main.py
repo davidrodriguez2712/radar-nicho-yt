@@ -4,6 +4,7 @@ import json
 import signal
 import threading
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import Engine, func, select
@@ -88,6 +89,33 @@ def tick(config: Settings, engine: Engine | None = None) -> dict[str, object]:
             database.dispose()
 
 
+MARKET_HEARTBEAT_SECONDS = 60.0
+
+
+def run_market_tick(config: Settings, status: dict[str, Any], poll_seconds: int) -> dict[str, Any]:
+    """Run the scraper tick while keeping the worker heartbeat fresh.
+
+    A full scrape takes far longer than the heartbeat's maximum age; without this the
+    orchestrator would see an unhealthy worker and restart it in the middle of a stage.
+    """
+    result: dict[str, Any] = {}
+
+    def work() -> None:
+        try:
+            result.update(tick_market(config))
+        except Exception:
+            result.update(
+                {"service": "market_intel", "status": "error", "error_code": "unexpected"}
+            )
+
+    thread = threading.Thread(target=work, daemon=True)
+    thread.start()
+    while thread.is_alive():
+        thread.join(MARKET_HEARTBEAT_SECONDS)
+        record(status, poll_seconds)
+    return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="NicheRadar worker")
     parser.add_argument(
@@ -102,10 +130,7 @@ def main() -> None:
         status = tick(config)
         record(status, config.worker_poll_seconds)
         print(json.dumps(status), flush=True)
-        try:
-            market = tick_market(config)
-        except Exception:
-            market = {"service": "market_intel", "status": "error", "error_code": "unexpected"}
+        market = run_market_tick(config, status, config.worker_poll_seconds)
         print(json.dumps(market), flush=True)
         if args.once:
             break

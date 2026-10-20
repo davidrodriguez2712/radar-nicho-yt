@@ -82,10 +82,15 @@ def test_metrics_medians_margin_multiple_and_dynamics() -> None:
         ]
     )
     assert metrics["income_median"] == 1000
-    assert metrics["margin_median"] == pytest.approx(0.8)
+    assert metrics["margin_median"] == pytest.approx(0.65)  # the $0 expense is not evidence
     assert metrics["multiple_median"] == pytest.approx(2.0 * 12 / 12)  # 24000 / (1000 * 12)
     assert metrics["income_per_1k_subs_median"] == pytest.approx(20.0)
     assert metrics["n_active"] == 2 and metrics["disappearance_rate"] == 0.5
+
+
+def test_zero_expense_is_not_reported_and_gives_no_margin() -> None:
+    metrics = niche_metrics([facts(1000, expense=0), facts(900, expense=0), facts(800)])
+    assert metrics["margin_median"] is None
 
 
 def test_outlier_income_per_subscriber_is_dropped() -> None:

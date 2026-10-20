@@ -1,5 +1,6 @@
 # tests/test_market_intel_stages.py
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -229,6 +230,20 @@ def test_an_isolated_unparseable_detail_is_tolerated_and_not_retried(
     assert listing(isolated_engine, "3")["detail_fetched_at"] is not None
 
 
+def test_one_unavailable_detail_does_not_freeze_the_run(isolated_engine: Engine) -> None:
+    resume(isolated_engine)
+    ids = [str(i) for i in range(1, 11)]
+    source = ScriptedSource(crawl_of(*ids), details={"3": SourceError("source_unavailable")})
+    assert tick(isolated_engine, source)["status"] == "succeeded"
+    assert listing(isolated_engine, "3")["detail_fetched_at"] is not None  # not retried forever
+
+
+def test_a_blocked_detail_still_stops_the_run(isolated_engine: Engine) -> None:
+    resume(isolated_engine)
+    source = ScriptedSource(crawl_of("1", "2"), details={"1": SourceError("blocked")})
+    assert tick(isolated_engine, source)["status"] == "blocked"
+
+
 def test_live_mode_degrades_without_llm_or_youtube(isolated_engine: Engine) -> None:
     config = Settings(
         mode="live",
@@ -286,6 +301,29 @@ def test_a_crashed_run_resumes_from_its_stored_stage(isolated_engine: Engine) ->
     with isolated_engine.connect() as connection:
         run = get_run(connection, run_id)
     assert run["attempts"] == 2 and run["stage"] == "done"
+
+
+def test_worker_heartbeat_keeps_beating_while_the_scraper_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    beats: list[str] = []
+
+    def slow_scraper(config: Settings) -> dict[str, object]:
+        time.sleep(0.35)
+        return {"service": "market_intel", "status": "succeeded"}
+
+    monkeypatch.chdir("tests")
+    monkeypatch.setattr(
+        "nicheradar.workers.main.tick", lambda config: {"status": "paused", "database": "ready"}
+    )
+    monkeypatch.setattr("nicheradar.workers.main.tick_market", slow_scraper)
+    monkeypatch.setattr(
+        "nicheradar.workers.main.record", lambda status, interval: beats.append("b")
+    )
+    monkeypatch.setattr("nicheradar.workers.main.MARKET_HEARTBEAT_SECONDS", 0.1)
+    monkeypatch.setattr(sys, "argv", ["nicheradar-worker", "--once"])
+    main()
+    assert len(beats) >= 3  # one after the radar tick plus at least two during the scrape
 
 
 def test_worker_main_runs_the_scraper_and_survives_its_failure(

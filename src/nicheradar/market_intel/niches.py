@@ -4,6 +4,7 @@
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Connection, and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
@@ -161,15 +162,16 @@ def save_decision(
 
 
 def _trend_deltas(
-    connection: Connection, now: datetime, current: dict[Key, float | None]
+    connection: Connection, now: datetime, current: dict[Key, float | None], timezone: str
 ) -> dict[Key, float | None]:
+    today = now.astimezone(ZoneInfo(timezone)).date()
     s = market_niche_snapshots
     rows = connection.execute(
         select(s.c.niche_label, s.c.format, s.c.stats)
         .distinct(s.c.niche_label, s.c.format)
         .where(
-            s.c.snapshot_date >= (now - timedelta(days=TREND_DAYS)).date(),
-            s.c.snapshot_date < now.date(),
+            s.c.snapshot_date >= today - timedelta(days=TREND_DAYS),
+            s.c.snapshot_date < today,
         )
         .order_by(s.c.niche_label, s.c.format, s.c.snapshot_date)
     ).all()
@@ -181,7 +183,9 @@ def _trend_deltas(
     return deltas
 
 
-def scored_niches(connection: Connection, now: datetime) -> list[dict[str, Any]]:
+def scored_niches(
+    connection: Connection, now: datetime, timezone: str = "UTC"
+) -> list[dict[str, Any]]:
     groups = _group_rows(connection, now)
     midpoints, priors = _rpm_midpoints(connection), _priors(connection)
     decisions = latest_decisions(connection)
@@ -204,7 +208,10 @@ def scored_niches(connection: Connection, now: datetime) -> list[dict[str, Any]]
             }
         )
     deltas = _trend_deltas(
-        connection, now, {(i["niche_label"], i["format"]): i["opportunity"]["value"] for i in items}
+        connection,
+        now,
+        {(i["niche_label"], i["format"]): i["opportunity"]["value"] for i in items},
+        timezone,
     )
     for item in items:
         item["trend"] = deltas[(item["niche_label"], item["format"])]
@@ -220,8 +227,9 @@ def backlog(
     include_discarded: bool = False,
     limit: int = 50,
     offset: int = 0,
+    timezone: str = "UTC",
 ) -> dict[str, Any]:
-    items = scored_niches(connection, now)
+    items = scored_niches(connection, now, timezone)
     if format is not None:
         items = [item for item in items if item["format"] == format]
     if not include_discarded:
@@ -244,12 +252,12 @@ def backlog(
 
 
 def niche_detail(
-    connection: Connection, label: str, format: str, now: datetime
+    connection: Connection, label: str, format: str, now: datetime, timezone: str = "UTC"
 ) -> dict[str, Any] | None:
     niche = next(
         (
             item
-            for item in scored_niches(connection, now)
+            for item in scored_niches(connection, now, timezone)
             if item["niche_label"] == label and item["format"] == format
         ),
         None,
@@ -322,8 +330,11 @@ def niche_detail(
     }
 
 
-def build_snapshots(connection: Connection, now: datetime) -> int:
-    items = scored_niches(connection, now)
+def build_snapshots(connection: Connection, now: datetime, timezone: str = "UTC") -> int:
+    # The snapshot day is the LOCAL day, like run_key and observed_on, so a late-evening run
+    # never lands on tomorrow's row and overwrites it.
+    snapshot_date = now.astimezone(ZoneInfo(timezone)).date()
+    items = scored_niches(connection, now, timezone)
     for item in items:
         stats = {
             "opportunity": item["opportunity"]["value"],
@@ -337,7 +348,7 @@ def build_snapshots(connection: Connection, now: datetime) -> int:
             insert(market_niche_snapshots)
             .values(
                 id=uuid4(),
-                snapshot_date=now.date(),
+                snapshot_date=snapshot_date,
                 niche_label=item["niche_label"],
                 format=item["format"],
                 **values,

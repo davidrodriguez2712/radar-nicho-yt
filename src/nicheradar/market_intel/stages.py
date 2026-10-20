@@ -69,12 +69,16 @@ def stage_detail(ctx: RunContext) -> dict[str, Any]:
     with ctx.engine.connect() as connection:
         pending = pending_detail(connection, name, ctx.config.market_intel_detail_cap_per_run)
     fetched = gone = failed = 0
+    last_error = "layout_changed"
     for external_id in pending:
         try:
             detail = ctx.source.fetch_detail(external_id)
         except SourceError as error:
-            if error.code != "listing_parse_error":
+            # A single bad listing must not freeze the backlog: it is marked as attempted and
+            # retried only if its price changes. A block (403/429) always stops the run.
+            if error.code not in ("listing_parse_error", "source_unavailable"):
                 raise
+            last_error = "layout_changed" if error.code == "listing_parse_error" else error.code
             failed += 1
             with ctx.engine.begin() as connection:
                 mark_detail_failed(connection, name, external_id, ctx.clock())
@@ -87,7 +91,7 @@ def stage_detail(ctx: RunContext) -> dict[str, Any]:
                 apply_detail(connection, name, detail, ctx.clock(), observed_on)
                 fetched += 1
     if failed > max(MINIMUM_PARSE_ERRORS, len(pending) * MAXIMUM_PARSE_ERROR_SHARE):
-        raise SourceError("layout_changed")
+        raise SourceError(last_error)
     return {"requested": len(pending), "fetched": fetched, "gone": gone, "parse_errors": failed}
 
 
@@ -147,7 +151,7 @@ def stage_classify(ctx: RunContext) -> dict[str, Any]:
 
 def stage_snapshot(ctx: RunContext) -> dict[str, Any]:
     with ctx.engine.begin() as connection:
-        return {"niches": build_snapshots(connection, ctx.clock())}
+        return {"niches": build_snapshots(connection, ctx.clock(), ctx.config.timezone)}
 
 
 STAGE_FUNCTIONS: dict[str, Callable[[RunContext], dict[str, Any]]] = {

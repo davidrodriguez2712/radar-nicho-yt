@@ -66,6 +66,7 @@ def market_router(
             include_discarded=include_discarded,
             limit=limit,
             offset=offset,
+            timezone=config.timezone,
         )
 
     @router.get("/niches/{label}")
@@ -74,7 +75,7 @@ def market_router(
         format: Format,
         connection: Annotated[Connection, Depends(db)],
     ) -> dict[str, Any]:
-        detail = niche_detail(connection, label, format, clock())
+        detail = niche_detail(connection, label, format, clock(), config.timezone)
         if detail is None:
             raise HTTPException(404, "Nicho no encontrado")
         return detail
@@ -86,7 +87,7 @@ def market_router(
         connection: Annotated[Connection, Depends(db)],
     ) -> dict[str, Any]:
         now = clock()
-        if niche_detail(connection, label, request.format, now) is None:
+        if niche_detail(connection, label, request.format, now, config.timezone) is None:
             raise HTTPException(404, "Nicho no encontrado")
         save_decision(connection, label, request.format, request.decision, request.note, now)
         return {"niche_label": label, "format": request.format, "decision": request.decision}

@@ -87,7 +87,7 @@ def niche_metrics(facts: Sequence[ListingFacts]) -> dict[str, Any]:
     margins = [
         (income - fact.expense_usd) / income
         for fact, income in kept
-        if fact.expense_usd is not None and fact.expense_usd >= 0
+        if fact.expense_usd is not None and fact.expense_usd > 0  # $0 means "not reported"
     ]
     multiples = [
         fact.price_usd / (income * 12)

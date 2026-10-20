@@ -1,5 +1,5 @@
 # tests/test_market_intel_niches.py
-from datetime import timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -223,6 +223,15 @@ def test_snapshots_are_idempotent_and_drive_the_trend(db: Connection) -> None:
     )
     item = backlog(db, NOW)["items"][0]
     assert item["trend"] == pytest.approx(item["opportunity"]["value"] - 10.0)
+
+
+@pytest.mark.postgres
+def test_snapshot_date_follows_the_local_day(db: Connection) -> None:
+    seed_niche(db, "personal_finance", (1500, 2000, 2500, 3000))
+    late_evening_in_lima = datetime(2026, 10, 20, 3, 0, tzinfo=UTC)  # still Oct 19 there
+    build_snapshots(db, late_evening_in_lima, "America/Lima")
+    dates = db.execute(sa.select(market_niche_snapshots.c.snapshot_date)).scalars().all()
+    assert dates == [date(2026, 10, 19)]
 
 
 @pytest.mark.postgres

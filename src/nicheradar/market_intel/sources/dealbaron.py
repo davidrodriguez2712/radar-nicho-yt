@@ -18,6 +18,7 @@ from nicheradar.market_intel.contracts import (
 
 USER_AGENT = "NicheRadar-MarketIntel/1.0 (+personal research)"
 CARD_MARKER = 'class="post__more"'
+LIST_CONTAINER = '<div class="posts group">'
 _TAGS = re.compile(r"<[^>]+>")
 _CARD_SPLIT = re.compile(r'<div class="post[ "]')
 
@@ -44,7 +45,7 @@ def _integer(value: Decimal | None) -> int | None:
 
 
 def parse_cards(html: str, base_url: str) -> list[ListingCard]:
-    container = html.split('<div class="posts group">', 1)
+    container = html.split(LIST_CONTAINER, 1)
     if len(container) != 2:
         return []
     cards: list[ListingCard] = []
@@ -169,6 +170,10 @@ class DealBaronSource:
             if markers == 0:
                 if page == 1:
                     raise SourceError("layout_changed")
+                if LIST_CONTAINER not in response.text:
+                    # A maintenance or soft rate-limit page is not the end of the list:
+                    # treating it as complete would mark thousands of listings as missed.
+                    raise SourceError("source_unavailable")
                 return CrawlResult(cards=tuple(cards.values()), pages=pages, complete=True)
             parsed = parse_cards(response.text, self.base_url)
             if len(parsed) < markers * 0.8:

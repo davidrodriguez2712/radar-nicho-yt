@@ -192,3 +192,17 @@ def test_live_client_identifies_itself_without_requests() -> None:
     source = build_source(Settings(mode="live"))
     assert source.client.headers["user-agent"] == USER_AGENT
     assert source.delay == 1.0 and source.base_url == "https://dealbaron.com"
+
+
+def test_blank_middle_page_without_the_list_container_is_not_the_end() -> None:
+    listings = load_synthetic_listings()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params["page"])
+        if page == 2:
+            return httpx.Response(200, text="<html>Down for maintenance</html>")
+        return httpx.Response(200, text=render_list_page(listings, page, PER_PAGE))
+
+    with pytest.raises(SourceError) as error:
+        make_source(handler).crawl()
+    assert error.value.code == "source_unavailable"

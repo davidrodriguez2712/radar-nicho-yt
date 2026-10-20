@@ -85,6 +85,21 @@ def test_expire_purges_old_listings_and_snapshots_but_keeps_owner_decisions(
     assert count(db, market_niche_decisions) == 1  # the owner's decisions never expire
 
 
+def test_expire_also_purges_expired_children_of_a_live_listing(db: Connection) -> None:
+    upsert_cards(db, "dealbaron", [card("live")], NOW, NOW.date())
+    listing_id = db.execute(sa.select(marketplace_listings.c.id)).scalar_one()
+    save_classification(
+        db, listing_id, synthetic_classification("Games"), "synthetic_category_map", NOW
+    )
+    old = NOW - LISTING_RETENTION - timedelta(days=1)
+    db.execute(sa.update(listing_observations).values(retain_until=old))
+    db.execute(sa.update(listing_classifications).values(retain_until=old))
+    db.execute(sa.update(marketplace_listings).values(retain_until=NOW + timedelta(days=5)))
+    expire(db, NOW)
+    assert count(db, marketplace_listings) == 1
+    assert count(db, listing_observations) == 0 and count(db, listing_classifications) == 0
+
+
 def test_prepare_restore_pauses_the_market_scraper(db: Connection) -> None:
     set_paused(db, False, NOW)
     result = prepare_restore(db, NOW)

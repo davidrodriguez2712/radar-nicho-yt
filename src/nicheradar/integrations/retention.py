@@ -10,6 +10,9 @@ from nicheradar.repositories.schema import (
     balance_reconciliations,
     channel_analyses,
     credit_balances,
+    listing_classifications,
+    listing_observations,
+    listing_verifications,
     market_niche_snapshots,
     marketplace_listings,
     opportunity_scoring_configs,
@@ -83,6 +86,9 @@ def expire(
     connection.execute(
         delete(marketplace_listings).where(marketplace_listings.c.retain_until <= now)
     )
+    for child in (listing_observations, listing_classifications, listing_verifications):
+        # Children carry their own deadline: a listing that stays up must not keep old rows.
+        connection.execute(delete(child).where(child.c.retain_until <= now))
     connection.execute(
         delete(market_niche_snapshots).where(market_niche_snapshots.c.retain_until <= now)
     )
