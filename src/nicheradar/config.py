@@ -68,6 +68,15 @@ class Settings(BaseSettings):
     topic_similarity_threshold: float = Field(default=0.8, gt=0, le=1)
     topic_maximum_videos: int = Field(default=200, ge=2, le=200)
     topic_maximum_text_chars: int = Field(default=2000, ge=100, le=4000)
+    market_intel_base_url: str = "https://dealbaron.com"
+    market_intel_max_pages: int = Field(default=200, ge=1, le=500)
+    market_intel_request_delay_seconds: float = Field(default=1.0, ge=0.2, le=30)
+    market_intel_detail_cap_per_run: int = Field(default=300, ge=0, le=2000)
+    market_intel_classify_cap_per_run: int = Field(default=100, ge=0, le=1000)
+    market_intel_verify_cap_per_run: int = Field(default=20, ge=0, le=200)
+    # Compuerta del spec: en modo live el scraper no corre hasta que el propietario revise los
+    # Términos de Servicio de la fuente y active este indicador de forma explícita.
+    market_intel_live_enabled: bool = False
 
     @field_validator("timezone")
     @classmethod
