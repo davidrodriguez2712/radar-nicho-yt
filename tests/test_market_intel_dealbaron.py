@@ -159,8 +159,7 @@ def test_crawl_layout_change_detection() -> None:
         empty_first_page.crawl()
     assert error.value.code == "layout_changed"
     broken = (
-        '<div class="posts group"><div class="post  ">'
-        '<div class="post__more"></div></div></div>'
+        '<div class="posts group"><div class="post  "><div class="post__more"></div></div></div>'
     )
     with pytest.raises(SourceError) as error:
         make_source(lambda r: httpx.Response(200, text=broken)).crawl()

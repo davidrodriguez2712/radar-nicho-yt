@@ -60,17 +60,17 @@ def render_detail_page(item: dict[str, Any]) -> str:
         f'<div class="listing-info"><h1><span >{escape(item["title"])}</span>\n</h1>'
         f'<p class="type">{escape(item["category"])}  |  '
         f'<a href="{escape(item["channel_url"])}" target="_blank">'
-        f'{escape(item["channel_url"])}</a></p>'
+        f"{escape(item['channel_url'])}</a></p>"
         '<div class="asset-stats">'
-        f'<p>{_spaced(item["subscribers"])} — subscribers</p>'
+        f"<p>{_spaced(item['subscribers'])} — subscribers</p>"
         f"<p>{_money(income)} — income (month)</p>"
         f"<p>{_money(expense)} — expense (month)</p></div>"
         f'<div class="asset-price">{_money(item["price"])}\n</div></div>'
         '<div class="listing-desc"><p class="title">Listing description:</p>'
-        f'<p>{escape(item["description"])}</p></div>'
+        f"<p>{escape(item['description'])}</p></div>"
         '<div class="asset-data">'
-        f'<p><span>Monetization enabled:</span> {escape(item["monetization"])}</p>'
-        f'<p><span>Content:</span> {escape(item["content"])}</p></div>'
+        f"<p><span>Monetization enabled:</span> {escape(item['monetization'])}</p>"
+        f"<p><span>Content:</span> {escape(item['content'])}</p></div>"
         "</body></html>"
     )
 
