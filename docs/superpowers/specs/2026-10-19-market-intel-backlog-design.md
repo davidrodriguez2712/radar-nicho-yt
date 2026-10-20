@@ -244,3 +244,52 @@ Revisar los Términos de Servicio de DealBaron. Solo se verificó `robots.txt` (
 - Dependencia de una sola fuente en el v1.
 - Posible bloqueo o cambio de layout de DealBaron.
 - "Desaparecida" no equivale a "vendida": la señal de dinámica es débil y pesa 15.
+
+## Adendo de implementación (2026-10-19, hallazgos al planificar)
+
+Al leer el código para escribir el plan aparecieron choques con lo aprobado arriba. Los
+ajustes no cambian el comportamiento visible; cambian dónde viven la pausa y la ejecución.
+Prevalecen sobre las secciones anteriores si hay contradicción.
+
+1. **Pausa y programación en tablas propias, no en `radar_schedules` ni `jobs`.** El código
+   del radar asume una única fila `radar` en `radar_schedules` (`.scalar_one()`,
+   `.mappings().one()`, `update(...).values(paused=...)` sin filtro en `recovery.py` y
+   `activate_live.py`) y `schedule_due()` encola un job de radar por cada fila sin pausa;
+   `claim()` toma cualquier job y la etapa inicial está fija a `planning`. Una fila extra
+   rompería o activaría el radar. Se crean `market_intel_schedule` (una fila, pausada por
+   defecto) y `market_scrape_runs` (lease, etapa, checkpoints, `run_key` idempotente). El
+   gasto del LLM sí pasa por el presupuesto existente, así que cada corrida crea también
+   una fila `analysis_runs` con `trigger = 'market_scrape'` (requisito de
+   `provider_requests.run_id`).
+2. **Ejecución en el worker.** `workers/main.py::main()` llama además a
+   `market_intel.worker.tick_market()`, independiente de la pausa del radar. `tick()` y su
+   cola no se modifican.
+3. **Desaparición con gracia.** Una ficha pasa a `disappeared` tras **2 recorridos completos
+   consecutivos** sin verla (`consecutive_misses >= 2`), porque una baja durante el recorrido
+   desplaza las páginas y puede ocultar una ficha un día.
+4. **Recorrido real de DealBaron.** Las fichas están en `/listing/{id}`; el listado
+   `/youtube?created_at=0&page=N` (orden por creación) tiene ~169 páginas de 32 fichas
+   (~5.400); una ficha vendida o retirada responde 404. El recorrido diario es completo
+   (~3 min a 1 petición/s). La primera corrida es un backfill: detalle y clasificación se
+   hacen por lotes acotados (`market_intel_detail_cap_per_run`,
+   `market_intel_classify_cap_per_run`) sobre las fichas pendientes, priorizando las que
+   declaran ingreso, hasta ponerse al día.
+5. **`$0` de ingreso = sin evidencia.** La ficha muestra `$0 — income (month)` cuando el
+   vendedor no lo informa; los scores ignoran ingreso 0 (no es ingreso declarado).
+6. **Canal por ID de YouTube, sin FK.** `marketplace_listings.youtube_channel_id` (cadena
+   `UC...`) en lugar de `channel_id` hacia `channels`; la verificación contra YouTube vive
+   en `listing_verifications`.
+7. **Automatización: rasgos por ficha con respaldo en el prior del nicho.** El LLM devuelve
+   los rasgos por ficha (`null` si no hay evidencia); los rasgos nulos se completan con
+   `niche_automation_priors`, que se llena una sola vez con un script (solo en el piloto).
+8. **Formato Shorts determinista.** La categoría "YouTube shorts & Facebook reels" fija
+   `format = shorts` sin depender del LLM.
+9. **Modo sintético.** La fuente sirve HTML de fixtures empaquetados y la clasificación usa
+   un mapa fijo categoría → nicho marcado `synthetic_category_map`; en live, sin LLM
+   habilitado, las fichas quedan `unclassified` (no se inventa nicho).
+10. **Sin dependencia nueva.** El HTML se parsea con la biblioteca estándar (`re`,
+    `html`); no se agrega `beautifulsoup4` ni `lxml`.
+11. **Respaldo.** `scripts/backup_snapshot.py` y `scripts/backup_mac.py` fijan la revisión
+    `0012` y fallan cerrado ante datos de investigación; se actualizan a `0013` y las tablas
+    de mercado cuentan como datos de investigación (sin respaldo en el v1; la tarea 9.4 de
+    OpenSpec sigue abierta).
