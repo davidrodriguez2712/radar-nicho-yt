@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from nicheradar.config import Settings
 from nicheradar.domain.profile import CreatorProfile, initial_catalog
 from nicheradar.integrations.retention import expire
+from nicheradar.market_intel.worker import tick_market
 from nicheradar.repositories import schema_v1 as s
 from nicheradar.repositories.core import seed_profile
 from nicheradar.repositories.database import database_engine
@@ -101,6 +102,11 @@ def main() -> None:
         status = tick(config)
         record(status, config.worker_poll_seconds)
         print(json.dumps(status), flush=True)
+        try:
+            market = tick_market(config)
+        except Exception:
+            market = {"service": "market_intel", "status": "error", "error_code": "unexpected"}
+        print(json.dumps(market), flush=True)
         if args.once:
             break
         stopped.wait(config.worker_poll_seconds)
