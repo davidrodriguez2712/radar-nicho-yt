@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Connection, func, select
+from sqlalchemy import Connection, collate, func, select
 
 from nicheradar.repositories import schema_v1 as s
 
@@ -65,7 +65,8 @@ def jobs(
                 .join(s.provider_requests, s.provider_requests.c.id == table.c.request_id)
                 .where(s.provider_requests.c.run_id.in_(costs))
                 .group_by(*columns)
-                .order_by(*columns)
+                # "C" keeps the unit order identical whatever collation the database uses.
+                .order_by(s.provider_requests.c.run_id, collate(table.c.unit, "C"), *columns[2:])
             )
             if bucket == "reservations":
                 query = query.where(table.c.status.in_(["reserved", "unknown_charge"]))

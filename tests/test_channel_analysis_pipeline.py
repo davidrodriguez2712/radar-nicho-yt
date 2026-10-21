@@ -7,6 +7,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Connection, Engine, select
 
+from nicheradar.config import Settings
 from nicheradar.domain.profile import CreatorProfile, initial_catalog
 from nicheradar.integrations.contracts import Batch, Operation, ProviderError
 from nicheradar.integrations.synthetic import SyntheticProvider
@@ -53,7 +54,13 @@ def test_channel_analysis_run_completes_through_every_stage(isolated_engine: Eng
             },
         )
         assert claim(connection, "test-worker", NOW) is not None
-    pipeline = Pipeline(isolated_engine, clock=lambda: NOW, provider=SyntheticProvider())
+    # Explicit settings: the outcome must not depend on a developer's local .env.
+    pipeline = Pipeline(
+        isolated_engine,
+        clock=lambda: NOW,
+        provider=SyntheticProvider(),
+        settings=Settings(llm_enabled=True),
+    )
     asyncio.run(pipeline.process(job_id, "test-worker"))
     with isolated_engine.connect() as connection:
         job = connection.execute(select(s.jobs).where(s.jobs.c.id == job_id)).mappings().one()
