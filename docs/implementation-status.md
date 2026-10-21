@@ -69,7 +69,7 @@ El propietario autorizó después el piloto personal acotado; no cambia el alcan
   combina únicamente campos compatibles. Incluye diagnóstico de una unidad y permanece
   apagada hasta configurar y validar una clave propia. Ver
   [youtube-enrichment.md](youtube-enrichment.md).
-- 356 pruebas locales aprobadas con PostgreSQL temporal; las pruebas automatizadas no llaman proveedores,
+- 626 pruebas locales aprobadas con PostgreSQL temporal; las pruebas automatizadas no llaman proveedores,
   incluida restauración cifrada del esquema `public` en otro clúster.
 - Ruff, formato y mypy sin errores. Dos advertencias de obsolescencia de dependencias
   del cliente de pruebas; no errores del producto. CI definida, no ejecutada remotamente.
@@ -151,6 +151,16 @@ Las tareas cerradas se corresponden con comprobaciones en `tests/test_execution.
 `test_dashboard_navigation.py` y `scripts/smoke_compose.py`, además de las pruebas previas
 de contratos, persistencia y conservación. La matriz documental está en
 [provider-readiness.md](provider-readiness.md).
+
+## Inteligencia de mercado (2026-10-20)
+
+Implementadas las 13 tareas del plan `docs/superpowers/plans/2026-10-19-market-intel-backlog.md`
+(spec 1: fuente DealBaron, clasificación, scores, backlog, API privada, pestaña Mercado,
+enganches con retención/restauración/estado, scripts del piloto). Comprobado localmente:
+`ruff`, `mypy` estricto y 626 pruebas con PostgreSQL temporal. Pendiente: revisión de los
+Términos de Servicio de DealBaron (compuerta `NR_MARKET_INTEL_LIVE_ENABLED`), piloto live,
+despliegue por digest y decisión sobre respaldar los datos de mercado (tarea 9.4).
+Detalle en [market-intel.md](market-intel.md).
 
 ## Pendientes de integración y verificación
 

@@ -120,6 +120,10 @@ de siete días. No elimines estos controles ni presentes evidencia caducada como
 ## Reglas que no deben romperse
 
 - Mantén el arranque local en modo sintético y pausado.
+- El scraper de mercado tiene pausa propia (`market_intel_schedule`): no la conectes a
+  `NR_RADAR_PAUSED`, no la despauses por efecto lateral de una migración o despliegue y no
+  actives `NR_MARKET_INTEL_LIVE_ENABLED` sin la revisión de Términos de Servicio. Sus cifras son
+  autodeclaradas (`seller_declared`) y un ingreso `$0` no es evidencia.
 - Nunca escribas claves, tokens, contraseñas o valores reales en `.env.example`, Markdown,
   argumentos, fixtures, logs o respuestas. Los secretos reales viven solo en `.env` privado
   o en el entorno secreto de Easypanel.
@@ -286,6 +290,10 @@ un piloto acotado separado antes de dejar la programación activa.
   antigüedad, consumo y diagnóstico operativo.
 - `[OPERACIÓN-LIVE]` [`docs/live-operation.md`](docs/live-operation.md): guía vigente para
   inspección, lectura de resultados, pausa y retorno.
+- `[MERCADO]` [`docs/market-intel.md`](docs/market-intel.md): scraper de fichas de canales en
+  venta, scores del backlog de nichos, pausa propia y retención de 6 meses.
+- `[MERCADO-PILOTO]` [`docs/market-intel-pilot.md`](docs/market-intel-pilot.md): compuerta de
+  Términos de Servicio y pasos del piloto live.
 - `[RESPALDO]` [`docs/backup-restore.md`](docs/backup-restore.md): respaldo cifrado,
   restauración aislada, limpieza y rollback. Contiene el único pendiente formal 9.4.
 

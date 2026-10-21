@@ -16,6 +16,7 @@ from nicheradar import __version__
 from nicheradar.config import Settings
 from nicheradar.domain.profile import CreatorProfile, VideoFormat, initial_catalog
 from nicheradar.integrations.retention import expire
+from nicheradar.market_api import market_router
 from nicheradar.repositories import schema_v1 as s
 from nicheradar.repositories.core import (
     ConflictError,
@@ -192,6 +193,7 @@ def create_app(
                     select(s.analysis_runs.c.finished_at)
                     .where(
                         s.analysis_runs.c.status == "succeeded",
+                        s.analysis_runs.c.trigger != "market_scrape",
                         s.analysis_runs.c.mode == config.mode,
                         s.analysis_runs.c.profile_id == profile_id,
                     )
@@ -884,4 +886,5 @@ def create_app(
         return {"items": [dict(row) for row in rows]}
 
     app.include_router(router)
+    app.include_router(market_router(authenticate=authenticate, db=db, config=config, clock=clock))
     return app

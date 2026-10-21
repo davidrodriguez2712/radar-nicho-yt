@@ -14,6 +14,7 @@ import streamlit as st
 
 from nicheradar.config import Settings
 from nicheradar.domain.production import STAGES
+from nicheradar.market_dashboard import render_market, render_market_operations
 
 REVIEW_LABELS = {
     "new": "Nueva",
@@ -1008,7 +1009,9 @@ def render_channel_analysis(config: Settings) -> None:
         "@handle o su ID de canal (UC...); URLs con /c/ o /user/ todavía no se reconocen."
     )
     with st.form("channel-analysis-request"):
-        channel_input = st.text_input("URL, handle o ID del canal")
+        channel_input = st.text_input(
+            "URL, handle o ID del canal", value=st.session_state.get("prefill_channel_input", "")
+        )
         st.caption(
             "Costo máximo real por análisis: hasta 50 créditos vidIQ y 1 búsqueda "
             "(100 unidades) de cuota de YouTube."
@@ -1399,14 +1402,18 @@ def render() -> None:
         "Observatorio",
         [
             "Resumen",
+            "Mercado",
             "Backlog",
             "Escenarios",
             "Configuración",
             "Operación",
             "Análisis de canal",
         ],
+        key="page",
     )
-    if page == "Backlog":
+    if page == "Mercado":
+        render_market(config, api_request)
+    elif page == "Backlog":
         render_backlog(config)
     elif page == "Escenarios":
         render_scenarios(config)
@@ -1414,6 +1421,7 @@ def render() -> None:
         render_configuration(config)
     elif page == "Operación":
         render_operations(config, status)
+        render_market_operations(config, api_request)
     elif page == "Análisis de canal":
         render_channel_analysis(config)
     else:

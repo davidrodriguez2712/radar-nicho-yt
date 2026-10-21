@@ -63,6 +63,14 @@ Requiere `NR_DATABASE_URL` configurada. No ejecutes `downgrade` sobre datos real
 sin un respaldo: la reversión de la migración inicial elimina el esquema del radar.
 Consulta el avance en `openspec/changes/continuous-niche-discovery/tasks.md`.
 
+## Inteligencia de mercado
+
+Un proceso diario recorre las fichas de canales en venta de DealBaron, las clasifica por nicho y
+arma el backlog de la pestaña **Mercado** (Opportunity, Automation, riesgo de política y
+confianza por separado). Tiene su propia pausa, independiente de la del radar, y en modo live
+no corre hasta revisar los Términos de Servicio de la fuente. Ver
+[`docs/market-intel.md`](docs/market-intel.md) y [`docs/market-intel-pilot.md`](docs/market-intel-pilot.md).
+
 ## Docker y operación
 
 El entorno Compose local incluye migraciones, comprobaciones de salud y volumen PostgreSQL.

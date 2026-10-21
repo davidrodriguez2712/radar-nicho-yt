@@ -10,6 +10,11 @@ from nicheradar.repositories.schema import (
     balance_reconciliations,
     channel_analyses,
     credit_balances,
+    listing_classifications,
+    listing_observations,
+    listing_verifications,
+    market_niche_snapshots,
+    marketplace_listings,
     opportunity_scoring_configs,
     ranking_entries,
     ranking_snapshots,
@@ -78,6 +83,15 @@ def shorten_policy_retention(
 def expire(
     connection: Connection, now: datetime, *, revoked_observation_ids: tuple[UUID, ...] = ()
 ) -> dict[str, int]:
+    connection.execute(
+        delete(marketplace_listings).where(marketplace_listings.c.retain_until <= now)
+    )
+    for child in (listing_observations, listing_classifications, listing_verifications):
+        # Children carry their own deadline: a listing that stays up must not keep old rows.
+        connection.execute(delete(child).where(child.c.retain_until <= now))
+    connection.execute(
+        delete(market_niche_snapshots).where(market_niche_snapshots.c.retain_until <= now)
+    )
     connection.execute(
         delete(balance_reconciliations).where(balance_reconciliations.c.retain_until <= now)
     )

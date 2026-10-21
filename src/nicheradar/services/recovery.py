@@ -14,6 +14,7 @@ from nicheradar.repositories.schema import (
     balance_reconciliations,
     credit_balances,
     discovery_cursors,
+    market_intel_schedule,
     opportunity_scoring_configs,
     ranking_snapshots,
 )
@@ -50,6 +51,9 @@ def prepare_restore(connection: Connection, now: datetime) -> dict[str, int]:
     sent by the original instance after the snapshot. Never release its liability.
     """
     schedules = connection.execute(update(s.radar_schedules).values(paused=True)).rowcount
+    market_schedules = connection.execute(
+        update(market_intel_schedule).values(paused=True)
+    ).rowcount
     connection.execute(update(discovery_cursors).values(pending_job_id=None))
     pending = list(
         connection.execute(
@@ -107,6 +111,7 @@ def prepare_restore(connection: Connection, now: datetime) -> dict[str, int]:
         )
     return {
         "paused_schedules": schedules,
+        "paused_market_schedules": market_schedules,
         "deferred_jobs": jobs,
         "uncertain_requests": len(pending),
         **expire(connection, now),
