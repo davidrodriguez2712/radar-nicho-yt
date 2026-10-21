@@ -188,6 +188,13 @@ def test_synthetic_source_never_leaves_the_process() -> None:
     assert synthetic_transport() is not None
 
 
+def test_close_releases_the_http_client() -> None:
+    source = build_source(Settings(mode="synthetic"))
+    assert not source.client.is_closed
+    source.close()
+    assert source.client.is_closed
+
+
 def test_live_client_identifies_itself_without_requests() -> None:
     source = build_source(Settings(mode="live"))
     assert source.client.headers["user-agent"] == USER_AGENT

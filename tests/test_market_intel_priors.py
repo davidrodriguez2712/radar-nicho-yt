@@ -13,13 +13,15 @@ from nicheradar.domain.profile import CreatorProfile, initial_catalog
 from nicheradar.integrations.llm import OpenAISelector
 from nicheradar.market_intel.classify import TRAIT_KEYS
 from nicheradar.market_intel.priors import (
+    close_analysis_run,
     label_niche_priors,
     pending_priors,
     pseudo_listing,
     save_prior,
 )
-from nicheradar.repositories.core import seed_profile
+from nicheradar.repositories.core import insert_record, seed_profile
 from nicheradar.repositories.schema import niche_automation_priors
+from nicheradar.repositories.schema_v1 import analysis_runs
 from tests.test_channel_analysis_advertising_match import settings_llm_enabled
 from tests.test_market_intel_classify import (
     answer,
@@ -152,3 +154,27 @@ def test_a_persistently_invalid_niche_does_not_starve_the_batch(isolated_engine:
         )
     )
     assert result["saved"] == 2
+
+
+def test_close_analysis_run_marks_the_labelling_run_finished(isolated_engine: Engine) -> None:
+    with isolated_engine.begin() as connection:
+        profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
+        run_id = insert_record(
+            connection,
+            "analysis_runs",
+            {
+                "profile_id": profile_id,
+                "mode": "live",
+                "trigger": "market_scrape",
+                "status": "running",
+                "configuration": {},
+            },
+        )
+    close_analysis_run(isolated_engine, run_id, "succeeded", NOW)
+    with isolated_engine.connect() as connection:
+        row = connection.execute(
+            sa.select(analysis_runs.c.status, analysis_runs.c.finished_at).where(
+                analysis_runs.c.id == run_id
+            )
+        ).one()
+    assert row.status == "succeeded" and row.finished_at == NOW

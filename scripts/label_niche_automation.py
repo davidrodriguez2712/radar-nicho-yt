@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 
 from nicheradar.config import Settings
 from nicheradar.domain.profile import CreatorProfile, initial_catalog
-from nicheradar.market_intel.priors import label_niche_priors
+from nicheradar.market_intel.priors import close_analysis_run, label_niche_priors
 from nicheradar.repositories.core import insert_record, seed_profile
 from nicheradar.repositories.database import database_engine
 
@@ -41,7 +41,12 @@ def main() -> None:
             },
         )
     run = {"id": run_id, "profile_id": profile_id, "mode": "live"}
-    result = asyncio.run(label_niche_priors(engine, run, config, now, limit=args.limit))
+    try:
+        result = asyncio.run(label_niche_priors(engine, run, config, now, limit=args.limit))
+    except BaseException:
+        close_analysis_run(engine, run_id, "failed", datetime.now(UTC))
+        raise
+    close_analysis_run(engine, run_id, "succeeded", datetime.now(UTC))
     print(json.dumps(result))
 
 

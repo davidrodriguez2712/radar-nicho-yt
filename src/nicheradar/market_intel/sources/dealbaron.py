@@ -143,6 +143,9 @@ class DealBaronSource:
         self.client, self.base_url = client, base_url.rstrip("/")
         self.max_pages, self.delay, self.sleep = max_pages, delay_seconds, sleep
 
+    def close(self) -> None:
+        self.client.close()
+
     def _get(self, path: str) -> httpx.Response:
         for attempt in range(3):
             response = self.client.get(self.base_url + path)

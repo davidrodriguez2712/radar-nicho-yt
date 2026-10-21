@@ -52,10 +52,13 @@ def run_once(
                 "profile_id": profile_id,
                 "mode": config.mode,
             }
+        built = build_source(config) if source is None else None
+        active = source if source is not None else built
+        assert active is not None
         ctx = RunContext(
             engine=database,
             config=config,
-            source=source or build_source(config),
+            source=active,
             run_id=run_id,
             analysis_run=analysis,
             owner=worker,
@@ -64,7 +67,11 @@ def run_once(
             selector=selector,
             clock=clock,
         )
-        outcome = execute_run(ctx)
+        try:
+            outcome = execute_run(ctx)
+        finally:
+            if built is not None:
+                built.close()
         with database.connect() as connection:
             run = get_run(connection, run_id)
         return status | {

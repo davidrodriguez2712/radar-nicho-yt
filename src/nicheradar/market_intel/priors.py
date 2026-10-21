@@ -7,15 +7,16 @@ fills in any trait a real listing leaves unknown. Nothing here runs outside the 
 
 from datetime import datetime
 from typing import Any
-from uuid import NAMESPACE_URL, uuid4, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from sqlalchemy import Connection, Engine, select
+from sqlalchemy import Connection, Engine, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from nicheradar.config import Settings
 from nicheradar.integrations.llm import OpenAISelector
 from nicheradar.market_intel.classify import PROMPT_VERSION, classify_listing
 from nicheradar.repositories.schema import niche_automation_priors as priors_table
+from nicheradar.repositories.schema_v1 import analysis_runs
 from nicheradar.services.advertising_benchmarks import list_niche_options
 
 
@@ -46,6 +47,16 @@ def save_prior(
         .values(id=uuid4(), niche_label=label, created_at=now, **values)
         .on_conflict_do_update(index_elements=["niche_label"], set_=values)
     )
+
+
+def close_analysis_run(engine: Engine, run_id: UUID, status: str, now: datetime) -> None:
+    """The labelling script opens its own analysis run; closing it keeps /status honest."""
+    with engine.begin() as connection:
+        connection.execute(
+            update(analysis_runs)
+            .where(analysis_runs.c.id == run_id)
+            .values(status=status, finished_at=now)
+        )
 
 
 async def label_niche_priors(

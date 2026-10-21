@@ -69,10 +69,13 @@ def tick_market(
                 "profile_id": profile_id,
                 "mode": config.mode,
             }
+        built = build_source(config) if source is None else None
+        active = source if source is not None else built
+        assert active is not None
         ctx = RunContext(
             engine=database,
             config=config,
-            source=source or build_source(config),
+            source=active,
             run_id=run_id,
             analysis_run=analysis,
             owner=worker,
@@ -81,7 +84,12 @@ def tick_market(
             selector=selector,
             clock=clock,
         )
-        return status | {"status": execute_run(ctx), "run_key": key, "database": "ready"}
+        try:
+            outcome = execute_run(ctx)
+        finally:
+            if built is not None:
+                built.close()  # only a source this tick built; a supplied one is the caller's
+        return status | {"status": outcome, "run_key": key, "database": "ready"}
     except SQLAlchemyError:
         return status | {"status": "error", "error_code": "database_unavailable"}
     finally:

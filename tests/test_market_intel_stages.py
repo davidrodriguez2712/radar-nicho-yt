@@ -31,6 +31,7 @@ from nicheradar.market_intel.runs import (
     run_key,
     set_paused,
 )
+from nicheradar.market_intel.sources.factory import build_source
 from nicheradar.market_intel.stages import stage_list
 from nicheradar.market_intel.worker import tick_market
 from nicheradar.repositories import schema_v1 as s
@@ -399,3 +400,21 @@ def test_next_due_counts_from_the_run_start_so_a_long_run_never_drifts(
         started = connection.execute(sa.select(market_scrape_runs.c.started_at)).scalar_one()
         due = connection.execute(sa.select(market_intel_schedule.c.next_due_at)).scalar_one()
     assert due == started + DAY
+
+
+def test_a_source_the_tick_built_is_closed_when_the_run_ends(
+    isolated_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    built = build_source(SYNTHETIC)
+    monkeypatch.setattr("nicheradar.market_intel.worker.build_source", lambda config: built)
+    resume(isolated_engine)
+    assert tick(isolated_engine, None)["status"] == "succeeded"
+    assert built.client.is_closed
+
+
+def test_a_source_the_caller_supplied_is_left_open(isolated_engine: Engine) -> None:
+    supplied = build_source(SYNTHETIC)
+    resume(isolated_engine)
+    tick_market(SYNTHETIC, isolated_engine, source=supplied, clock=lambda: NOW, owner="test-worker")
+    assert not supplied.client.is_closed
+    supplied.close()
