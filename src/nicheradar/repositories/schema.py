@@ -394,3 +394,50 @@ market_niche_decisions = sa.Table(
     sa.CheckConstraint("decision IN ('nuevo', 'tentativo', 'descartado')", name="decision_value"),
     sa.Index("ix_market_niche_decisions_lookup", "niche_label", "format", "created_at"),
 )
+flow_research_requests = sa.Table(
+    "flow_research_requests",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid4),
+    sa.Column("niche_label", sa.String(140), nullable=False),
+    sa.Column("format", sa.String(10), nullable=False),
+    sa.Column("status", sa.String(20), nullable=False),
+    sa.Column("evidence", JSONB, nullable=False),
+    sa.Column("attempts", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("lease_owner", sa.String(120)),
+    sa.Column("lease_until", sa.DateTime(timezone=True)),
+    sa.Column("rejection", JSONB),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("retain_until", sa.DateTime(timezone=True), nullable=False),
+    sa.CheckConstraint(
+        "status IN ('pendiente', 'en_curso', 'listo', 'rechazado')", name="flow_research_status"
+    ),
+    sa.CheckConstraint("format IN ('long', 'shorts')", name="flow_research_format"),
+    sa.Index(
+        "uq_flow_research_active",
+        "niche_label",
+        "format",
+        unique=True,
+        postgresql_where=sa.text("status IN ('pendiente', 'en_curso')"),
+    ),
+    sa.Index("ix_flow_research_requests_status", "status", "created_at"),
+)
+flow_research_dossiers = sa.Table(
+    "flow_research_dossiers",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid4),
+    sa.Column(
+        "request_id",
+        UUID(as_uuid=True),
+        sa.ForeignKey("flow_research_requests.id"),
+        nullable=False,
+        unique=True,
+    ),
+    sa.Column("niche_label", sa.String(140), nullable=False),
+    sa.Column("format", sa.String(10), nullable=False),
+    sa.Column("schema_version", sa.String(20), nullable=False),
+    sa.Column("content", JSONB, nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("retain_until", sa.DateTime(timezone=True), nullable=False),
+    sa.Index("ix_flow_research_dossiers_lookup", "niche_label", "format", "created_at"),
+)
