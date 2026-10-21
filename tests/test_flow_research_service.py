@@ -17,14 +17,18 @@ from nicheradar.flow_research.service import (
     get_request,
     list_requests,
     pending_requests,
+    submit_dossier,
 )
 from nicheradar.market_intel.niches import save_decision
 from nicheradar.repositories.schema import (
+    flow_research_dossiers,
+    flow_research_requests,
     listing_classifications,
     listing_observations,
     listing_verifications,
     marketplace_listings,
 )
+from tests.flow_research_samples import valid_dossier
 from tests.test_market_intel_niches import seed_niche
 from tests.test_persistence import NOW
 
@@ -158,3 +162,101 @@ def test_discarding_the_niche_keeps_the_request(db: Connection) -> None:
     assert [item["id"] for item in list_requests(db)] == [request["id"]]
     again, created = create_request(db, "personal_finance", "long", NOW)
     assert created is False and again["id"] == request["id"]
+
+
+def claimed(db: Connection, owner: str = "worker-a") -> dict[str, Any]:
+    request = fresh_request(db)
+    return claim_request(db, request["id"], owner, NOW)
+
+
+def test_a_valid_dossier_completes_the_request_and_is_stored(db: Connection) -> None:
+    request = claimed(db)
+    result = submit_dossier(db, request["id"], "worker-a", valid_dossier(request["id"], NOW), NOW)
+    assert result["accepted"] is True and result["status"] == "listo"
+    stored = get_request(db, request["id"])
+    assert stored is not None and stored["status"] == "listo" and stored["rejection"] is None
+    assert stored["dossier"]["verdict"]["recommendation"] == "go_with_conditions"
+    assert stored["dossier"]["request_id"] == str(request["id"])
+    retained = db.execute(
+        sa.select(flow_research_requests.c.retain_until, flow_research_dossiers.c.retain_until)
+        .select_from(flow_research_requests.join(flow_research_dossiers))
+        .where(flow_research_requests.c.id == request["id"])
+    ).one()
+    assert retained[0] == retained[1]  # the request never expires before its dossier
+    with pytest.raises(FlowResearchError) as error:
+        submit_dossier(db, request["id"], "worker-a", valid_dossier(request["id"], NOW), NOW)
+    assert error.value.code == "lease_lost"  # a finished request accepts nothing more
+
+
+def test_a_stale_owner_cannot_submit_after_another_claimed(db: Connection) -> None:
+    first = claimed(db, "worker-a")
+    later = NOW + LEASE + timedelta(minutes=1)
+    claim_request(db, first["id"], "worker-b", later)
+    payload = valid_dossier(first["id"], later)
+    with pytest.raises(FlowResearchError) as lost:
+        submit_dossier(db, first["id"], "worker-a", payload, later)
+    assert lost.value.code == "lease_lost"
+    assert submit_dossier(db, first["id"], "worker-b", payload, later)["accepted"] is True
+
+
+def test_an_expired_lease_rejects_a_late_dossier(db: Connection) -> None:
+    request = claimed(db)
+    later = NOW + LEASE + timedelta(minutes=1)
+    with pytest.raises(FlowResearchError) as lost:
+        submit_dossier(db, request["id"], "worker-a", valid_dossier(request["id"], later), later)
+    assert lost.value.code == "lease_lost"
+
+
+def test_unknown_requests_are_not_found(db: Connection) -> None:
+    with pytest.raises(FlowResearchError) as error:
+        submit_dossier(db, uuid4(), "worker-a", {}, NOW)
+    assert error.value.code == "not_found"
+
+
+def test_the_first_invalid_dossier_allows_one_retry_and_the_second_rejects(
+    db: Connection,
+) -> None:
+    request = claimed(db)
+    bad = valid_dossier(request["id"], NOW)
+    bad["budget"]["totals"]["likely"] = 999.0
+    bad["budget"]["totals"]["high"] = 1000.0
+    first = submit_dossier(db, request["id"], "worker-a", bad, NOW)
+    assert first["accepted"] is False and first["status"] == "en_curso"
+    assert first["remaining_attempts"] == 1
+    assert "budget.totals.likely" in {problem["path"] for problem in first["problems"]}
+    second = submit_dossier(db, request["id"], "worker-a", bad, NOW)
+    assert second["status"] == "rechazado" and second["remaining_attempts"] == 0
+    stored = get_request(db, request["id"])
+    assert stored is not None and stored["attempts"] == 2 and stored["dossier"] is None
+    assert stored["rejection"]["problems"]
+    with pytest.raises(FlowResearchError) as error:
+        claim_request(db, request["id"], "worker-c", NOW)
+    assert error.value.code == "not_claimable"
+    retry, created = create_request(db, "personal_finance", "long", NOW)
+    assert created is True and retry["id"] != request["id"]  # "retry" is a new request
+
+
+def test_a_dossier_for_another_request_or_niche_is_rejected(db: Connection) -> None:
+    request = claimed(db)
+    other = valid_dossier(uuid4(), NOW)
+    other["niche_label"] = "gaming_general"
+    result = submit_dossier(db, request["id"], "worker-a", other, NOW)
+    paths = {problem["path"] for problem in result["problems"]}
+    assert result["accepted"] is False and {"request_id", "niche_label"} <= paths
+
+
+def test_a_low_confidence_niche_requires_declared_unknowns(db: Connection) -> None:
+    request = claimed(db)
+    evidence = request["evidence"]
+    evidence["niche"]["confidence"] = "baja"
+    db.execute(
+        sa.update(flow_research_requests)
+        .where(flow_research_requests.c.id == request["id"])
+        .values(evidence=evidence)
+    )
+    payload = valid_dossier(request["id"], NOW)
+    payload["verdict"]["unknowns"] = []
+    result = submit_dossier(db, request["id"], "worker-a", payload, NOW)
+    assert "verdict.unknowns" in {problem["path"] for problem in result["problems"]}
+    payload["verdict"]["unknowns"] = ["No se pudo verificar el RPM real"]
+    assert submit_dossier(db, request["id"], "worker-a", payload, NOW)["accepted"] is True

@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import Connection, select, update
 from sqlalchemy.exc import IntegrityError
 
+from nicheradar.flow_research.contracts import SCHEMA_VERSION, Dossier, Problem, validate_dossier
 from nicheradar.flow_research.evidence import REASONS, build_evidence, ineligible_reason
 from nicheradar.market_intel.ingest import LISTING_RETENTION
 from nicheradar.market_intel.niches import niche_detail
@@ -179,3 +180,82 @@ def claim_request(
         .values(status="en_curso", lease_owner=owner, lease_until=now + LEASE, updated_at=now)
     )
     return _stored(connection, request_id)
+
+
+def _request_problems(dossier: Dossier, row: Any) -> list[Problem]:
+    """Checks that need the request: the dossier must answer exactly what was ordered."""
+    problems: list[Problem] = []
+    if dossier.request_id != row["id"]:
+        problems.append({"path": "request_id", "message": "no corresponde a este encargo"})
+    if dossier.niche_label != row["niche_label"]:
+        problems.append({"path": "niche_label", "message": "no corresponde al nicho del encargo"})
+    if dossier.format != row["format"]:
+        problems.append({"path": "format", "message": "no corresponde al formato del encargo"})
+    if row["evidence"]["niche"].get("confidence") == "baja" and not dossier.verdict.unknowns:
+        problems.append(
+            {
+                "path": "verdict.unknowns",
+                "message": "la confianza del nicho es baja: declara qué no se pudo verificar",
+            }
+        )
+    return problems
+
+
+def submit_dossier(
+    connection: Connection, request_id: UUID, owner: str, payload: object, now: datetime
+) -> dict[str, Any]:
+    release_expired(connection, now)
+    row = _locked(connection, request_id)
+    if row["status"] != "en_curso" or row["lease_owner"] != owner or row["lease_until"] <= now:
+        raise FlowResearchError("lease_lost")
+    dossier, problems = validate_dossier(payload, now)
+    if dossier is not None:
+        problems = _request_problems(dossier, row)
+    if dossier is None or problems:
+        attempts = row["attempts"] + 1
+        rejected = attempts >= MAX_REJECTIONS
+        connection.execute(
+            update(requests)
+            .where(requests.c.id == request_id)
+            .values(
+                attempts=attempts,
+                status="rechazado" if rejected else "en_curso",
+                rejection={"problems": problems, "at": now.isoformat()},
+                lease_owner=None if rejected else row["lease_owner"],
+                lease_until=None if rejected else row["lease_until"],
+                updated_at=now,
+            )
+        )
+        return {
+            "accepted": False,
+            "status": "rechazado" if rejected else "en_curso",
+            "problems": problems,
+            "remaining_attempts": max(0, MAX_REJECTIONS - attempts),
+        }
+    dossier_id = uuid4()
+    retain_until = now + RETENTION
+    connection.execute(
+        dossiers.insert().values(
+            id=dossier_id,
+            request_id=request_id,
+            niche_label=row["niche_label"],
+            format=row["format"],
+            schema_version=SCHEMA_VERSION,
+            content=dossier.model_dump(mode="json"),
+            created_at=now,
+            retain_until=retain_until,
+        )
+    )
+    connection.execute(
+        update(requests)
+        .where(requests.c.id == request_id)
+        .values(
+            status="listo",
+            lease_owner=None,
+            lease_until=None,
+            rejection=None,
+            retain_until=retain_until,
+            updated_at=now,
+        )
+    )
+    return {"accepted": True, "status": "listo", "dossier_id": dossier_id}
