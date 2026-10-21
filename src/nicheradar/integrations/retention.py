@@ -10,6 +10,8 @@ from nicheradar.repositories.schema import (
     balance_reconciliations,
     channel_analyses,
     credit_balances,
+    flow_research_dossiers,
+    flow_research_requests,
     listing_classifications,
     listing_observations,
     listing_verifications,
@@ -91,6 +93,16 @@ def expire(
         connection.execute(delete(child).where(child.c.retain_until <= now))
     connection.execute(
         delete(market_niche_snapshots).where(market_niche_snapshots.c.retain_until <= now)
+    )
+    connection.execute(
+        delete(flow_research_dossiers).where(flow_research_dossiers.c.retain_until <= now)
+    )
+    connection.execute(
+        delete(flow_research_requests).where(
+            flow_research_requests.c.retain_until <= now,
+            # A request whose dossier is still retained must outlive it (foreign key).
+            flow_research_requests.c.id.not_in(select(flow_research_dossiers.c.request_id)),
+        )
     )
     connection.execute(
         delete(balance_reconciliations).where(balance_reconciliations.c.retain_until <= now)

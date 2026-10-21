@@ -162,6 +162,16 @@ Términos de Servicio de DealBaron (compuerta `NR_MARKET_INTEL_LIVE_ENABLED`), p
 despliegue por digest y decisión sobre respaldar los datos de mercado (tarea 9.4).
 Detalle en [market-intel.md](market-intel.md).
 
+## Investigación de flujo (2026-10-20)
+
+- Botón "Iniciar investigación de flujo" en Mercado para nichos `tentativo`; Claude Code
+  atiende el encargo con búsqueda web (membresía, sin gasto de API) y entrega un dossier
+  `dossier-v1` validado, inmutable y versionado. Detalles en `docs/flow-research.md`.
+- Migración `0014`; las tablas nuevas cuentan como datos de investigación en el respaldo.
+- Pendiente: la búsqueda web real no se prueba automáticamente; los términos de la membresía
+  para uso automatizado no se han verificado.
+
+
 ## Pendientes de integración y verificación
 
 - Observar la calidad de las cohortes semánticas en más periodos antes de mantener la

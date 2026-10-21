@@ -12,6 +12,7 @@ from urllib.parse import quote, urlencode
 import streamlit as st
 
 from nicheradar.config import Settings
+from nicheradar.flow_research_dashboard import render_flow_research
 
 ApiRequest = Callable[..., dict[str, Any]]
 INSUFFICIENT = "sin evidencia"
@@ -123,6 +124,7 @@ def render_market(config: Settings, api: ApiRequest) -> None:
     selected = st.selectbox("Abrir nicho", list(by_label))
     entry = by_label[selected]
     _render_decision(config, api, entry)
+    render_flow_research(config, api, entry)
     detail = api(config, "GET", f"/market/niches/{quote(selected, safe='')}?format={fmt}")
     with st.expander("Cómo se calculó"):
         st.json({"opportunity": entry["opportunity"], "automation": entry["automation"]})

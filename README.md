@@ -71,6 +71,8 @@ confianza por separado). Tiene su propia pausa, independiente de la del radar, y
 no corre hasta revisar los Términos de Servicio de la fuente. Ver
 [`docs/market-intel.md`](docs/market-intel.md) y [`docs/market-intel-pilot.md`](docs/market-intel-pilot.md).
 
+Investigación de flujo (dossier por Claude Code desde un nicho tentativo): [`docs/flow-research.md`](docs/flow-research.md).
+
 ## Docker y operación
 
 El entorno Compose local incluye migraciones, comprobaciones de salud y volumen PostgreSQL.
