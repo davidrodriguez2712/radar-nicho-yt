@@ -21,6 +21,7 @@ from pydantic import (
     ValidationError,
     model_validator,
 )
+from pydantic_core import ErrorDetails
 
 SCHEMA_VERSION = "dossier-v1"
 MAX_PRICE_AGE = timedelta(days=90)
@@ -28,6 +29,7 @@ GENERATED_WINDOW = timedelta(hours=24)
 CLOCK_SKEW = timedelta(minutes=5)
 HORIZON_MAX_WEEKS = {"short": 13, "medium": 39}
 MONEY_TOLERANCE = Decimal("0.01")
+MAX_PROBLEMS = 50
 
 
 def _https(value: str) -> str:
@@ -264,17 +266,23 @@ def consistency_problems(dossier: Dossier, now: datetime) -> list[Problem]:
     return problems
 
 
+def _problem(item: ErrorDetails) -> Problem:
+    location = [str(part) for part in item["loc"]]
+    if item["type"] == "extra_forbidden" and location:
+        location[-1] = "(campo no permitido)"  # the key is untrusted text: never echo it
+    return {"path": ".".join(location) or "(raiz)", "message": item["msg"]}
+
+
 def validate_dossier(payload: object, now: datetime) -> tuple[Dossier | None, list[Problem]]:
     """Return the dossier, or ``None`` with every problem found; never raises on bad input."""
     try:
         dossier = Dossier.model_validate(payload)
     except ValidationError as error:
         return None, [
-            {
-                "path": ".".join(str(part) for part in item["loc"]) or "(raiz)",
-                "message": item["msg"],
-            }
-            for item in error.errors(include_url=False, include_context=False, include_input=False)
+            _problem(item)
+            for item in error.errors(include_url=False, include_context=False, include_input=False)[
+                :MAX_PROBLEMS
+            ]
         ]
-    problems = consistency_problems(dossier, now)
+    problems = consistency_problems(dossier, now)[:MAX_PROBLEMS]
     return (None if problems else dossier), problems

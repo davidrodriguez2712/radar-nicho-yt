@@ -111,11 +111,12 @@ def test_dossier_text_is_rendered_as_plain_text(
     created = backend.post(
         "/api/v1/flow-research", json={"niche_label": "personal_finance", "format": "long"}
     ).json()
-    backend.post(f"/api/v1/flow-research/{created['id']}/claim", json={"owner": "w1"})
+    claim = backend.post(f"/api/v1/flow-research/{created['id']}/claim", json={"owner": "w1"})
+    owner = claim.json()["lease_owner"]
     payload = valid_dossier(UUID(created["id"]), NOW)
     payload["verdict"]["thesis"] = HOSTILE
     accepted = backend.post(
-        f"/api/v1/flow-research/{created['id']}/dossier", json={"owner": "w1", "dossier": payload}
+        f"/api/v1/flow-research/{created['id']}/dossier", json={"owner": owner, "dossier": payload}
     )
     assert accepted.status_code == 200
     app.run()

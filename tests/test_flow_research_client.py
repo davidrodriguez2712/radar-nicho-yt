@@ -43,9 +43,10 @@ def test_the_client_round_trips_against_the_api(isolated_engine: Engine) -> None
     assert [item["id"] for item in client.pending()] == [request_id]
     claimed = client.claim(request_id, "w1")
     assert claimed["status"] == "en_curso" and claimed["evidence"]["niche"]
-    bad = client.submit(request_id, "w1", {"x": 1})
+    owner = claimed["lease_owner"]
+    bad = client.submit(request_id, owner, {"x": 1})
     assert bad["accepted"] is False and bad["remaining_attempts"] == 1
-    good = client.submit(request_id, "w1", valid_dossier(UUID(request_id), NOW))
+    good = client.submit(request_id, owner, valid_dossier(UUID(request_id), NOW))
     assert good["accepted"] is True
 
 

@@ -174,12 +174,15 @@ def claim_request(
     row = _locked(connection, request_id)
     if row["status"] != "pendiente":
         raise FlowResearchError("not_claimable")
+    holder = f"{owner[:60]}#{uuid4().hex}"
     connection.execute(
         update(requests)
         .where(requests.c.id == request_id)
-        .values(status="en_curso", lease_owner=owner, lease_until=now + LEASE, updated_at=now)
+        .values(status="en_curso", lease_owner=holder, lease_until=now + LEASE, updated_at=now)
     )
-    return _stored(connection, request_id)
+    # The label is client-chosen text; the suffix makes every claim distinct, so a stale
+    # session that reused the same label can never submit into a newer claim.
+    return _stored(connection, request_id) | {"lease_owner": holder}
 
 
 def _request_problems(dossier: Dossier, row: Any) -> list[Problem]:

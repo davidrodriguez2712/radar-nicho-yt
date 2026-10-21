@@ -35,10 +35,11 @@ def test_a_request_never_touches_budget_providers_or_status(isolated_engine: Eng
     before = counts(isolated_engine)
     status_before = api.get("/api/v1/status", headers=AUTH).json()
     request_id = create(api)["id"]
-    api.post(f"{BASE}/{request_id}/claim", json={"owner": "w1"}, headers=AUTH)
+    claim = api.post(f"{BASE}/{request_id}/claim", json={"owner": "w1"}, headers=AUTH)
+    owner = claim.json()["lease_owner"]
     dossier = valid_dossier(UUID(request_id), NOW)
     assert api.post(
-        f"{BASE}/{request_id}/dossier", json={"owner": "w1", "dossier": dossier}, headers=AUTH
+        f"{BASE}/{request_id}/dossier", json={"owner": owner, "dossier": dossier}, headers=AUTH
     ).json()["accepted"]
     after = counts(isolated_engine)
     assert (after["providers"], after["runs"]) == (before["providers"], before["runs"])
@@ -50,10 +51,11 @@ def test_a_request_leaves_the_owner_decision_untouched(isolated_engine: Engine) 
     api = tentative_api(isolated_engine)
     before = counts(isolated_engine)["decisions"]
     request_id = create(api)["id"]
-    api.post(f"{BASE}/{request_id}/claim", json={"owner": "w1"}, headers=AUTH)
+    claim = api.post(f"{BASE}/{request_id}/claim", json={"owner": "w1"}, headers=AUTH)
+    owner = claim.json()["lease_owner"]
     api.post(
         f"{BASE}/{request_id}/dossier",
-        json={"owner": "w1", "dossier": valid_dossier(UUID(request_id), NOW)},
+        json={"owner": owner, "dossier": valid_dossier(UUID(request_id), NOW)},
         headers=AUTH,
     )
     assert counts(isolated_engine)["decisions"] == before
@@ -64,10 +66,11 @@ def test_a_request_leaves_the_owner_decision_untouched(isolated_engine: Engine) 
 def test_a_new_investigation_keeps_the_previous_dossier(isolated_engine: Engine) -> None:
     api = tentative_api(isolated_engine)
     first = create(api)["id"]
-    api.post(f"{BASE}/{first}/claim", json={"owner": "w1"}, headers=AUTH)
+    claim = api.post(f"{BASE}/{first}/claim", json={"owner": "w1"}, headers=AUTH)
+    owner = claim.json()["lease_owner"]
     api.post(
         f"{BASE}/{first}/dossier",
-        json={"owner": "w1", "dossier": valid_dossier(UUID(first), NOW)},
+        json={"owner": owner, "dossier": valid_dossier(UUID(first), NOW)},
         headers=AUTH,
     )
     second = create(api)["id"]  # the first is `listo`, so a new version can be ordered

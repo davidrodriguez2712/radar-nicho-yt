@@ -66,6 +66,7 @@ def test_the_full_round_trip(isolated_engine: Engine) -> None:
     assert "evidence" not in pending[0]
 
     claim = api.post(f"{BASE}/{request_id}/claim", json={"owner": "w1"}, headers=AUTH)
+    owner = claim.json()["lease_owner"]
     assert claim.status_code == 200 and claim.json()["status"] == "en_curso"
     assert claim.json()["evidence"]["niche"]["niche_label"] == "personal_finance"
     again = api.post(f"{BASE}/{request_id}/claim", json={"owner": "w2"}, headers=AUTH)
@@ -76,14 +77,14 @@ def test_the_full_round_trip(isolated_engine: Engine) -> None:
     assert stranger.status_code == 409 and stranger.json()["detail"]["code"] == "lease_lost"
 
     bad = valid_dossier(uuid4(), NOW)
-    rejected = api.post(path, json={"owner": "w1", "dossier": bad}, headers=AUTH)
+    rejected = api.post(path, json={"owner": owner, "dossier": bad}, headers=AUTH)
     assert rejected.status_code == 422
     body = rejected.json()
     assert body["accepted"] is False and body["status"] == "en_curso"
     assert body["remaining_attempts"] == 1 and body["problems"]
 
     good = valid_dossier(UUID(request_id), NOW)
-    accepted = api.post(path, json={"owner": "w1", "dossier": good}, headers=AUTH)
+    accepted = api.post(path, json={"owner": owner, "dossier": good}, headers=AUTH)
     assert accepted.status_code == 200 and accepted.json()["accepted"] is True
 
     detail = api.get(f"{BASE}/{request_id}", headers=AUTH).json()
@@ -95,10 +96,11 @@ def test_the_full_round_trip(isolated_engine: Engine) -> None:
 def test_the_second_invalid_dossier_rejects_the_request(isolated_engine: Engine) -> None:
     api = tentative_api(isolated_engine)
     request_id = create(api)["id"]
-    api.post(f"{BASE}/{request_id}/claim", json={"owner": "w1"}, headers=AUTH)
+    claim = api.post(f"{BASE}/{request_id}/claim", json={"owner": "w1"}, headers=AUTH)
+    owner = claim.json()["lease_owner"]
     path = f"{BASE}/{request_id}/dossier"
     for expected in ("en_curso", "rechazado"):
-        response = api.post(path, json={"owner": "w1", "dossier": {"x": 1}}, headers=AUTH)
+        response = api.post(path, json={"owner": owner, "dossier": {"x": 1}}, headers=AUTH)
         assert response.status_code == 422 and response.json()["status"] == expected
     detail = api.get(f"{BASE}/{request_id}", headers=AUTH).json()
     assert detail["status"] == "rechazado" and detail["rejection"]["problems"]

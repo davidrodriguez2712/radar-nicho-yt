@@ -52,7 +52,7 @@ def test_float_noise_in_money_is_tolerated() -> None:
 
 
 CASES = [
-    ("surprise", 1, "surprise"),
+    ("surprise", 1, "(campo no permitido)"),
     ("competitors.0.channel_url", "http://www.youtube.com/@a", "competitors.0.channel_url"),
     ("budget.lines.0.source_id", "zz", "budget.lines.0.source_id"),
     (
