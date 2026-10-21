@@ -23,8 +23,9 @@ def upgrade() -> None:
         sa.Column("interval_seconds", sa.Integer, nullable=False),
         _tz("next_due_at", nullable=False),
         sa.Column("configuration", JSONB, nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
         sa.CheckConstraint("interval_seconds > 0", name="market_schedule_interval"),
     )
     op.create_table(
@@ -82,8 +83,12 @@ def upgrade() -> None:
     op.create_table(
         "listing_observations",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("listing_id", UUID(as_uuid=True),
-                  sa.ForeignKey("marketplace_listings.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "listing_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("marketplace_listings.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("observed_on", sa.Date, nullable=False),
         sa.Column("price_usd", sa.Numeric(14, 2)),
         sa.Column("subscribers", sa.BigInteger),
@@ -99,8 +104,12 @@ def upgrade() -> None:
     op.create_table(
         "listing_classifications",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("listing_id", UUID(as_uuid=True),
-                  sa.ForeignKey("marketplace_listings.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "listing_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("marketplace_listings.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("prompt_version", sa.String(40), nullable=False),
         sa.Column("niche_label", sa.String(120)),
         sa.Column("other_label", sa.String(80)),
@@ -112,16 +121,20 @@ def upgrade() -> None:
         _tz("retain_until", nullable=False),
         _tz("created_at", nullable=False),
         sa.UniqueConstraint("listing_id", "prompt_version"),
-        sa.CheckConstraint("format IN ('long', 'shorts', 'unknown')",
-                           name="classification_format"),
-        sa.CheckConstraint("source IN ('llm', 'synthetic_category_map')",
-                           name="classification_source"),
+        sa.CheckConstraint("format IN ('long', 'shorts', 'unknown')", name="classification_format"),
+        sa.CheckConstraint(
+            "source IN ('llm', 'synthetic_category_map')", name="classification_source"
+        ),
     )
     op.create_table(
         "listing_verifications",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("listing_id", UUID(as_uuid=True),
-                  sa.ForeignKey("marketplace_listings.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "listing_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("marketplace_listings.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("youtube_channel_id", sa.String(40)),
         sa.Column("real_subscribers", sa.BigInteger),
         sa.Column("status", sa.String(20), nullable=False),
@@ -132,8 +145,7 @@ def upgrade() -> None:
             name="verification_status",
         ),
     )
-    op.create_index("ix_listing_verifications_listing_id", "listing_verifications",
-                    ["listing_id"])
+    op.create_index("ix_listing_verifications_listing_id", "listing_verifications", ["listing_id"])
     op.create_table(
         "niche_automation_priors",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
@@ -160,11 +172,15 @@ def upgrade() -> None:
         sa.Column("decision", sa.String(20), nullable=False),
         sa.Column("note", sa.Text),
         _tz("created_at", nullable=False),
-        sa.CheckConstraint("decision IN ('nuevo', 'tentativo', 'descartado')",
-                           name="decision_value"),
+        sa.CheckConstraint(
+            "decision IN ('nuevo', 'tentativo', 'descartado')", name="decision_value"
+        ),
     )
-    op.create_index("ix_market_niche_decisions_lookup", "market_niche_decisions",
-                    ["niche_label", "format", "created_at"])
+    op.create_index(
+        "ix_market_niche_decisions_lookup",
+        "market_niche_decisions",
+        ["niche_label", "format", "created_at"],
+    )
 
 
 def downgrade() -> None:
