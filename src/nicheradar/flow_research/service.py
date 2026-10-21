@@ -75,7 +75,7 @@ def _stored(connection: Connection, request_id: UUID) -> dict[str, Any]:
 def create_request(
     connection: Connection, niche_label: str, format: str, now: datetime, timezone: str = "UTC"
 ) -> tuple[dict[str, Any], bool]:
-    """Return ``(request, created)``; an active request for the niche is returned, not duplicated."""
+    """Return ``(request, created)``; an active request is returned, never duplicated."""
     release_expired(connection, now)
     existing = _active(connection, niche_label, format)
     if existing is not None:
