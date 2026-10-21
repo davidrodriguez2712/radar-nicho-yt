@@ -294,6 +294,8 @@ un piloto acotado separado antes de dejar la programación activa.
   venta, scores del backlog de nichos, pausa propia y retención de 6 meses.
 - `[MERCADO-PILOTO]` [`docs/market-intel-pilot.md`](docs/market-intel-pilot.md): compuerta de
   Términos de Servicio y pasos del piloto live.
+- `[FLUJO]` [`docs/flow-research.md`](docs/flow-research.md): investigación de flujo, dossier
+  por Claude Code desde un nicho tentativo.
 - `[RESPALDO]` [`docs/backup-restore.md`](docs/backup-restore.md): respaldo cifrado,
   restauración aislada, limpieza y rollback. Contiene el único pendiente formal 9.4.
 
