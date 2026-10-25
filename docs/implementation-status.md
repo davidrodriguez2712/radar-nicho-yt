@@ -181,9 +181,9 @@ Detalle en [market-intel.md](market-intel.md).
 - Migración `0015` (`pilots`, `pilot_videos`, `pilot_events`, `channel_tokens`), rutas
   `/api/v1/pilots`, tokens por canal, `scripts/channel_sync.py`, `scripts/pilots.py` y panel
   «Portafolio» de solo lectura. Rama `feat/experimentos-ecosistema`.
-- **No desplegado.** Pendiente: aplicar la migración con aprobación, decidir cómo alcanza el Mac
-  la API (túnel o subdominio), y respaldar estas tablas (tarea 9.4: el guard de respaldo se
-  niega en cuanto tengan filas).
+- **Desplegado el 2026-10-25** (release [013](release-20261025-013.md), migración `0015`).
+  El Mac alcanza la API por túnel SSH (`scripts/pilots_tunnel.py`). Las tablas de pilotos se
+  respaldan; los datos de mercado y de flujo siguen bloqueando el respaldo (tarea 9.4).
 
 ## Pendientes de integración y verificación
 

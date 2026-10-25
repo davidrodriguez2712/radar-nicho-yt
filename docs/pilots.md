@@ -5,9 +5,9 @@ Formatos exactos (fuente única): [`contracts/pilot-package-v1.md`](contracts/pi
 y [`contracts/channel-report-v1.md`](contracts/channel-report-v1.md). Este documento no los repite:
 dice **dónde está el código, cómo se usa y en qué se aparta o completa el contrato**.
 
-Estado (2026-10-25): implementado y probado en local en la rama `feat/experimentos-ecosistema`.
-**No desplegado**: la migración `0015` no se ha aplicado en el servidor y la API no tiene dominio
-público (ver «Alcanzar la API desde el Mac»).
+Estado (2026-10-25): **desplegado** en producción (release
+[013](release-20261025-013.md), migración `0015`, sin pilotos reales todavía). La API no tiene
+dominio público: el Mac entra por túnel SSH (ver «Alcanzar la API desde el Mac»).
 
 ## Mapa del código
 
