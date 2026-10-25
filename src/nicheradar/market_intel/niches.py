@@ -251,6 +251,19 @@ def backlog(
     }
 
 
+def language_mix(listings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Share of listings per language, largest first; ``unknown`` lacks a detected language."""
+    counts: dict[str, int] = {}
+    for item in listings:
+        language = item["language"]
+        counts[language] = counts.get(language, 0) + 1
+    ordered = sorted(counts.items(), key=lambda pair: (-pair[1], pair[0] == "unknown", pair[0]))
+    return [
+        {"language": language, "share_pct": round(100 * count / len(listings), 1)}
+        for language, count in ordered
+    ]
+
+
 def niche_detail(
     connection: Connection, label: str, format: str, now: datetime, timezone: str = "UTC"
 ) -> dict[str, Any] | None:
@@ -278,6 +291,7 @@ def niche_detail(
             ml.c.channel_url,
             ml.c.status,
             ml.c.category,
+            lc.c.language,
             ml.c.price_usd,
             ml.c.subscribers,
             ml.c.income_monthly_usd,
@@ -305,27 +319,30 @@ def niche_detail(
         .where(s.c.niche_label == label, s.c.format == format)
         .order_by(s.c.snapshot_date)
     ).all()
+    listings = [
+        {
+            "title": row["title"],
+            "url": row["url"],
+            "channel_url": row["channel_url"],
+            "status": row["status"],
+            "category": row["category"],
+            "language": row["language"],
+            "price_usd": number(row["price_usd"]),
+            "subscribers": row["subscribers"],
+            "income_monthly_usd": number(row["income_monthly_usd"]),
+            "expense_monthly_usd": number(row["expense_monthly_usd"]),
+            "first_seen_at": row["first_seen_at"],
+            "last_seen_at": row["last_seen_at"],
+            "verification": row["verification"],
+            "real_subscribers": row["real_subscribers"],
+            "seller_declared": True,
+        }
+        for row in rows
+    ]
     return {
         "niche": niche,
-        "listings": [
-            {
-                "title": row["title"],
-                "url": row["url"],
-                "channel_url": row["channel_url"],
-                "status": row["status"],
-                "category": row["category"],
-                "price_usd": number(row["price_usd"]),
-                "subscribers": row["subscribers"],
-                "income_monthly_usd": number(row["income_monthly_usd"]),
-                "expense_monthly_usd": number(row["expense_monthly_usd"]),
-                "first_seen_at": row["first_seen_at"],
-                "last_seen_at": row["last_seen_at"],
-                "verification": row["verification"],
-                "real_subscribers": row["real_subscribers"],
-                "seller_declared": True,
-            }
-            for row in rows
-        ],
+        "listings": listings,
+        "language_mix": language_mix(listings),
         "history": [{"date": row.snapshot_date, **row.stats} for row in history],
     }
 

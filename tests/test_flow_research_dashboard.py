@@ -12,7 +12,13 @@ from streamlit.testing.v1 import AppTest
 from nicheradar.api import create_app
 from nicheradar.config import Settings
 from nicheradar.flow_research.contracts import Dossier
-from nicheradar.flow_research_dashboard import budget_rows, flow_rows, roadmap_rows
+from nicheradar.flow_research_dashboard import (
+    budget_rows,
+    flow_rows,
+    language_options,
+    roadmap_rows,
+    suggested_language,
+)
 from tests.flow_research_samples import valid_dossier
 from tests.test_foundation import TOKEN
 from tests.test_market_intel_niches import seed_niche
@@ -109,7 +115,8 @@ def test_dossier_text_is_rendered_as_plain_text(
     path = "/api/v1/market/niches/personal_finance/decisions"
     assert backend.post(path, json=decision).status_code == 201
     created = backend.post(
-        "/api/v1/flow-research", json={"niche_label": "personal_finance", "format": "long"}
+        "/api/v1/flow-research",
+        json={"niche_label": "personal_finance", "format": "long", "language": "en"},
     ).json()
     claim = backend.post(f"/api/v1/flow-research/{created['id']}/claim", json={"owner": "w1"})
     owner = claim.json()["lease_owner"]
@@ -124,3 +131,42 @@ def test_dossier_text_is_rendered_as_plain_text(
     assert any(text.value == HOSTILE for text in app.text)
     assert not any(HOSTILE in markdown.value for markdown in app.markdown)
     assert any("133" in text.value for text in app.text)  # the likely total is visible
+
+
+def test_the_dominant_language_is_suggested_only_when_it_is_clear() -> None:
+    clear = [{"language": "en", "share_pct": 80.0}, {"language": "es", "share_pct": 20.0}]
+    assert suggested_language(clear) == "en"
+    tie = [{"language": "en", "share_pct": 50.0}, {"language": "es", "share_pct": 50.0}]
+    assert suggested_language(tie) is None
+    mostly_unknown = [
+        {"language": "unknown", "share_pct": 70.0},
+        {"language": "en", "share_pct": 30.0},
+    ]
+    assert suggested_language(mostly_unknown) is None
+    assert suggested_language([]) is None
+    assert "unknown" not in language_options(mostly_unknown)
+    assert language_options(clear)[:2] == ["en", "es"]
+
+
+@pytest.mark.postgres
+def test_without_a_dominant_language_nothing_is_preselected_and_the_button_waits(
+    monkeypatch: pytest.MonkeyPatch, isolated_engine: Engine
+) -> None:
+    with isolated_engine.begin() as connection:
+        seed_niche(connection, "personal_finance", (1500, 2000), price=67_500)
+        seed_niche(connection, "personal_finance", (2500, 3000), price=67_500, language="es")
+    app, backend = open_market(monkeypatch, isolated_engine)
+    decision = {"format": "long", "decision": "tentativo"}
+    path = "/api/v1/market/niches/personal_finance/decisions"
+    assert backend.post(path, json=decision).status_code == 201
+    app.run()
+    chooser = next(box for box in app.selectbox if box.label == "Idioma de la investigación")
+    assert chooser.value is None
+    order = next(b for b in app.button if b.label == "Iniciar investigación de flujo")
+    assert order.disabled
+    chooser.set_value("es").run()
+    order = next(b for b in app.button if b.label == "Iniciar investigación de flujo")
+    assert not order.disabled
+    order.click().run()
+    items = backend.get("/api/v1/flow-research?niche_label=personal_finance").json()["items"]
+    assert [(item["status"], item["language"]) for item in items] == [("pendiente", "es")]

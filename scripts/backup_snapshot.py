@@ -26,6 +26,10 @@ BOOTSTRAP_TABLES = {
     "advertising_benchmarks",
 }
 
+# Datos propios del usuario (no datos retenidos de proveedores): se respaldan cuando existen.
+# `channel_tokens` solo guarda el SHA-256 de cada token, nunca el token.
+PILOT_TABLES = {"pilots", "pilot_videos", "pilot_events", "channel_tokens"}
+
 
 def inspect_snapshot(connection: Connection) -> dict[str, object]:
     """Fail closed: this is not yet a backup policy for retained provider data."""
@@ -36,7 +40,7 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
     for name in sorted(tables):
         quoted = connection.dialect.identifier_preparer.quote(name)
         count = connection.exec_driver_sql(f"SELECT count(*) FROM {quoted}").scalar_one()
-        if name not in BOOTSTRAP_TABLES and count:
+        if name not in BOOTSTRAP_TABLES | PILOT_TABLES and count:
             raise ValueError("research_data_backup_not_enabled")
         counts[name] = count
     schedules = s.metadata.tables["radar_schedules"]
@@ -57,9 +61,11 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
     ).scalar_one():
         raise ValueError("market_intel_not_paused")
     revision = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-    if revision != "0014":
+    if revision != "0016":
         raise ValueError("unreviewed_schema_revision")
-    return {"scope": "bootstrap-only", "revision": revision, "counts": counts}
+    has_pilots = any(counts[name] for name in PILOT_TABLES)
+    scope = "bootstrap+pilots" if has_pilots else "bootstrap-only"
+    return {"scope": scope, "revision": revision, "counts": counts}
 
 
 def main() -> None:

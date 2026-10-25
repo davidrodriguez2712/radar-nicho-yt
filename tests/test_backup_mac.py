@@ -23,7 +23,7 @@ def test_bootstrap_snapshot_guard_and_active_schedule(db: Connection) -> None:
     create_schedule(db, profile, NOW, {})
     report = inspect_snapshot(db)
     assert report["scope"] == "bootstrap-only"
-    assert report["revision"] == "0014"
+    assert report["revision"] == "0016"
     db.execute(update(s.radar_schedules).values(paused=False))
     with pytest.raises(ValueError, match="radar_not_paused"):
         inspect_snapshot(db)
@@ -34,6 +34,16 @@ def test_snapshot_rejects_research_even_in_synthetic_mode(db: Connection) -> Non
     seed_evidence(db)
     with pytest.raises(ValueError, match="research_data_backup_not_enabled"):
         inspect_snapshot(db)
+
+
+@pytest.mark.postgres
+def test_snapshot_accepts_pilot_data_and_reports_the_wider_scope(db: Connection) -> None:
+    db.exec_driver_sql(
+        "INSERT INTO channel_tokens (id, channel_id, token_hash, label, created_at) "
+        "VALUES (gen_random_uuid(), 'canal-x', repeat('a', 64), 'mac', now())"
+    )
+    report = inspect_snapshot(db)
+    assert report["scope"] == "bootstrap+pilots"
 
 
 @pytest.mark.postgres
@@ -90,7 +100,7 @@ def test_encrypted_archive_roundtrip_tamper_and_wrong_key(tmp_path: Path) -> Non
     payload = b"PGDMP synthetic private fixture; not a database"
     report: dict[str, object] = {
         "scope": "bootstrap-only",
-        "revision": "0014",
+        "revision": "0016",
         "created_at": NOW.isoformat(),
         "dump_sha256": hashlib.sha256(payload).hexdigest(),
     }

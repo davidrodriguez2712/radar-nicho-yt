@@ -27,12 +27,14 @@ from nicheradar.flow_research.service import (
 Format = Literal["long", "shorts"]
 Status = Literal["pendiente", "en_curso", "listo", "rechazado"]
 Owner = Annotated[str, Field(min_length=1, max_length=120)]
+Language = Annotated[str, Field(pattern=r"^[a-z]{2}(-[A-Z]{2})?$")]
 
 
 class CreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     niche_label: str = Field(min_length=1, max_length=140)
     format: Format
+    language: Language
 
 
 class ClaimRequest(BaseModel):
@@ -66,7 +68,12 @@ def flow_research_router(
     ) -> dict[str, Any]:
         try:
             row, created = create_request(
-                connection, request.niche_label, request.format, clock(), config.timezone
+                connection,
+                request.niche_label,
+                request.format,
+                request.language,
+                clock(),
+                config.timezone,
             )
         except FlowResearchError as error:
             raise _http(error) from error
@@ -81,11 +88,17 @@ def flow_research_router(
         connection: Annotated[Connection, Depends(db)],
         niche_label: Annotated[str | None, Query(max_length=140)] = None,
         format: Format | None = None,
+        language: Annotated[str | None, Query(pattern=r"^[a-z]{2}(-[A-Z]{2})?$")] = None,
         status: Status | None = None,
         limit: Annotated[int, Query(ge=1, le=100)] = 50,
     ) -> dict[str, Any]:
         items = list_requests(
-            connection, niche_label=niche_label, format=format, status=status, limit=limit
+            connection,
+            niche_label=niche_label,
+            format=format,
+            language=language,
+            status=status,
+            limit=limit,
         )
         return {"items": items}
 

@@ -18,6 +18,7 @@ from nicheradar.domain.profile import CreatorProfile, VideoFormat, initial_catal
 from nicheradar.flow_research_api import flow_research_router
 from nicheradar.integrations.retention import expire
 from nicheradar.market_api import market_router
+from nicheradar.pilots_api import pilots_router
 from nicheradar.repositories import schema_v1 as s
 from nicheradar.repositories.core import (
     ConflictError,
@@ -891,4 +892,5 @@ def create_app(
     app.include_router(
         flow_research_router(authenticate=authenticate, db=db, config=config, clock=clock)
     )
+    app.include_router(pilots_router(db=db, config=config, clock=clock))
     return app

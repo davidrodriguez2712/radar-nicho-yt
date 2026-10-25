@@ -24,14 +24,14 @@ estructurado para lanzar un canal competidor. Trabajas desde la raíz del repo.
    `claude-code-<fecha>-1`, y úsalo en `claim`.
 3. `uv run python scripts/flow_research.py claim <id> --owner <investigador>`. El encargo
    queda tuyo 60 minutos. La respuesta trae `lease_owner`: es tu credencial de este
-   reclamo; úsala como `--owner` en `submit` (el identificador del paso 2 no sirve ahí). Lee su `evidence`: nicho, scores, métricas, fichas verificadas.
+   reclamo; úsala como `--owner` en `submit` (el identificador del paso 2 no sirve ahí). Lee su `evidence`: nicho, **idioma elegido** (`evidence.language`), mezcla de idiomas de las fichas (`language_mix`), scores, métricas, fichas verificadas.
 4. `uv run python scripts/flow_research.py schema` imprime el contrato `dossier-v1`.
 5. Investiga con `WebSearch` y `WebFetch`, partiendo **solo de la evidencia congelada**:
-   competidores del nicho (3 a 8), flujo de producción, herramientas y precios actuales,
+   competidores del nicho **en el idioma del encargo** (3 a 8; un canal en otro idioma no es competencia directa), flujo de producción, herramientas y precios actuales,
    política de YouTube sobre contenido reutilizado o inauténtico, y automatización posible.
    Registra cada fuente con su `accessed_on`.
 6. Arma el JSON y guárdalo en un archivo temporal **fuera del repo**. Reglas del contrato:
-   - `request_id`, `niche_label` y `format` copiados del encargo; `generated_at` es la hora
+   - `request_id`, `niche_label`, `format` y `language` copiados del encargo (el idioma no se cambia ni se infiere); `generated_at` es la hora
      actual en UTC.
    - Dinero en USD. `quantity` cuenta unidades dentro del horizonte (en partidas mensuales,
      los meses). `subtotal_usd = unit_cost_usd × quantity`; `cost_usd` de cada fase es la suma

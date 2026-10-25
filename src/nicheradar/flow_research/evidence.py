@@ -21,11 +21,13 @@ def ineligible_reason(niche: dict[str, Any]) -> str | None:
     return None
 
 
-def build_evidence(detail: dict[str, Any]) -> dict[str, Any]:
-    """Freeze scores, metrics, history and the top verified listings (already income-ordered)."""
+def build_evidence(detail: dict[str, Any], language: str) -> dict[str, Any]:
+    """Freeze scores, metrics, language, history and the top verified listings (income-ordered)."""
     verified = [item for item in detail["listings"] if item.get("verification") == "verified"]
     package = {
         "niche": detail["niche"],
+        "language": language,
+        "language_mix": detail["language_mix"],
         "verified_listings": verified[:MAX_EVIDENCE_LISTINGS],
         "verified_count": len(verified),
         "listing_count": len(detail["listings"]),

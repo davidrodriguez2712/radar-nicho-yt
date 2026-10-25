@@ -25,6 +25,7 @@ def valid_dossier(request_id: UUID, now: datetime) -> dict[str, Any]:
         "request_id": str(request_id),
         "niche_label": "personal_finance",
         "format": "long",
+        "language": "en",
         "horizon": "short",
         "generated_at": now.isoformat(),
         "verdict": {

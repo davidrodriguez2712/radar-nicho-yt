@@ -28,6 +28,41 @@ RECOMMENDATIONS = {
 }
 RECURRENCE = {"one_time": "una vez", "monthly": "mensual"}
 AUTOMATION = {"manual": "manual", "semi": "semiautomático", "auto": "automático"}
+LANGUAGE_NAMES = {
+    "en": "Inglés",
+    "es": "Español",
+    "pt": "Portugués",
+    "ru": "Ruso",
+    "de": "Alemán",
+    "fr": "Francés",
+}
+
+
+def language_name(code: str) -> str:
+    return LANGUAGE_NAMES.get(code, code)
+
+
+def suggested_language(mix: list[dict[str, Any]]) -> str | None:
+    """The dominant detected language, or ``None`` when it is a tie or mostly unknown."""
+    if not mix or mix[0]["language"] == "unknown":
+        return None
+    if len(mix) > 1 and mix[1]["share_pct"] == mix[0]["share_pct"]:
+        return None
+    return str(mix[0]["language"])
+
+
+def language_options(mix: list[dict[str, Any]]) -> list[str]:
+    """Detected languages first (largest share), then the usual ones; never ``unknown``."""
+    detected = [item["language"] for item in mix if item["language"] != "unknown"]
+    return detected + [code for code in LANGUAGE_NAMES if code not in detected]
+
+
+def mix_text(mix: list[dict[str, Any]]) -> str:
+    return ", ".join(
+        f"{'sin dato' if item['language'] == 'unknown' else language_name(item['language'])} "
+        f"{item['share_pct']:g}%"
+        for item in mix
+    )
 
 
 def budget_rows(content: dict[str, Any]) -> list[dict[str, Any]]:
@@ -167,10 +202,32 @@ def render_dossier(content: dict[str, Any]) -> None:
     st.dataframe(source_rows(content), hide_index=True, width="stretch")
 
 
-def render_flow_research(config: Settings, api: ApiRequest, entry: dict[str, Any]) -> None:
+def render_flow_research(
+    config: Settings, api: ApiRequest, entry: dict[str, Any], language_mix: list[dict[str, Any]]
+) -> None:
     st.subheader("Investigación de flujo")
-    query = urlencode({"niche_label": entry["niche_label"], "format": entry["format"], "limit": 1})
-    items = api(config, "GET", "/flow-research?" + query)["items"]
+    suggestion = suggested_language(language_mix)
+    options = language_options(language_mix)
+    st.caption(
+        "Idioma de las fichas del nicho: "
+        + (mix_text(language_mix) or "sin fichas")
+        + ". La competencia, los precios y las herramientas cambian por idioma: elige el de "
+        "esta investigación."
+    )
+    language = st.selectbox(
+        "Idioma de la investigación",
+        options,
+        index=options.index(suggestion) if suggestion else None,
+        format_func=language_name,
+        placeholder="Elige un idioma",
+        key=f"flow_language_{entry['niche_label']}_{entry['format']}",
+    )
+    if suggestion is None:
+        st.caption("No hay un idioma dominante claro: no se preselecciona ninguno.")
+    params: dict[str, Any] = {"niche_label": entry["niche_label"], "format": entry["format"]}
+    if language is not None:
+        params["language"] = language
+    items = api(config, "GET", "/flow-research?" + urlencode(params | {"limit": 1}))["items"]
     latest = items[0] if items else None
     active = latest is not None and latest["status"] in ("pendiente", "en_curso")
     reason = ineligible_reason(entry)
@@ -178,12 +235,18 @@ def render_flow_research(config: Settings, api: ApiRequest, entry: dict[str, Any
         st.caption(REASONS[reason])
     if latest is not None:
         st.caption("Última investigación: " + STATUS_LABELS[latest["status"]])
-    if st.button("Iniciar investigación de flujo", disabled=reason is not None or active):
+    if st.button(
+        "Iniciar investigación de flujo", disabled=reason is not None or active or language is None
+    ):
         api(
             config,
             "POST",
             "/flow-research",
-            body={"niche_label": entry["niche_label"], "format": entry["format"]},
+            body={
+                "niche_label": entry["niche_label"],
+                "format": entry["format"],
+                "language": language,
+            },
         )
         st.rerun()
     if latest is None:

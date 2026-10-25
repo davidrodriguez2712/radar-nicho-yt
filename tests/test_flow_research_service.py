@@ -42,7 +42,7 @@ def tentative(db: Connection, label: str = "personal_finance") -> None:
 
 def fresh_request(db: Connection) -> dict[str, Any]:
     tentative(db)
-    request, created = create_request(db, "personal_finance", "long", NOW)
+    request, created = create_request(db, "personal_finance", "long", "en", NOW)
     assert created
     return request
 
@@ -60,7 +60,7 @@ def test_a_tentative_niche_creates_a_pending_request_with_frozen_evidence(db: Co
 def test_a_niche_that_is_not_tentative_cannot_be_researched(db: Connection) -> None:
     seed_niche(db, "personal_finance", (1500, 2000, 2500, 3000), price=67_500)
     with pytest.raises(FlowResearchError) as error:
-        create_request(db, "personal_finance", "long", NOW)
+        create_request(db, "personal_finance", "long", "en", NOW)
     assert error.value.code == "not_tentative"
 
 
@@ -68,22 +68,22 @@ def test_a_niche_without_scores_cannot_be_researched(db: Connection) -> None:
     seed_niche(db, "cooking_recipes", (400, 500))
     save_decision(db, "cooking_recipes", "long", "tentativo", None, NOW)
     with pytest.raises(FlowResearchError) as error:
-        create_request(db, "cooking_recipes", "long", NOW)
+        create_request(db, "cooking_recipes", "long", "en", NOW)
     assert error.value.code == "no_evidence"
 
 
 def test_an_unknown_niche_is_not_found(db: Connection) -> None:
     with pytest.raises(FlowResearchError) as error:
-        create_request(db, "nope", "long", NOW)
+        create_request(db, "nope", "long", "en", NOW)
     assert error.value.code == "not_found"
 
 
 def test_creating_twice_returns_the_active_request(db: Connection) -> None:
     first = fresh_request(db)
-    again, created = create_request(db, "personal_finance", "long", NOW)
+    again, created = create_request(db, "personal_finance", "long", "en", NOW)
     assert created is False and again["id"] == first["id"]
     claim_request(db, first["id"], "worker", NOW)
-    while_running, created = create_request(db, "personal_finance", "long", NOW)
+    while_running, created = create_request(db, "personal_finance", "long", "en", NOW)
     assert created is False and while_running["id"] == first["id"]
 
 
@@ -92,12 +92,12 @@ def test_two_simultaneous_creations_leave_one_active_request(isolated_engine: En
         tentative(connection)
     first = isolated_engine.connect()
     transaction = first.begin()
-    created, was_created = create_request(first, "personal_finance", "long", NOW)
+    created, was_created = create_request(first, "personal_finance", "long", "en", NOW)
     assert was_created
 
     def second() -> tuple[dict[str, Any], bool]:
         with isolated_engine.begin() as connection:
-            return create_request(connection, "personal_finance", "long", NOW)
+            return create_request(connection, "personal_finance", "long", "en", NOW)
 
     with ThreadPoolExecutor(1) as pool:
         future = pool.submit(second)
@@ -160,7 +160,7 @@ def test_discarding_the_niche_keeps_the_request(db: Connection) -> None:
     request = fresh_request(db)
     save_decision(db, "personal_finance", "long", "descartado", None, NOW + timedelta(minutes=1))
     assert [item["id"] for item in list_requests(db)] == [request["id"]]
-    again, created = create_request(db, "personal_finance", "long", NOW)
+    again, created = create_request(db, "personal_finance", "long", "en", NOW)
     assert created is False and again["id"] == request["id"]
 
 
@@ -240,7 +240,7 @@ def test_the_first_invalid_dossier_allows_one_retry_and_the_second_rejects(
     with pytest.raises(FlowResearchError) as error:
         claim_request(db, request["id"], "worker-c", NOW)
     assert error.value.code == "not_claimable"
-    retry, created = create_request(db, "personal_finance", "long", NOW)
+    retry, created = create_request(db, "personal_finance", "long", "en", NOW)
     assert created is True and retry["id"] != request["id"]  # "retry" is a new request
 
 

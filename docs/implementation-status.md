@@ -172,6 +172,19 @@ Detalle en [market-intel.md](market-intel.md).
   para uso automatizado no se han verificado.
 
 
+## Pilotos de canal (2026-10-25)
+
+- Un nicho con dossier pasa a «piloto»: NicheRadar congela el paquete (evidencia, presupuesto,
+  reglas de parada), el canal lo baja desde el Mac, reporta por video y NicheRadar propone
+  seguir o cerrar sin decidir solo. Guía: [pilots.md](pilots.md); diseño:
+  [ecosistema-youtube.md](ecosistema-youtube.md).
+- Migración `0015` (`pilots`, `pilot_videos`, `pilot_events`, `channel_tokens`), rutas
+  `/api/v1/pilots`, tokens por canal, `scripts/channel_sync.py`, `scripts/pilots.py` y panel
+  «Portafolio» de solo lectura. Rama `feat/experimentos-ecosistema`.
+- **Desplegado el 2026-10-25** (release [013](release-20261025-013.md), migración `0015`).
+  El Mac alcanza la API por túnel SSH (`scripts/pilots_tunnel.py`). Las tablas de pilotos se
+  respaldan; los datos de mercado y de flujo siguen bloqueando el respaldo (tarea 9.4).
+
 ## Pendientes de integración y verificación
 
 - Observar la calidad de las cohortes semánticas en más periodos antes de mantener la

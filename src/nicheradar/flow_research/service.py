@@ -1,6 +1,7 @@
 # src/nicheradar/flow_research/service.py
 """Request lifecycle: the app orders research, a Claude Code session claims and answers it."""
 
+import re
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -23,6 +24,7 @@ SUMMARY = (
     "id",
     "niche_label",
     "format",
+    "language",
     "status",
     "attempts",
     "lease_until",
@@ -30,7 +32,9 @@ SUMMARY = (
     "created_at",
     "updated_at",
 )
+LANGUAGE = re.compile(r"^[a-z]{2}(-[A-Z]{2})?$")
 MESSAGES = REASONS | {
+    "invalid_language": "El idioma debe ser un código como en o es; «unknown» no se investiga.",
     "not_found": "Encargo o nicho no encontrado.",
     "not_claimable": "El encargo no está pendiente.",
     "lease_lost": "El encargo ya no está reclamado por este investigador.",
@@ -57,11 +61,12 @@ def release_expired(connection: Connection, now: datetime) -> int:
     return result.rowcount
 
 
-def _active(connection: Connection, niche_label: str, format: str) -> UUID | None:
+def _active(connection: Connection, niche_label: str, format: str, language: str) -> UUID | None:
     return connection.execute(
         select(requests.c.id).where(
             requests.c.niche_label == niche_label,
             requests.c.format == format,
+            requests.c.language == language,
             requests.c.status.in_(ACTIVE),
         )
     ).scalar_one_or_none()
@@ -74,11 +79,22 @@ def _stored(connection: Connection, request_id: UUID) -> dict[str, Any]:
 
 
 def create_request(
-    connection: Connection, niche_label: str, format: str, now: datetime, timezone: str = "UTC"
+    connection: Connection,
+    niche_label: str,
+    format: str,
+    language: str,
+    now: datetime,
+    timezone: str = "UTC",
 ) -> tuple[dict[str, Any], bool]:
-    """Return ``(request, created)``; an active request is returned, never duplicated."""
+    """Return ``(request, created)``; an active request is returned, never duplicated.
+
+    The key is niche + format + language: the same niche researched in two languages is two
+    markets, each with its own competitors, prices and tools.
+    """
+    if not LANGUAGE.fullmatch(language):
+        raise FlowResearchError("invalid_language")
     release_expired(connection, now)
-    existing = _active(connection, niche_label, format)
+    existing = _active(connection, niche_label, format, language)
     if existing is not None:
         return _stored(connection, existing), False
     detail = niche_detail(connection, niche_label, format, now, timezone)
@@ -95,8 +111,9 @@ def create_request(
                     id=request_id,
                     niche_label=niche_label,
                     format=format,
+                    language=language,
                     status="pendiente",
-                    evidence=build_evidence(detail),
+                    evidence=build_evidence(detail, language),
                     attempts=0,
                     created_at=now,
                     updated_at=now,
@@ -105,7 +122,7 @@ def create_request(
             )
     except IntegrityError:
         # A concurrent creation won the unique index for this niche; return that one.
-        winner = _active(connection, niche_label, format)
+        winner = _active(connection, niche_label, format, language)
         if winner is None:
             raise
         return _stored(connection, winner), False
@@ -125,6 +142,7 @@ def list_requests(
     *,
     niche_label: str | None = None,
     format: str | None = None,
+    language: str | None = None,
     status: str | None = None,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
@@ -133,6 +151,8 @@ def list_requests(
         query = query.where(requests.c.niche_label == niche_label)
     if format is not None:
         query = query.where(requests.c.format == format)
+    if language is not None:
+        query = query.where(requests.c.language == language)
     if status is not None:
         query = query.where(requests.c.status == status)
     return [_summary(row) for row in connection.execute(query).mappings()]
@@ -194,6 +214,8 @@ def _request_problems(dossier: Dossier, row: Any) -> list[Problem]:
         problems.append({"path": "niche_label", "message": "no corresponde al nicho del encargo"})
     if dossier.format != row["format"]:
         problems.append({"path": "format", "message": "no corresponde al formato del encargo"})
+    if dossier.language != row["language"]:
+        problems.append({"path": "language", "message": "no corresponde al idioma del encargo"})
     if row["evidence"]["niche"].get("confidence") == "baja" and not dossier.verdict.unknowns:
         problems.append(
             {
@@ -243,6 +265,7 @@ def submit_dossier(
             request_id=request_id,
             niche_label=row["niche_label"],
             format=row["format"],
+            language=row["language"],
             schema_version=SCHEMA_VERSION,
             content=dossier.model_dump(mode="json"),
             created_at=now,

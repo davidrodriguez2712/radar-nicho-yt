@@ -124,8 +124,8 @@ def render_market(config: Settings, api: ApiRequest) -> None:
     selected = st.selectbox("Abrir nicho", list(by_label))
     entry = by_label[selected]
     _render_decision(config, api, entry)
-    render_flow_research(config, api, entry)
     detail = api(config, "GET", f"/market/niches/{quote(selected, safe='')}?format={fmt}")
+    render_flow_research(config, api, entry, detail["language_mix"])
     with st.expander("Cómo se calculó"):
         st.json({"opportunity": entry["opportunity"], "automation": entry["automation"]})
     st.subheader("Fichas del nicho")

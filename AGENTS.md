@@ -208,6 +208,7 @@ un piloto acotado separado antes de dejar la programación activa.
 ### Entrada, estado y especificación
 
 - `[INICIO]` [`README.md`](README.md): visión general, desarrollo, pruebas e índice corto.
+- `[PILOTOS]` [`docs/pilots.md`](docs/pilots.md) y [`docs/ecosistema-youtube.md`](docs/ecosistema-youtube.md): pilotos de canal, contratos en `docs/contracts/`.
 - `[AGENTES]` [`AGENTS.md`](AGENTS.md): contexto y reglas para continuar el proyecto.
 - `[ESTADO-ACTUAL]` [`docs/implementation-status.md`](docs/implementation-status.md):
   inventario de lo implementado, evidencia y pendientes.

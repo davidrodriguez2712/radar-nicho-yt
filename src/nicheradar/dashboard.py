@@ -15,6 +15,7 @@ import streamlit as st
 from nicheradar.config import Settings
 from nicheradar.domain.production import STAGES
 from nicheradar.market_dashboard import render_market, render_market_operations
+from nicheradar.pilots_dashboard import render_portfolio
 
 REVIEW_LABELS = {
     "new": "Nueva",
@@ -1408,6 +1409,7 @@ def render() -> None:
             "Configuración",
             "Operación",
             "Análisis de canal",
+            "Portafolio",
         ],
         key="page",
     )
@@ -1424,6 +1426,8 @@ def render() -> None:
         render_market_operations(config, api_request)
     elif page == "Análisis de canal":
         render_channel_analysis(config)
+    elif page == "Portafolio":
+        render_portfolio(config, api_request)
     else:
         st.caption(
             "Última ejecución satisfactoria: "
