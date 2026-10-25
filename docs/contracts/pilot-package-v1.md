@@ -47,10 +47,16 @@ bajo qué reglas de parada. El canal lo lee y produce; no puede modificarlo.
 |---|---|---|
 | `label` | texto | Etiqueta del nicho en el backlog de Mercado, 1 a 160 caracteres |
 | `format` | texto | `"long"` o `"shorts"` (el mismo vocabulario de `dossier-v1`) |
-| `language` | texto | Patrón `^[a-z]{2}(-[A-Z]{2})?$`. **Sin valor por defecto**: lo elige el humano al autorizar. NicheRadar muestra el idioma detectado en el mercado como **sugerencia**, no lo preselecciona |
+| `language` | texto | Patrón `^[a-z]{2}(-[A-Z]{2})?$`. **Sin valor por defecto**. Se elige **al iniciar la investigación de flujo** (no al autorizar) y llega fijo desde el dossier; al autorizar solo se muestra, no se cambia |
 
-El idioma no se asume porque en `canal-historias` un texto en otro idioma dentro del guion
-distorsionó la voz.
+El idioma no se asume porque la competencia, los precios y las herramientas cambian por idioma, y
+porque en `canal-historias` un texto en otro idioma dentro del guion distorsionó la voz.
+
+Al iniciar la investigación, NicheRadar calcula `language_mix` desde las fichas del nicho y
+muestra el idioma dominante como **sugerencia**. Si hay empate o predomina `unknown`, no
+preselecciona nada. La clave de la investigación es **nicho + formato + idioma**: un nicho con
+fichas en dos idiomas genera dos investigaciones y dos dossiers independientes. Para autorizar,
+el piloto toma el idioma del dossier; un piloto no puede cambiarlo sin una investigación nueva.
 
 ### `evidence` (foto congelada del backlog)
 

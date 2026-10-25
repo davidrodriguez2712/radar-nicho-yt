@@ -54,3 +54,18 @@ Un encargo no usa `provider_requests`, presupuesto, vidIQ ni crea canales.
 | `GET /api/v1/flow-research/{id}` | Encargo, evidencia y dossier |
 | `POST /api/v1/flow-research/{id}/claim` | Reclamar con `{"owner": ...}` |
 | `POST /api/v1/flow-research/{id}/dossier` | Enviar `{"owner": ..., "dossier": {...}}` |
+
+## Cambio acordado: el idioma entra en la clave (2026-10-25, pendiente de implementar)
+
+Decisión del propietario: el idioma se elige **al iniciar la investigación**, no al autorizar el
+piloto. La clave del encargo pasa de `(niche_label, format)` a `(niche_label, format, language)`.
+
+Qué cambia al implementarlo:
+
+- `flow_research_requests` y `flow_research_dossiers` ganan `language` (patrón `^[a-z]{2}(-[A-Z]{2})?$` o `unknown`), el índice único activo y el de búsqueda lo incluyen (migración nueva, `down_revision` = la cabeza actual).
+- `POST /api/v1/flow-research` exige `language`; el dashboard la preselecciona con el idioma dominante de `language_mix` y no preselecciona si hay empate o predomina `unknown`.
+- `dossier-v1` copia `language` del encargo, como ya hace con `niche_label` y `format`; la skill `flow-research` investiga competidores y precios en ese idioma.
+- El paquete del piloto toma el idioma del dossier (ver [`contracts/pilot-package-v1.md`](contracts/pilot-package-v1.md)).
+- Encargos existentes: la migración los marca `unknown`. Un `pendiente` o `en_curso` con `unknown` **no se investiga**: se cancela o se recrea con idioma. Al desplegar, el encargo pendiente de producción se rehace con idioma elegido.
+
+Es un cambio de esquema en producción: requiere migración y despliegue aprobados por el propietario.

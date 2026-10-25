@@ -124,7 +124,7 @@ canal y el estado de cada paso, que informa el canal.
 | Autorizar subida y medición | Tu Mac, con el script de autorización del canal | `check` `youtube_oauth`, con fecha de caducidad |
 | Voz de referencia | Tu Mac, en el canal | `check` `voice_ref` |
 | Visuales del nicho | Tu Mac, en el canal | `check` `visual_assets` |
-| Idioma y formato | Ya definidos en el paquete | No hace falta |
+| Idioma y formato | Ya definidos en el paquete (el idioma se fijó al iniciar la investigación) | No hace falta |
 
 La lista exacta la define cada canal en `checks`; no es fija.
 
