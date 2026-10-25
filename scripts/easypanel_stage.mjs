@@ -52,6 +52,9 @@ const postgres = 'postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f
 const pilotsBackend = 'davidrodriguez2712/nicheradar-backend@sha256:edadc0f750b3058e26a24cbbcee963532f3c75d14789aea9858fa57540b17d08';
 const pilotsWorker = 'davidrodriguez2712/nicheradar-worker@sha256:b911bdbeda0d325f71e4295cea7b1d331bd9b2c0945cb91d9f48cd0000e92536';
 const pilotsDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:8d9d036b8604eede928423ce55397f73d9a710d1fb18063fcbeb5dceed405351';
+const languageBackend = 'davidrodriguez2712/nicheradar-backend@sha256:0a80040ce82ec24429f23f128ea838e68947e5399b2e21cb15dbde847bd26e73';
+const languageWorker = 'davidrodriguez2712/nicheradar-worker@sha256:d7f2ec263467545cf1e1ae70a3af54d25cd29b6a8daf48a7b566fb91dc8480b7';
+const languageDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:c889d5fa5a16ce7614c33aeb6d2287cd777479b4a44932477049b498dd72fadd';
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
 const resources = (cpu) => ({memoryLimit:512,memoryReservation:128,cpuLimit:cpu,cpuReservation:0.1});
@@ -515,6 +518,42 @@ try {
     if(after.source?.image!==image) throw new Error('Image setting not persisted');
     cli(['app','deploy',`${project}/${name}`,'--yes']);
     console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='migrate-live-0016') {
+    const env=appEnv('nicheradar-api');
+    // NR_MARKET_INTEL_LIVE_ENABLED puede ser true (decisión del propietario tras 012): se exige
+    // que el radar esté pausado y se comprueba aparte que la programación de mercado también.
+    if(env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true' || env.NR_DATABASE_URL!==dbURL())
+      throw new Error('Live migration preconditions failed');
+    const code='import json,os,subprocess,sys; os.environ.update(json.load(sys.stdin)); sys.exit(subprocess.call(["alembic","upgrade","head"]))';
+    const args=['docker','run','--rm','-i','--name','nicheradar-migration-20261025-014',
+      '--network','easypanel-proy1-credito-riesgo','--memory','512m','--cpus','1',
+      '--read-only','--tmpfs','/tmp:rw,noexec,nosuid,size=64m','--cap-drop','ALL',
+      '--security-opt','no-new-privileges',languageBackend,'python','-c',code];
+    const result=spawnSync('ssh',[...sshArgs,args.map(quote).join(' ')],{
+      input:JSON.stringify({NR_DATABASE_URL:env.NR_DATABASE_URL}),
+      encoding:'utf8',timeout:180000,maxBuffer:1024*1024});
+    console.log(JSON.stringify({migrationExit:result.status,processError:result.error?.code ?? null}));
+    if(result.error || result.status!==0) throw new Error('Migration failed; raw response withheld. Inspect only this migration safely.');
+  } else if(action==='deploy-language-code') {
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?pilotsDashboard:name==='nicheradar-worker'?pilotsWorker:pilotsBackend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Language release preconditions failed');
+    const image=isDashboard?languageDashboard:name==='nicheradar-worker'?languageWorker:languageBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
   } else if(action==='deploy-channel-analysis-insights-code') {
     const name=process.argv[3];
     if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
@@ -762,6 +801,14 @@ print(json.dumps(r.json()))
     const result=spawnSync('ssh',[...sshArgs,`docker exec -i ${cid} python - ${offset}`],{
       input:readFileSync(new URL('./read_scheduled_evidence.py',import.meta.url)),encoding:'utf8',timeout:120000,maxBuffer:1024*1024});
     if(result.error || result.status!==0) throw new Error(`Scheduled evidence failed (exit ${result.status}); output withheld`);
+    console.log(JSON.stringify(JSON.parse(result.stdout)));
+  } else if(action==='read-flow-research-state') {
+    const query=spawnSync('ssh',[...sshArgs,'docker ps --filter label=com.docker.swarm.service.name=proy1-credito-riesgo_nicheradar-api --format "{{.ID}}"'],{encoding:'utf8',timeout:20000});
+    const cid=query.stdout?.trim();
+    if(query.status!==0 || !/^[a-f0-9]{12}$/.test(cid)) throw new Error('Exactly one API container required');
+    const result=spawnSync('ssh',[...sshArgs,`docker exec -i ${cid} python -`],{
+      input:readFileSync(new URL('./read_flow_research_state.py',import.meta.url)),encoding:'utf8',timeout:60000,maxBuffer:1024*1024});
+    if(result.error || result.status!==0) throw new Error(`Flow research state read failed (exit ${result.status}); output withheld`);
     console.log(JSON.stringify(JSON.parse(result.stdout)));
   } else if(action==='read-llm-enrichment') {
     const query=spawnSync('ssh',[...sshArgs,'docker ps --filter label=com.docker.swarm.service.name=proy1-credito-riesgo_nicheradar-api --format "{{.ID}}"'],{encoding:'utf8',timeout:20000});
