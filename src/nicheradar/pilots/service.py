@@ -277,7 +277,7 @@ def authorize(
             "unknowns": list(verdict["unknowns"]),
         },
         "budget": {"currency": "USD", **budget},
-        "stop_rules": stop_rules if stop_rules is not None else _copy_rules(),
+        "stop_rules": stop_rules if stop_rules is not None else default_stop_rules(format),
         "close_after_failed_milestones": close_after,
         "target_channel": target_channel,
         "recipe": recipe,
@@ -326,8 +326,18 @@ def authorize(
     return {"pilot_id": pilot_id, "status": "autorizado", "package": payload}
 
 
-def _copy_rules() -> list[dict[str, Any]]:
-    return [{**rule, "milestone": dict(rule["milestone"])} for rule in DEFAULT_STOP_RULES]
+# Sin umbral de retención inventado: el bench de Shorts no encontró umbrales oficiales y deben
+# calibrarse con un canal real. Quien autorice un piloto de Shorts los pasa en `stop_rules`.
+SHORTS_DEFAULT_METRICS = {"pipeline_e2e", "revenue_vs_cost"}
+
+
+def default_stop_rules(format: str) -> list[dict[str, Any]]:
+    keep = SHORTS_DEFAULT_METRICS if format == "shorts" else None
+    return [
+        {**rule, "milestone": dict(rule["milestone"])}
+        for rule in DEFAULT_STOP_RULES
+        if keep is None or rule["metric"] in keep
+    ]
 
 
 def _row(connection: Connection, pilot_id: str) -> Any:

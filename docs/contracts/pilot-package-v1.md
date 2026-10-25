@@ -105,11 +105,17 @@ Cada regla es verificable por máquina cuando se puede, y siempre legible por un
 |---|---|---|
 | `id` | texto | Patrón `^[A-Za-z0-9_-]{1,40}$`, único en el paquete |
 | `text` | texto | La regla en lenguaje llano, 1 a 500 caracteres |
-| `metric` | texto | `"pipeline_e2e"`, `"avd_pct"`, `"browse_share_pct"`, `"revenue_vs_cost"` o `"manual"` |
+| `metric` | texto | Comunes: `"pipeline_e2e"`, `"revenue_vs_cost"`, `"manual"`. Solo `niche.format = "long"`: `"avd_pct"`, `"browse_share_pct"`. Solo `"shorts"`: `"engaged_view_ratio_pct"`, `"avg_view_pct"`, `"shorts_feed_share_pct"`. Una métrica de otro formato se rechaza (`no corresponde al formato …`) |
 | `comparator` | texto | `">="` |
 | `threshold` | número o `null` | Umbral. `null` si `metric` es `"manual"` o `"pipeline_e2e"` |
 | `min_cases` | entero o `null` | Cuántos videos deben cumplirlo (ej. 3). `null` si no aplica |
 | `milestone` | objeto | `{ "kind": "week" \| "video" \| "month", "value": entero ≥ 1 }` |
+
+Las métricas de Shorts (ver [bench-shorts-metrics.md](../bench-shorts-metrics.md)) se aceptan en el
+paquete, pero NicheRadar todavía no las evalúa: quedan `no_evaluable` hasta ingerir
+`channel-report-v2` (borrador). El autorizador de un piloto de Shorts debe pasar sus `stop_rules`
+con umbrales calibrados con un canal real; por defecto solo lleva `pipeline_e2e` y
+`revenue_vs_cost`, sin umbrales de retención inventados.
 
 Las métricas `"manual"` las juzga el humano; NicheRadar solo las muestra. Las demás, NicheRadar las
 compara con lo que reporta el canal.

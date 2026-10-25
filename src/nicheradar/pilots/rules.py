@@ -21,6 +21,7 @@ NOT_EVALUABLE = "no_evaluable"
 MANUAL = "revision_manual"
 CONCLUDED = {MET, FAILED}
 NEEDS_HUMAN = {MANUAL, NOT_EVALUABLE}
+SHORTS_METRICS = {"engaged_view_ratio_pct", "avg_view_pct", "shorts_feed_share_pct"}
 MONTH_DAYS = 30  # un «mes» del hito son 30 días corridos
 
 Video = dict[str, Any]
@@ -93,6 +94,8 @@ def _evaluate_rule(
     if metric == "pipeline_e2e":
         ok = bool(published)
         return (MET, "hay un video publicado") if ok else (FAILED, "no hay ningún video publicado")
+    if metric in SHORTS_METRICS:
+        return NOT_EVALUABLE, "falta ingerir channel-report-v2 de Shorts: lo decide el humano"
     scope = _scope(rule, published)
     if metric == "avd_pct":
         return _count_rule(rule, scope, "avd_pct")
