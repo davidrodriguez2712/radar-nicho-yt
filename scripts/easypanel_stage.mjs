@@ -55,6 +55,9 @@ const pilotsDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:8d9d036b
 const languageBackend = 'davidrodriguez2712/nicheradar-backend@sha256:0a80040ce82ec24429f23f128ea838e68947e5399b2e21cb15dbde847bd26e73';
 const languageWorker = 'davidrodriguez2712/nicheradar-worker@sha256:d7f2ec263467545cf1e1ae70a3af54d25cd29b6a8daf48a7b566fb91dc8480b7';
 const languageDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:c889d5fa5a16ce7614c33aeb6d2287cd777479b4a44932477049b498dd72fadd';
+const stopRulesBackend = 'davidrodriguez2712/nicheradar-backend@sha256:8f437decfea1f89a38e0e570cf68efa5804f99c873b77277bc173c78d8541366';
+const stopRulesWorker = 'davidrodriguez2712/nicheradar-worker@sha256:e66e49927a35b03945f34bf8cb064a35bfb6acdf5b364269e1d09a8f0322aaf0';
+const stopRulesDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:70ba90d5f7ae56f816ecda1fbc86f9c81c54c6e4a1fc829092a4a71cee5c3202';
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
 const resources = (cpu) => ({memoryLimit:512,memoryReservation:128,cpuLimit:cpu,cpuReservation:0.1});
@@ -546,6 +549,26 @@ try {
        env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
       throw new Error('Language release preconditions failed');
     const image=isDashboard?languageDashboard:name==='nicheradar-worker'?languageWorker:languageBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='deploy-stop-rules-code') {
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?languageDashboard:name==='nicheradar-worker'?languageWorker:languageBackend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Stop rules release preconditions failed');
+    const image=isDashboard?stopRulesDashboard:name==='nicheradar-worker'?stopRulesWorker:stopRulesBackend;
     cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
     const after=cli(['app','inspect',`${project}/${name}`]);
     for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
