@@ -57,7 +57,7 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
     ).scalar_one():
         raise ValueError("market_intel_not_paused")
     revision = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-    if revision != "0014":
+    if revision != "0015":
         raise ValueError("unreviewed_schema_revision")
     return {"scope": "bootstrap-only", "revision": revision, "counts": counts}
 
