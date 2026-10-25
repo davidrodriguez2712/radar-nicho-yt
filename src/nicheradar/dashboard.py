@@ -1361,7 +1361,7 @@ def render() -> None:
     st.title("Antes de producir, reúne evidencia.")
     st.markdown(
         '<div class="nr-scope"><small>ÁMBITO DE EXPLORACIÓN</small><br>'
-        "Contenido en inglés · Videos largos + Shorts · Ingresos publicitarios"
+        "Idioma elegido por investigación · Videos largos + Shorts · Ingresos publicitarios"
         "</div>",
         unsafe_allow_html=True,
     )
