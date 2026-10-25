@@ -62,7 +62,7 @@ canal, como en `v1`.
 | `engaged_views` | entero | ≥ 0 y **≤ `views`** | API: `engagedViews` |
 | `engaged_view_ratio_pct` | decimal | 0 a 100. Si `views` > 0, debe ser `engaged_views / views × 100` con tolerancia de 0,1; si `views` = 0, debe ser `null` | Derivado |
 | `avg_view_pct` | decimal o `null` | 0 a 100. Retención media de quien se queda (si la API devolviera más de 100, el exportador lo limita a 100; ver preguntas abiertas) | API: `averageViewPercentage` |
-| `shorts_feed_share_pct` | decimal o `null` | 0 a 100. Vistas con fuente de tráfico `SHORTS` sobre `views` | API: `insightTrafficSourceType=SHORTS` |
+| `shorts_feed_share_pct` | decimal o `null` | 0 a 100. Vistas con fuente de tráfico `SHORTS` sobre `views` | API: `insightTrafficSourceType=SHORTS`. Requiere dos consultas con `views` (una con la fuente, otra total) |
 | `shares` | entero o `null` | ≥ 0 | API: `shares` |
 | `subscribers_gained` | entero o `null` | ≥ 0 | API: `subscribersGained` |
 | `stayed_to_watch_pct` | decimal o `null` | 0 a 100. **Solo Studio**, cargado a mano | Studio: «Viewed vs swiped away» |
@@ -77,7 +77,7 @@ Notas:
 - `engaged_view_ratio_pct` es **obligatorio** (puede ser `null` solo si `views` = 0). Los demás, salvo `views`,
   `engaged_views` y `measured_at`/`window_days`, son opcionales.
 - Ninguna métrica de bucle o rewatch: la API no la entrega.
-- CTR e impresiones **no existen**: la Analytics API no las entrega y no aplican a Shorts.
+- CTR e impresiones: no aplican a Shorts. La Analytics API directa no las entrega; la Reporting API masiva trae `video_thumbnail_impressions` y `..._ctr` desde 2026-01-15, y no se sabe si cubre Shorts.
 - Con `views` por debajo de un mínimo, la medición se **guarda pero no cuenta** para una regla de parada (ver abajo).
 
 ## Qué cambia respecto a v1
@@ -182,7 +182,7 @@ menciona, NicheRadar nunca edita lo reportado. Misma ruta `POST /api/v1/pilots/{
 ## Quién genera el reporte
 
 Un script aparte dentro del canal, como en `v1`, que lee la base del canal en solo lectura **y consulta la YouTube
-Analytics API** con `creatorContentType==SHORTS`. Calcula `engaged_view_ratio_pct`. `stayed_to_watch_pct` no sale de la
+Analytics API** con `creatorContentType==SHORTS` (que sea filtro válido en el reporte por video no está confirmado: probarlo con un canal autorizado). Calcula `engaged_view_ratio_pct`. `stayed_to_watch_pct` no sale de la
 API: si alguien lo carga a mano desde Studio, el canal lo pasa tal cual.
 
 ## Qué NO cubre v2
@@ -195,10 +195,13 @@ API: si alguien lo carga a mano desde Studio, el canal lo pasa tal cual.
 
 ## Preguntas abiertas
 
-- ¿`engagedViews` significa «más allá del primer fotograma» o «30 s / final»? Cambia la lectura de
-  `engaged_view_ratio_pct`. Se resuelve contrastando la API con Studio en un canal real.
+- ¿Qué umbral usa `engagedViews`? La API dice «más allá del primer fotograma»; Help (Studio) dice «más allá de los
+  primeros segundos, sin bucles»; «30 s o final» es solo prensa. Cambia la lectura de `engaged_view_ratio_pct`. Se
+  resuelve contrastando la API con Studio en un canal real.
+- Desde 2026-08-27 YouTube cuenta las vistas desde que empieza la reproducción en todos los formatos: las vistas del
+  formato largo (v1) anteriores y posteriores pueden no ser comparables.
 - ¿Funciona `audienceWatchRatio` por `elapsedVideoTimeRatio` en Shorts, y cómo trata los bucles? Define si
   `early_retention_pct` pasa de experimental a oficial, y si `avg_view_pct` puede pasar de 100.
 - ¿Mínimo de vistas por video (100 propuesto) y ventana (`window_days`) para considerar válida una medición?
-- Reglas de parada de Shorts: ¿`pilot-package-v2` o ampliar la enumeración de `v1`? (Decisión del propietario.)
+- Reglas de parada de Shorts: **resuelto (2026-10-25)**: se amplió la enumeración de `pilot-package-v1` según `niche.format` (PR #10). Quedan `no_evaluable` hasta ingerir este contrato.
 - Tabla propia o columnas nuevas para guardar las mediciones (recomendada: tabla propia).

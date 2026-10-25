@@ -38,7 +38,8 @@ no confiables.
 | F9 | Blogs de terceros (subscribr.ai, contentstudio.io, shortimize.com, creatoressentials.com, vidiq.com) | **No oficial, evidencia débil** |
 
 Las lecturas de F1 a F6 pasaron por un resumidor automático de páginas, no por una lectura directa del texto completo:
-las citas literales son traducciones de lo que devolvió. Conviene releer F1 y F4 antes de implementar.
+las citas literales son traducciones de lo que devolvió. F1 y F4 se releyeron el 2026-10-25 (dos lecturas coinciden;
+ver «Re-verificación»), pero sigue siendo un resumidor: conviene abrirlas en el navegador antes de implementar.
 
 ## Qué dice la evidencia
 
@@ -47,8 +48,8 @@ las citas literales son traducciones de lo que devolvió. Conviene releer F1 y F
    F8 añade que la lógica anterior exigía 30 s, o llegar al final si el Short dura menos, y que la elegibilidad al
    Programa de Socios se basa en vistas atractivas. Esto último es de prensa secundaria.
 2. **[HECHO, con ambigüedad] Definición de `engagedViews` (F1):** «el número de veces que los videos del canal se
-   vieron más allá del primer fotograma, o el usuario toca para reproducir». Esa redacción no coincide con la de F8
-   (30 s o final). **No sabemos cuál es el umbral real.** Con cualquiera de las dos, `engagedViews / views` baja cuando
+   vieron más allá del primer fotograma, o el usuario toca para reproducir». Help (Studio) habla de «más allá de los
+   primeros segundos, sin bucles»; solo la prensa (F8) dice «30 s o final». **No sabemos cuál es el umbral real.** Con cualquiera de las dos, `engagedViews / views` baja cuando
    mucha gente abandona al inicio, pero el umbral cambia cómo se lee.
 3. **[HECHO] Viewed vs swiped away (F6).** Studio muestra «Shown in feed» (veces que el Short salió en el feed de
    Shorts) y «How many chose to view» (porcentaje de veces que se vio frente a deslizar). F6 no menciona la API.
@@ -67,7 +68,7 @@ las citas literales son traducciones de lo que devolvió. Conviene releer F1 y F
    documentado que la curva funcione igual para Shorts** ni cómo trata los bucles. Hay que probarlo.
 7. **[HECHO] Tráfico y tipo de contenido (F2, F3, F4).** `insightTrafficSourceType` tiene el valor `SHORTS`
    («el espectador llegó deslizando verticalmente desde el video anterior», desde 2020-09-23) y admite `views` y
-   `engagedViews`. `creatorContentType` admite `SHORTS` (desde 2022-12-15) y se puede usar como filtro o dimensión en
+   `engagedViews`. `creatorContentType` admite `SHORTS` (datos desde 2019-01-01; 2022-12-15 es la fecha de la entrada del historial) y se puede usar como filtro o dimensión en
    la mayoría de los reportes.
 8. **[INFERENCIA débil, F9] Importancia de los primeros segundos.** Varios blogs dicen que la tasa de deslizamiento es
    la señal principal del feed y dan umbrales (p. ej. 75–80 % «viewed»). **No hay fuente oficial leída que lo diga ni
@@ -87,13 +88,13 @@ Disponibilidad: **API** = Analytics API v2 directa; **Derivada** = se calcula co
 | `averageViewPercentage` | % medio visto, sin bucles | API | Calidad de la retención de quien se queda; no refleja rewatch | **Secundaria** (`avg_view_pct`) |
 | `averageViewDuration` | Segundos medios vistos, sin bucles | API | Depende de la duración del Short: difícil de comparar | No entra (se puede derivar) |
 | `audienceWatchRatio` a ~3 s | Retención en un punto de la curva | API, una consulta por video; **no verificada para Shorts** | Retención temprana más directa, si funciona | **Experimental** (`early_retention_pct`, nulo si no se obtiene) |
-| Cuota de vistas con fuente `SHORTS` | Qué parte llega del feed vertical | API (`insightTrafficSourceType`) | Mide si el feed distribuye el Short; sustituye a `browse_share_pct` | **Entra** (`shorts_feed_share_pct`) |
+| Cuota de vistas con fuente `SHORTS` | Qué parte llega del feed vertical | API (`insightTrafficSourceType`; solo `views`, `engagedViews` y `estimatedMinutesWatched` figuran en ese reporte: dos consultas, con fuente y total) | Mide si el feed distribuye el Short; sustituye a `browse_share_pct` | **Entra** (`shorts_feed_share_pct`) |
 | `shares` | Veces compartido | API | Señal de resonancia; escasa con poco volumen | **Entra** |
 | `subscribersGained` | Suscriptores ganados por video | API | Objetivo de crecimiento; ruidoso con pocas vistas | **Entra** (ya existe en v1) |
 | `likes`, `comments` | Interacciones | API | Redundantes y fáciles de inflar | No entran |
 | Rewatch / bucle | Veces que se repite | **No hay métrica en la API** | Importante en Shorts pero no medible | No entra; límite declarado |
 | `estimatedMinutesWatched` | Tiempo total visto | API | Depende de la cantidad de vistas | No entra |
-| CTR e impresiones | Miniatura | No aplica a Shorts y la API tampoco las entrega (v1) | Nula | No entra |
+| CTR e impresiones | Miniatura | No aplica a Shorts. La Analytics API directa no las trae; la Reporting API masiva sí desde 2026-01-15 (no se sabe si cubre Shorts) | Nula | No entra |
 
 ## Selección recomendada para `channel-report-v2`
 
@@ -125,3 +126,30 @@ Shorts necesitan una versión nueva del paquete o una ampliación de esa enumera
   `subscribersGained` lo están. `averageViewPercentage` no apareció marcada en la lectura.
 - No se hizo ninguna llamada real a la API: todo proviene de documentación. Con un canal autorizado, una consulta de
   prueba confirmaría nombres, filtros (`creatorContentType==SHORTS`) y el retraso de los datos.
+
+## Re-verificación (2026-10-25)
+
+Segunda lectura de las páginas oficiales de YouTube Analytics y de Help, otra vez con resumidor (dos fetches
+coinciden). Confirmado: `engagedViews` existe («más allá del primer fotograma, o el usuario toca para reproducir») y
+las vistas de Shorts cuentan sin mínimo desde 2025-03-31 en la plataforma (2025-04-30 en la API directa);
+`averageViewPercentage`, `shares`, `subscribersGained`, `insightTrafficSourceType=SHORTS` y `creatorContentType=SHORTS`
+existen con los nombres usados aquí. «Stayed to watch» y «Viewed vs swiped away» son el mismo valor de Studio con dos
+redacciones. Sigue sin aparecer en la API.
+
+Correcciones frente a la primera versión:
+- `creatorContentType`: los datos empiezan el 2019-01-01 (2022-12-15 era la fecha del anuncio).
+- CTR e impresiones: desde 2026-01-15 existen `video_thumbnail_impressions` y `video_thumbnail_impressions_ctr` en los
+  reportes masivos; falta saber si cubren Shorts. No cambia la selección.
+- `engagedViews`: la ambigüedad es oficial «primer fotograma» frente a Help «primeros segundos, sin bucles»; «30 s o
+  final» es solo prensa.
+- Solo `views`, `engagedViews` y `estimatedMinutesWatched` figuran con `insightTrafficSourceType`. `shares` y
+  `subscribersGained` se piden por video, sin ese cruce; cruzarlos no está documentado.
+- Curva de retención: existe el filtro opcional `youtubeProduct` (sus valores no se verificaron); puede distinguir
+  Shorts en la curva. A probar.
+- Historial de la API: 2026-08-27, YouTube cuenta las vistas públicas desde que empieza la reproducción en todos los
+  formatos. Para el formato largo (v1), las vistas anteriores y posteriores a esa fecha pueden no ser comparables (la
+  fecha de aplicación no se verificó). 2026-09-09, «data freshness SLA»: sin leer.
+
+Sin resolver (requiere prueba real o lectura directa): si `engagedViews` y `audienceWatchRatio` se comportan igual en
+Shorts y cómo tratan los bucles; si `creatorContentType==SHORTS` es filtro válido en el reporte por video; los valores de
+`youtubeProduct`.
