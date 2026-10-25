@@ -36,6 +36,11 @@ MAX_REPORT_BYTES = 256 * 1024
 PILOT_ID = r"^pil_[0-9]{8}_[a-z0-9-]{1,40}$"
 CHANNEL_ID = r"^canal-[a-z0-9-]{1,40}$"
 UNMEASURABLE = {"manual", "pipeline_e2e"}  # reglas sin umbral numérico
+COMMON_METRICS = {"pipeline_e2e", "revenue_vs_cost", "manual"}
+FORMAT_METRICS = {  # métricas de parada válidas por formato (bench de Shorts)
+    "long": COMMON_METRICS | {"avd_pct", "browse_share_pct"},
+    "shorts": COMMON_METRICS | {"engaged_view_ratio_pct", "avg_view_pct", "shorts_feed_share_pct"},
+}
 
 
 def _json_number(value: Decimal) -> int | float:
@@ -138,7 +143,16 @@ class Milestone(Contract):
 class StopRule(Contract):
     id: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,40}$")]
     text: ShortText
-    metric: Literal["pipeline_e2e", "avd_pct", "browse_share_pct", "revenue_vs_cost", "manual"]
+    metric: Literal[
+        "pipeline_e2e",
+        "avd_pct",
+        "browse_share_pct",
+        "engaged_view_ratio_pct",
+        "avg_view_pct",
+        "shorts_feed_share_pct",
+        "revenue_vs_cost",
+        "manual",
+    ]
     comparator: Literal[">="]
     threshold: Number | None
     min_cases: Annotated[int, Field(ge=1)] | None
@@ -212,6 +226,8 @@ def package_problems(package: Package, payload: dict[str, Any], now: datetime) -
     if len(set(ids)) != len(ids):
         add("stop_rules", "los id de las reglas deben ser únicos")
     for index, rule in enumerate(package.stop_rules):
+        if rule.metric not in FORMAT_METRICS[package.niche.format]:
+            add(f"stop_rules.{index}.metric", f"no corresponde al formato {package.niche.format}")
         if rule.metric in UNMEASURABLE and rule.threshold is not None:
             add(f"stop_rules.{index}.threshold", "debe ser null para esta métrica")
         if rule.metric not in UNMEASURABLE and rule.threshold is None:
