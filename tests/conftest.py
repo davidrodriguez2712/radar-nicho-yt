@@ -13,6 +13,21 @@ from alembic.config import Config
 from sqlalchemy import Connection, Engine, create_engine, inspect
 from sqlalchemy.engine import URL, make_url
 
+from nicheradar.config import Settings
+
+
+@pytest.fixture(autouse=True)
+def isolated_from_local_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests must not read the developer's `.env` or exported `NR_*` variables.
+
+    CI has neither, so a test that only passes with them is a test of the laptop.
+    `NR_TEST_*` selects the test database and is kept.
+    """
+    for name in list(os.environ):
+        if name.startswith("NR_") and not name.startswith("NR_TEST_"):
+            monkeypatch.delenv(name)
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+
 
 @pytest.fixture(scope="session")
 def postgres_engine() -> Iterator[Engine]:
