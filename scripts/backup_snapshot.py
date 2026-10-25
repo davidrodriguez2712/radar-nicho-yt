@@ -1,4 +1,4 @@
-"""Read-only, exported snapshot guard for the initial deployment (no research data).
+"""Read-only, exported snapshot guard: bootstrap, pilot, market and flow-research data.
 
 Sent to the existing API container over SSH, never installed in the application.
 The caller holds stdin open until pg_dump has consumed this exact snapshot.
@@ -12,6 +12,7 @@ from sqlalchemy import Connection, func, inspect, select
 from nicheradar.config import Settings
 from nicheradar.repositories import schema as s
 from nicheradar.repositories.database import database_engine
+from nicheradar.services.recovery import backup_deadline
 
 BOOTSTRAP_TABLES = {
     "alembic_version",
@@ -30,9 +31,27 @@ BOOTSTRAP_TABLES = {
 # `channel_tokens` solo guarda el SHA-256 de cada token, nunca el token.
 PILOT_TABLES = {"pilots", "pilot_videos", "pilot_events", "channel_tokens"}
 
+# Datos de investigación de mercado y de flujo (decisión del propietario, tarea 9.4, opción A):
+# se respaldan cifrados en el Mac con retención acotada (ver docs/backup-restore.md).
+# La evidencia de proveedores (raw_observations, provider_requests, topics, rankings...) NO está
+# revisada y sigue fallando cerrada.
+MARKET_TABLES = {
+    "market_scrape_runs",
+    "marketplace_listings",
+    "listing_observations",
+    "listing_classifications",
+    "listing_verifications",
+    "niche_automation_priors",
+    "market_niche_snapshots",
+    "market_niche_decisions",
+}
+FLOW_TABLES = {"flow_research_requests", "flow_research_dossiers"}
+RESEARCH_TABLES = MARKET_TABLES | FLOW_TABLES
+REVIEWED_TABLES = BOOTSTRAP_TABLES | PILOT_TABLES | RESEARCH_TABLES
+
 
 def inspect_snapshot(connection: Connection) -> dict[str, object]:
-    """Fail closed: this is not yet a backup policy for retained provider data."""
+    """Fail closed: only reviewed tables may hold rows; provider evidence is not reviewed."""
     tables = set(inspect(connection).get_table_names())
     if tables != set(s.metadata.tables) | {"alembic_version"}:
         raise ValueError("unexpected_schema")
@@ -40,7 +59,7 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
     for name in sorted(tables):
         quoted = connection.dialect.identifier_preparer.quote(name)
         count = connection.exec_driver_sql(f"SELECT count(*) FROM {quoted}").scalar_one()
-        if name not in BOOTSTRAP_TABLES | PILOT_TABLES and count:
+        if name not in REVIEWED_TABLES and count:
             raise ValueError("research_data_backup_not_enabled")
         counts[name] = count
     schedules = s.metadata.tables["radar_schedules"]
@@ -64,8 +83,18 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
     if revision != "0016":
         raise ValueError("unreviewed_schema_revision")
     has_pilots = any(counts[name] for name in PILOT_TABLES)
-    scope = "bootstrap+pilots" if has_pilots else "bootstrap-only"
-    return {"scope": scope, "revision": revision, "counts": counts}
+    has_research = any(counts[name] for name in RESEARCH_TABLES)
+    scope = "bootstrap" + ("+pilots" if has_pilots else "") + ("+research" if has_research else "")
+    if scope == "bootstrap":
+        scope = "bootstrap-only"
+    # Una copia inmutable no puede conservar evidencia después de su primer vencimiento.
+    deadline = backup_deadline(connection)
+    return {
+        "scope": scope,
+        "revision": revision,
+        "counts": counts,
+        "delete_after": deadline.isoformat() if deadline else None,
+    }
 
 
 def main() -> None:

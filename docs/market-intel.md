@@ -78,9 +78,9 @@ Long y Shorts se puntúan por separado. Shorts no tiene benchmark de RPM (`uncal
 
 Fichas, observaciones, clasificaciones, verificaciones y snapshots se conservan **183 días**
 (`retain_until`); `expire()` los purga y las observaciones, clasificaciones y verificaciones
-caen en cascada con su ficha. Las decisiones del propietario no caducan. Estos datos **no
-entran en los respaldos** del v1 (`scripts/backup_snapshot.py` falla cerrado si existen); la
-tarea 9.4 de OpenSpec sigue abierta.
+caen en cascada con su ficha. Las decisiones del propietario no caducan. Estos datos **sí
+entran en el respaldo cifrado del Mac** (decisión 9.4, opción A), con una copia que se destruye
+al vencer su dato más próximo; ver [backup-restore.md](backup-restore.md).
 
 ## Límites conocidos
 

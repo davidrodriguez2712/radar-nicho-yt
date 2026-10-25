@@ -14,7 +14,14 @@ from nicheradar.repositories.schema import (
     balance_reconciliations,
     credit_balances,
     discovery_cursors,
+    flow_research_dossiers,
+    flow_research_requests,
+    listing_classifications,
+    listing_observations,
+    listing_verifications,
     market_intel_schedule,
+    market_niche_snapshots,
+    marketplace_listings,
     opportunity_scoring_configs,
     ranking_snapshots,
 )
@@ -37,6 +44,13 @@ def backup_deadline(connection: Connection) -> datetime | None:
             balance_reconciliations,
             opportunity_scoring_configs,
             ranking_snapshots,
+            marketplace_listings,
+            listing_observations,
+            listing_classifications,
+            listing_verifications,
+            market_niche_snapshots,
+            flow_research_requests,
+            flow_research_dossiers,
         )
         if (value := connection.execute(select(func.min(table.c.retain_until))).scalar_one())
         is not None

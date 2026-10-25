@@ -95,7 +95,6 @@ def test_expire_purges_old_dossiers_with_their_requests_and_keeps_the_rest(
     assert db.execute(sa.select(sa.func.count()).select_from(dossiers)).scalar_one() == 1
 
 
-def test_the_backup_guard_treats_flow_research_as_research_data(db: Connection) -> None:
+def test_the_backup_guard_backs_up_flow_research_as_research_data(db: Connection) -> None:
     add_request(db)
-    with pytest.raises(ValueError, match="research_data_backup_not_enabled"):
-        inspect_snapshot(db)
+    assert inspect_snapshot(db)["scope"] == "bootstrap+research"

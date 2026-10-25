@@ -113,7 +113,7 @@ def test_schedule_is_born_paused_and_status_checks(db: Connection) -> None:
 
 
 @pytest.mark.postgres
-def test_backup_guard_rejects_market_data_and_unpaused_schedule(db: Connection) -> None:
+def test_backup_guard_accepts_market_data_but_rejects_unpaused_schedule(db: Connection) -> None:
     from scripts.backup_snapshot import inspect_snapshot
 
     db.execute(
@@ -130,5 +130,4 @@ def test_backup_guard_rejects_market_data_and_unpaused_schedule(db: Connection) 
         inspect_snapshot(db)
     db.execute(sa.update(schema.market_intel_schedule).values(paused=True))
     listing(db)
-    with pytest.raises(ValueError, match="research_data_backup_not_enabled"):
-        inspect_snapshot(db)
+    assert inspect_snapshot(db)["scope"] == "bootstrap+research"

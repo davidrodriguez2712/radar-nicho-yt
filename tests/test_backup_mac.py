@@ -3,17 +3,37 @@ import os
 import shutil
 import stat
 import subprocess
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import cast
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy import Connection, Engine, update
 
 from nicheradar.domain.profile import CreatorProfile, initial_catalog
 from nicheradar.repositories import schema_v1 as s
 from nicheradar.repositories.core import insert_record, seed_profile
 from nicheradar.workers.queue import create_schedule
-from scripts.backup_mac import crypt, initialize, load_backup, restore_drill, save_backup
-from scripts.backup_snapshot import inspect_snapshot
+from scripts.backup_mac import (
+    crypt,
+    initialize,
+    load_backup,
+    plan_retention,
+    prune_backups,
+    restore_drill,
+    save_backup,
+)
+from scripts.backup_snapshot import (
+    BOOTSTRAP_TABLES,
+    FLOW_TABLES,
+    MARKET_TABLES,
+    PILOT_TABLES,
+    RESEARCH_TABLES,
+    inspect_snapshot,
+)
+from tests.test_flow_research_schema import add_dossier, add_request
+from tests.test_market_intel_schema import listing
 from tests.test_persistence import NOW, seed_evidence
 
 
@@ -118,10 +138,7 @@ def test_encrypted_archive_roundtrip_tamper_and_wrong_key(tmp_path: Path) -> Non
         crypt(bytes(corrupted), root / "keys/backup.key", decrypt=True)
 
 
-@pytest.mark.postgres
-def test_encrypted_public_schema_restores_in_fresh_cluster(
-    postgres_engine: Engine, tmp_path: Path
-) -> None:
+def dump_and_restore(postgres_engine: Engine, tmp_path: Path) -> dict[str, object]:
     binary_dir = os.environ.get("NR_TEST_POSTGRES_BIN")
     if not binary_dir or not shutil.which("gpg"):
         pytest.skip("Local PostgreSQL binaries and GnuPG required for isolated restore drill")
@@ -160,3 +177,221 @@ def test_encrypted_public_schema_restores_in_fresh_cluster(
     assert result["source_untouched"] is True
     with postgres_engine.connect() as connection:
         assert inspect_snapshot(connection)["counts"] == report["counts"]
+    return report
+
+
+@pytest.mark.postgres
+def test_encrypted_public_schema_restores_in_fresh_cluster(
+    postgres_engine: Engine, tmp_path: Path
+) -> None:
+    assert dump_and_restore(postgres_engine, tmp_path)["scope"] == "bootstrap-only"
+
+
+@pytest.mark.postgres
+def test_encrypted_research_data_restores_in_fresh_cluster(
+    postgres_engine: Engine, tmp_path: Path
+) -> None:
+    """Committed market and flow rows survive dump, encryption and isolated restore."""
+    from nicheradar.repositories import schema
+
+    with postgres_engine.begin() as connection:
+        listing_id = listing(connection)
+        request = add_request(connection)
+        add_dossier(connection, request)
+    try:
+        report = dump_and_restore(postgres_engine, tmp_path)
+        counts: dict[str, int] = report["counts"]  # type: ignore[assignment]
+        assert report["scope"] == "bootstrap+research"
+        assert counts["marketplace_listings"] == 1
+        assert counts["flow_research_requests"] == counts["flow_research_dossiers"] == 1
+    finally:
+        with postgres_engine.begin() as connection:
+            connection.execute(sa.delete(schema.flow_research_dossiers))
+            connection.execute(
+                sa.delete(schema.flow_research_requests).where(
+                    schema.flow_research_requests.c.id == request
+                )
+            )
+            connection.execute(
+                sa.delete(schema.marketplace_listings).where(
+                    schema.marketplace_listings.c.id == listing_id
+                )
+            )
+
+
+def test_reviewed_table_groups_are_exact_and_disjoint() -> None:
+    from nicheradar.repositories import schema
+
+    assert MARKET_TABLES == {
+        "market_scrape_runs",
+        "marketplace_listings",
+        "listing_observations",
+        "listing_classifications",
+        "listing_verifications",
+        "niche_automation_priors",
+        "market_niche_snapshots",
+        "market_niche_decisions",
+    }
+    assert FLOW_TABLES == {"flow_research_requests", "flow_research_dossiers"}
+    assert RESEARCH_TABLES == MARKET_TABLES | FLOW_TABLES
+    groups = [BOOTSTRAP_TABLES, PILOT_TABLES, MARKET_TABLES, FLOW_TABLES]
+    assert sum(len(group) for group in groups) == len(set().union(*groups))
+    reviewed = set().union(*groups)
+    assert reviewed <= set(schema.metadata.tables) | {"alembic_version"}
+    # Provider evidence is deliberately NOT reviewed: those tables keep failing closed.
+    unreviewed = (set(schema.metadata.tables) | {"alembic_version"}) - reviewed
+    assert {"raw_observations", "provider_requests", "topics", "ranking_snapshots"} <= unreviewed
+
+
+@pytest.mark.postgres
+def test_snapshot_scope_combines_pilots_and_research(db: Connection) -> None:
+    add_request(db)
+    report = inspect_snapshot(db)
+    assert report["scope"] == "bootstrap+research"
+    db.exec_driver_sql(
+        "INSERT INTO channel_tokens (id, channel_id, token_hash, label, created_at) "
+        "VALUES (gen_random_uuid(), 'canal-x', repeat('a', 64), 'mac', now())"
+    )
+    assert inspect_snapshot(db)["scope"] == "bootstrap+pilots+research"
+
+
+@pytest.mark.postgres
+def test_snapshot_reports_the_earliest_deletion_deadline_of_research(db: Connection) -> None:
+    assert inspect_snapshot(db)["delete_after"] is None
+    listing(db)  # retained for 183 days
+    soon = NOW + timedelta(days=3)
+    request = add_request(db, retain_until=soon)
+    add_dossier(db, request, retain_until=NOW + timedelta(days=50))
+    assert inspect_snapshot(db)["delete_after"] == soon.isoformat()
+
+
+@pytest.mark.postgres
+def test_snapshot_still_rejects_provider_evidence_with_research_present(db: Connection) -> None:
+    add_request(db)
+    seed_evidence(db)
+    with pytest.raises(ValueError, match="research_data_backup_not_enabled"):
+        inspect_snapshot(db)
+
+
+@pytest.mark.postgres
+def test_snapshot_still_pins_the_reviewed_schema_revision(db: Connection) -> None:
+    add_request(db)
+    db.exec_driver_sql("UPDATE alembic_version SET version_num = '0017'")
+    with pytest.raises(ValueError, match="unreviewed_schema_revision"):
+        inspect_snapshot(db)
+
+
+def test_load_backup_accepts_every_reviewed_scope(tmp_path: Path) -> None:
+    if not shutil.which("gpg"):
+        pytest.skip("GnuPG required for encrypted backup test")
+    root = tmp_path / "NicheRadar"
+    initialize(root)
+    payload = b"PGDMP synthetic private fixture; not a database"
+    for scope in (
+        "bootstrap-only",
+        "bootstrap+pilots",
+        "bootstrap+research",
+        "bootstrap+pilots+research",
+    ):
+        report: dict[str, object] = {
+            "scope": scope,
+            "revision": "0016",
+            "created_at": NOW.isoformat(),
+            "dump_sha256": hashlib.sha256(payload).hexdigest(),
+        }
+        assert load_backup(root, save_backup(root, report, payload))[0]["scope"] == scope
+    report["scope"] = "bootstrap+everything"
+    with pytest.raises(ValueError, match="invalid_archive"):
+        load_backup(root, save_backup(root, report, payload))
+
+
+def archive_name(moment: datetime) -> str:
+    return f"bootstrap-{moment:%Y%m%dT%H%M%SZ}-abcdef01.gpg"
+
+
+def test_retention_keeps_seven_daily_and_four_weekly_and_deletes_the_rest() -> None:
+    now = datetime(2026, 11, 30, 12, tzinfo=UTC)
+    # One copy per day for 60 days, plus an extra, older copy on the newest day.
+    entries: list[tuple[str, datetime, datetime | None]] = [
+        (archive_name(now - timedelta(days=d)), now - timedelta(days=d), None) for d in range(60)
+    ]
+    entries.append((archive_name(now - timedelta(hours=5)), now - timedelta(hours=5), None))
+    plan = plan_retention(entries, now)
+    daily = {name for name, verdict in plan.items() if verdict == "keep:daily"}
+    weekly = {name for name, verdict in plan.items() if verdict == "keep:weekly"}
+    assert len(daily) == 7
+    assert archive_name(now) in daily
+    assert archive_name(now - timedelta(hours=5)) not in daily  # superseded the same day
+    assert plan[archive_name(now - timedelta(hours=5))] == "delete:superseded"
+    assert len(weekly) == 4
+    assert len([v for v in plan.values() if v.startswith("keep")]) == 11
+    assert all(
+        verdict.startswith("delete") for name, verdict in plan.items() if name not in daily | weekly
+    )
+
+
+def test_retention_deletes_copies_past_their_data_deadline_even_if_recent() -> None:
+    now = datetime(2026, 11, 30, 12, tzinfo=UTC)
+    newest = (archive_name(now), now, now - timedelta(seconds=1))
+    previous = (archive_name(now - timedelta(days=1)), now - timedelta(days=1), None)
+    plan = plan_retention([newest, previous], now)
+    assert plan[newest[0]] == "delete:expired"
+    assert plan[previous[0]] == "keep:daily"
+
+
+def test_retention_never_deletes_the_only_current_copy_by_count() -> None:
+    now = datetime(2026, 11, 30, 12, tzinfo=UTC)
+    only = (archive_name(now), now, now + timedelta(days=1))
+    assert plan_retention([only], now) == {only[0]: "keep:daily"}
+
+
+def test_prune_deletes_only_matching_local_archives_and_dry_run_deletes_nothing(
+    tmp_path: Path,
+) -> None:
+    if not shutil.which("gpg"):
+        pytest.skip("GnuPG required for encrypted backup test")
+    root = tmp_path / "NicheRadar"
+    initialize(root)
+    payload = b"PGDMP synthetic private fixture; not a database"
+    now = datetime(2026, 11, 30, 12, tzinfo=UTC)
+
+    def make(moment: datetime, delete_after: datetime | None = None) -> Path:
+        report: dict[str, object] = {
+            "scope": "bootstrap+research",
+            "revision": "0016",
+            "created_at": moment.isoformat(),
+            "dump_sha256": hashlib.sha256(payload).hexdigest(),
+            "delete_after": delete_after.isoformat() if delete_after else None,
+        }
+        return save_backup(root, report, payload, now=moment)
+
+    fresh = make(now)
+    expired = make(now - timedelta(days=1), now - timedelta(hours=1))
+    stale = [make(now - timedelta(days=d)) for d in range(40, 80)]
+    stranger = root / "backups" / "notes.txt"
+    stranger.write_text("not a backup")
+    outside = root / "keys" / "backup.key"
+    dry = prune_backups(root, now, apply=False)
+    assert all(path.exists() for path in [fresh, expired, *stale, stranger, outside])
+    assert expired.name in cast(list[str], dry["would_delete"])
+    applied = prune_backups(root, now, apply=True)
+    assert applied["deleted"] == dry["would_delete"]
+    assert fresh.exists() and not expired.exists()
+    assert stranger.exists() and outside.exists()
+    # fresh + 6 stale fill the 7 daily slots; 4 older weekly copies survive; the rest is gone
+    assert sum(path.exists() for path in stale) == 6 + 4
+
+
+def test_prune_refuses_symlinked_archives(tmp_path: Path) -> None:
+    if not shutil.which("gpg"):
+        pytest.skip("GnuPG required for encrypted backup test")
+    root = tmp_path / "NicheRadar"
+    initialize(root)
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep me")
+    now = datetime(2026, 11, 30, 12, tzinfo=UTC)
+    (root / "backups" / archive_name(now - timedelta(days=90))).symlink_to(victim)
+    result = prune_backups(root, now, apply=True)
+    assert victim.exists()
+    assert result["deleted"] == []
+    assert result["skipped_unsafe"] == [archive_name(now - timedelta(days=90))]

@@ -1,15 +1,93 @@
 # Respaldo, restauración y rollback
 
-## Prioridad acordada — almacenamiento externo aplazado
+## Decisión 9.4 (2026-10-25): se respaldan los datos de investigación
+
+El propietario eligió la **opción A**: habilitar el respaldo cifrado en el Mac de los datos de
+investigación de mercado y de flujo, con retención y custodia de clave definidas (abajo).
+Sigue sin contratarse almacenamiento externo (R2/B2 no elegidos ni contratados). El resto de
+este documento conserva el historial de la copia inicial de 2026-09-16.
+
+Alcance del snapshot (`scripts/backup_snapshot.py`, falla cerrado):
+
+| Grupo | Tablas | Estado |
+|---|---|---|
+| Arranque | configuración, catálogo, políticas, `radar_schedules`, `market_intel_schedule`, benchmarks | respaldado |
+| Pilotos | `pilots`, `pilot_videos`, `pilot_events`, `channel_tokens` (solo SHA-256) | respaldado |
+| Mercado | `market_scrape_runs`, `marketplace_listings`, `listing_observations`, `listing_classifications`, `listing_verifications`, `niche_automation_priors`, `market_niche_snapshots`, `market_niche_decisions` | respaldado |
+| Flujo | `flow_research_requests`, `flow_research_dossiers` | respaldado |
+| Evidencia de proveedores | `raw_observations`, `provider_requests`, `topics`, rankings, evaluaciones... | **no revisada: sigue bloqueando** (`research_data_backup_not_enabled`) |
+
+Una tabla nueva queda fuera de las listas revisadas y, si tiene filas, bloquea el respaldo hasta
+que alguien la clasifique en el código. Siguen exigiéndose: esquema exacto, revisión `0016`
+(al migrar hay que revisar el alcance y subir esa constante), radar y programación de mercado
+en pausa y ningún proveedor real habilitado.
+
+El `scope` reportado es `bootstrap-only`, `bootstrap+pilots`, `bootstrap+research` o
+`bootstrap+pilots+research`. El snapshot informa además `delete_after`: el menor `retain_until`
+de la evidencia con caducidad (`backup_deadline`, que ahora incluye fichas, observaciones,
+clasificaciones, verificaciones, snapshots de mercado y encargos/dossiers de flujo). Los datos
+de mercado y flujo se conservan 183 días; las decisiones del propietario y los priors no caducan.
+`backup` y `restore-drill` verifican también estas tablas (conteos idénticos tras restaurar).
+
+### Política de retención de copias locales (Mac)
+
+- **Diarias**: la copia más reciente de cada uno de los últimos **7 días** con copias.
+- **Semanales**: la copia más reciente de cada una de las **4 semanas ISO** anteriores.
+- Máximo ~11 copias vivas; las demás se consideran reemplazadas.
+- **Vencimiento de datos**: una copia cuyo `delete_after` ya pasó se destruye aunque entre en
+  los cupos anteriores. Una semanal puede durar menos de 4 semanas si contiene evidencia de
+  caducidad cercana; las copias diarias nuevas ya no la contienen.
+- `prune` es **simulación por defecto**; solo borra con `--apply`:
+
+  ```sh
+  uv run python scripts/backup_mac.py prune            # muestra qué borraría
+  uv run python scripts/backup_mac.py prune --apply    # borra
+  ```
+
+  Seguridad: solo archivos regulares (no enlaces simbólicos) propiedad del usuario, directamente
+  dentro de `backups/`, con el nombre exacto `bootstrap-<UTC>-<8hex>.gpg`. Nunca toca la clave,
+  otros archivos ni el VPS. Un archivo ilegible (clave errónea o corrupto) se conserva y se
+  informa. La fecha sale del nombre, no del mtime.
+- No hay programación automática: ejecutar `backup` y luego `prune --apply`. Automatizarlo con
+  `launchd` es decisión del propietario.
+- **Réplicas fuera del control del script**: Time Machine, iCloud o copias del sistema pueden
+  retener archivos ya borrados. Excluir la carpeta de respaldos (por ejemplo
+  `tmutil addexclusion "$HOME/Library/Application Support/NicheRadar/backups"`) o aceptar que
+  la caducidad de 183 días no es verificable en esas réplicas. Acción del propietario.
+- Con el Mac apagado no hay copia nueva ni borrado: el vencimiento se aplica en el siguiente `prune`.
+
+### Custodia de la clave (procedimiento propuesto; no ejecutado)
+
+`~/Library/Application Support/NicheRadar/keys/backup.key` protege todas las copias: perderla
+es perder las copias; filtrarla expone los datos. Este procedimiento **no genera, mueve ni lee**
+claves reales; es lo que el propietario debe ejecutar.
+
+1. **Custodia externa**: copia de la clave en un gestor de contraseñas del propietario con 2FA,
+   o impresa en un sobre en un lugar físico seguro. Nunca en el repo, chat, correo ni VPS.
+   Una copia en el mismo Mac no cubre su pérdida.
+2. **Verificar la custodia**: con la copia externa, reconstruir un archivo de clave 0600 bajo
+   otro `--root` temporal y ejecutar `verify` sobre una copia reciente; borrar luego ese directorio.
+3. **Rotación** (cada 12 meses o ante sospecha de exposición): `init --root <nuevo>` genera una
+   clave nueva sin reemplazar la vieja; hacer `backup` con ella, comprobar `restore-drill`,
+   guardarla en custodia externa y destruir la antigua y las copias cifradas con ella (con la
+   retención, quedan como máximo ~4 semanas). Mientras existan copias con la clave vieja, se conserva.
+4. **Prueba de restauración**: al menos mensual y tras cada cambio de esquema,
+   `restore-drill` sobre la última copia (clúster temporal sin TCP; no toca producción).
+5. **Compromiso de la clave**: rotar de inmediato y destruir copias antiguas y réplicas del sistema.
+
+---
+
+## Histórico: prioridad acordada el 2026-09-16 (almacenamiento externo aplazado)
+
 
 El 2026-09-16 el propietario decidió dejar la evaluación/configuración de almacenamiento
 externo para el futuro y continuar con el radar. Cloudflare R2 y Backblaze B2 fueron
 alternativas evaluadas, **no seleccionadas ni contratadas**. No crear cuentas, buckets,
 automatizaciones ni cargos por esta decisión. Se conserva la copia manual inicial del Mac.
 
-La tarea 9.4 sigue abierta, no completada ni eliminada. Al retomarla deben revisarse
-conservación, borrado de todas las copias, recuperación de claves y prueba de rollback.
-Mientras tanto no ampliar las copias del Mac a datos externos: su bloqueo sigue vigente.
+(Superado en parte por la decisión 9.4 de arriba: mercado y flujo ya se respaldan. Siguen
+pendientes la custodia externa de la clave, la limpieza de réplicas del sistema y una prueba
+de rollback; la evidencia de proveedores sigue bloqueada.)
 El piloto puede prepararse independientemente, manteniendo sus propios requisitos de
 conexión, permisos, conservación en SQL, límites y aprobación de gasto.
 
@@ -73,6 +151,7 @@ uv run python scripts/backup_mac.py init
 uv run python scripts/backup_mac.py backup
 uv run python scripts/backup_mac.py verify --archive '/ruta/exacta/al/archivo.gpg'
 uv run python scripts/backup_mac.py restore-drill --archive '/ruta/exacta/al/archivo.gpg'
+uv run python scripts/backup_mac.py prune [--apply]   # retención local, ver arriba
 ```
 
 `init` es idempotente: nunca reemplaza una clave existente. El respaldo verifica
