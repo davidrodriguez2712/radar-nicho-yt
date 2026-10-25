@@ -40,8 +40,8 @@ cifras declaradas por vendedores del backlog.
 ## Datos y respaldos
 
 Retención de 183 días, igual que los datos de mercado. Las tablas
-`flow_research_requests` y `flow_research_dossiers` cuentan como datos de investigación: el
-respaldo inicial falla cerrado si tienen filas (decisión 9.4 del propietario pendiente).
+`flow_research_requests` y `flow_research_dossiers` cuentan como datos de investigación y se respaldan cifrados en el Mac (decisión 9.4,
+opción A) con retención local acotada; ver [backup-restore.md](backup-restore.md).
 Un encargo no usa `provider_requests`, presupuesto, vidIQ ni crea canales.
 
 ## API

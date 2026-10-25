@@ -1,6 +1,7 @@
-"""Manual encrypted bootstrap backup and isolated local restore drill.
+"""Manual encrypted backup (bootstrap, pilots, market and flow research) and restore drill.
 
-No provider-data export, scheduler, cloud upload, or writes to the source VPS.
+No provider-evidence export, scheduler, cloud upload, or writes to the source VPS.
+`prune` applies the local retention policy (docs/backup-restore.md); dry-run by default.
 Run with uv run python scripts/backup_mac.py --help. Secrets never go in argv.
 """
 
@@ -39,6 +40,17 @@ SSH = [
 ]
 PREFIX = "proy1-credito-riesgo_nicheradar-"
 MAX_BYTES = 32 * 1024 * 1024
+SCOPES = (
+    "bootstrap-only",
+    "bootstrap+pilots",
+    "bootstrap+research",
+    "bootstrap+pilots+research",
+)
+# Local retention: newest copy of each of the last 7 days with copies, plus the newest copy of
+# each of the 4 previous ISO weeks. A copy is also destroyed at its data deadline (`delete_after`).
+DAILY_KEEP = 7
+WEEKLY_KEEP = 4
+ARCHIVE_NAME = re.compile(r"bootstrap-(\d{8}T\d{6}Z)-[0-9a-f]{8}\.gpg")
 
 
 def private_path(path: Path, *, directory: bool) -> None:
@@ -207,7 +219,9 @@ def take_snapshot() -> tuple[dict[str, object], bytes]:
             holder.stdout.close()
 
 
-def save_backup(root: Path, report: dict[str, object], dump: bytes) -> Path:
+def save_backup(
+    root: Path, report: dict[str, object], dump: bytes, *, now: datetime | None = None
+) -> Path:
     private_path(root, directory=True)
     private_path(root / "backups", directory=True)
     payload = json.dumps({"metadata": report, "dump": base64.b64encode(dump).decode()}).encode()
@@ -215,7 +229,7 @@ def save_backup(root: Path, report: dict[str, object], dump: bytes) -> Path:
     # Finish authentication/decryption before declaring the archive usable.
     if crypt(encrypted, root / "keys/backup.key", decrypt=True) != payload:
         raise ValueError("encrypted_roundtrip_failed")
-    filename = f"bootstrap-{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{uuid4().hex[:8]}.gpg"
+    filename = f"bootstrap-{now or datetime.now(UTC):%Y%m%dT%H%M%SZ}-{uuid4().hex[:8]}.gpg"
     archive = root / "backups" / filename
     with open(archive, "xb", opener=lambda path, flags: os.open(path, flags, 0o600)) as file:
         file.write(encrypted)
@@ -232,13 +246,91 @@ def load_backup(root: Path, archive: Path) -> tuple[dict[str, object], bytes]:
     dump = base64.b64decode(data["dump"], validate=True)
     report = data["metadata"]
     if (
-        report.get("scope") not in ("bootstrap-only", "bootstrap+pilots")
+        report.get("scope") not in SCOPES
         or report.get("revision") != "0016"
         or hashlib.sha256(dump).hexdigest() != report.get("dump_sha256")
         or not dump.startswith(b"PGDMP")
     ):
         raise ValueError("invalid_archive")
     return report, dump
+
+
+def plan_retention(
+    archives: list[tuple[str, datetime, datetime | None]], now: datetime
+) -> dict[str, str]:
+    """Pure policy: name -> keep:daily | keep:weekly | delete:expired | delete:superseded."""
+    verdicts: dict[str, str] = {}
+    live: list[tuple[str, datetime]] = []
+    for name, created, delete_after in sorted(archives, key=lambda item: item[1], reverse=True):
+        if delete_after is not None and delete_after <= now:
+            verdicts[name] = "delete:expired"
+        else:
+            live.append((name, created))
+    days: set[object] = set()
+    weeks: set[object] = set()
+    for name, created in live:  # newest first
+        day = created.date()
+        week = created.isocalendar()[:2]
+        if day in days:
+            verdicts[name] = "delete:superseded"
+        elif len(days) < DAILY_KEEP:
+            days.add(day)
+            verdicts[name] = "keep:daily"
+        elif week not in weeks and len(weeks) < WEEKLY_KEEP:
+            weeks.add(week)
+            verdicts[name] = "keep:weekly"
+        else:
+            verdicts[name] = "delete:superseded"
+    return verdicts
+
+
+def prune_backups(root: Path, now: datetime, *, apply: bool) -> dict[str, object]:
+    """Delete only expired/superseded LOCAL archives of this tool; never touches anything else.
+
+    Candidates must be plain files (no symlinks) owned by this user, directly inside
+    `backups/`, with this tool's exact name pattern. Unreadable archives are kept and reported.
+    """
+    private_path(root, directory=True)
+    backups = root / "backups"
+    private_path(backups, directory=True)
+    entries: list[tuple[str, datetime, datetime | None]] = []
+    paths: dict[str, Path] = {}
+    unsafe: list[str] = []
+    unreadable: list[str] = []
+    for path in sorted(backups.iterdir()):
+        match = ARCHIVE_NAME.fullmatch(path.name)
+        if not match:
+            continue
+        try:
+            private_path(path, directory=False)
+        except (ValueError, OSError):
+            unsafe.append(path.name)
+            continue
+        try:
+            payload = json.loads(crypt(path.read_bytes(), root / "keys/backup.key", decrypt=True))
+            raw = payload["metadata"].get("delete_after")
+            delete_after = datetime.fromisoformat(raw) if raw else None
+        except (ValueError, KeyError, TypeError, AttributeError):
+            unreadable.append(path.name)
+            continue
+        created = datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
+        entries.append((path.name, created, delete_after))
+        paths[path.name] = path
+    plan = plan_retention(entries, now)
+    doomed = sorted(name for name, verdict in plan.items() if verdict.startswith("delete"))
+    deleted: list[str] = []
+    if apply:
+        for name in doomed:
+            paths[name].unlink()
+            deleted.append(name)
+    return {
+        "applied": apply,
+        "kept": sorted(name for name, verdict in plan.items() if verdict.startswith("keep")),
+        "would_delete": doomed,
+        "deleted": deleted,
+        "skipped_unsafe": unsafe,
+        "unreadable_kept": unreadable,
+    }
 
 
 def restore_drill(report: dict[str, object], dump: bytes, binaries: Path) -> dict[str, object]:
@@ -358,9 +450,12 @@ def restore_drill(report: dict[str, object], dump: bytes, binaries: Path) -> dic
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["init", "backup", "verify", "restore-drill"])
+    parser.add_argument("action", choices=["init", "backup", "verify", "restore-drill", "prune"])
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--archive", type=Path)
+    parser.add_argument(
+        "--apply", action="store_true", help="prune: really delete (default is a dry run)"
+    )
     parser.add_argument(
         "--postgres-bin",
         type=Path,
@@ -383,6 +478,8 @@ def main() -> None:
                 }
             )
         )
+    elif args.action == "prune":
+        print(json.dumps(prune_backups(args.root, datetime.now(UTC), apply=args.apply)))
     else:
         if args.archive is None:
             parser.error("--archive required")

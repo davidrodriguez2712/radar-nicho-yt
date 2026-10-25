@@ -183,7 +183,21 @@ Detalle en [market-intel.md](market-intel.md).
   «Portafolio» de solo lectura. Rama `feat/experimentos-ecosistema`.
 - **Desplegado el 2026-10-25** (release [013](release-20261025-013.md), migración `0015`).
   El Mac alcanza la API por túnel SSH (`scripts/pilots_tunnel.py`). Las tablas de pilotos se
-  respaldan; los datos de mercado y de flujo siguen bloqueando el respaldo (tarea 9.4).
+  respaldan. Los datos de mercado y de flujo se respaldan desde la rama
+  `feat/respaldo-datos-investigacion` (decisión 9.4, opción A; ver abajo).
+
+## Respaldo de datos de investigación (2026-10-25, tarea 9.4, opción A)
+
+- El snapshot acepta mercado y flujo (alcance `bootstrap+pilots+research`), mantiene el bloqueo
+  de la evidencia de proveedores y de tablas no revisadas, y fija la revisión `0016`.
+  Informa `delete_after` (`backup_deadline` ahora incluye mercado y flujo).
+- Retención local en el Mac: 7 diarias + 4 semanales y borrado al vencer los datos
+  (`backup_mac.py prune`, simulación por defecto). Detalle y procedimiento de custodia/rotación
+  de la clave en [backup-restore.md](backup-restore.md).
+- **Pendiente del propietario** (no ejecutado aquí): custodia externa de la clave, exclusión de
+  la carpeta de respaldos de Time Machine/iCloud, y decidir si `backup`+`prune` se automatizan.
+  Hasta entonces la tarea 9.4 sigue abierta. El cambio no está desplegado: el script de
+  snapshot se envía al VPS en cada respaldo, pero no se ha ejecutado ningún respaldo real.
 
 ## Pendientes de integración y verificación
 
