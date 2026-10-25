@@ -109,7 +109,6 @@ def test_a_token_hash_cannot_repeat_and_pilot_ids_are_unique(db: Connection) -> 
         add_pilot(db, pilot_id="pil_20261101_igual", target_channel=None)
 
 
-def test_the_backup_guard_treats_pilots_as_research_data(db: Connection) -> None:
+def test_the_backup_guard_accepts_pilots_as_backed_up_data(db: Connection) -> None:
     add_pilot(db)
-    with pytest.raises(ValueError, match="research_data_backup_not_enabled"):
-        inspect_snapshot(db)
+    assert inspect_snapshot(db)["scope"] == "bootstrap+pilots"
