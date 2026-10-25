@@ -37,6 +37,16 @@ def test_snapshot_rejects_research_even_in_synthetic_mode(db: Connection) -> Non
 
 
 @pytest.mark.postgres
+def test_snapshot_accepts_pilot_data_and_reports_the_wider_scope(db: Connection) -> None:
+    db.exec_driver_sql(
+        "INSERT INTO channel_tokens (id, channel_id, token_hash, label, created_at) "
+        "VALUES (gen_random_uuid(), 'canal-x', repeat('a', 64), 'mac', now())"
+    )
+    report = inspect_snapshot(db)
+    assert report["scope"] == "bootstrap+pilots"
+
+
+@pytest.mark.postgres
 def test_snapshot_rejects_enabled_real_provider_before_first_request(db: Connection) -> None:
     insert_record(
         db,

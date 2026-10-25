@@ -29,7 +29,7 @@ ni inventa cifras, y calcula los totales por su cuenta.
 | `reported_at` | fecha | No futura (tolerancia de 5 min) |
 | `channel_status` | texto | `"active"`, `"paused"` o `"closed"` |
 | `videos` | lista | De 0 a 100 objetos `Video` |
-| `checks` | lista | De 0 a 20 comprobaciones de preparación del canal (ver abajo) |
+| `checks` | lista | **Opcional** (ausente equivale a lista vacía). De 0 a 20 comprobaciones de preparación del canal (ver abajo) |
 | `note` | texto o `null` | Hasta 1500 caracteres. Texto libre del canal |
 
 No hay campo de totales: NicheRadar suma desde `videos`.
@@ -209,6 +209,7 @@ produce a diario, un fallo del script no puede afectar la producción.
 
 ## Decisiones tomadas (2026-10-25)
 
+- `checks` es opcional: así el exportador de un canal que aún no lo calcula sigue siendo válido.
 - Quién genera el reporte: un script aparte del canal, con la base en solo lectura.
 - Quién traduce los estados: NicheRadar, con una tabla por canal. El reporte lleva `source_state`.
 - Ingresos: no entran en `v1`. Queda **sin responder** la pregunta de cuándo sumarlos (se

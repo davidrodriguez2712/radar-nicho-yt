@@ -67,8 +67,7 @@ El canal manda su estado interno (`source_state`); NicheRadar lo traduce con
 - `PUBLICADO` con `visibility = unknown` también da `unknown`; no se adivina.
 - Las reglas de coherencia se comprueban **después** de traducir: `published` y `measuring`
   exigen `published_at` y `visibility = public`.
-- `checks` se acepta ausente (equivale a lista vacía). El contrato lista el campo pero el
-  exportador actual de `canal-historias` aún no lo envía; ver «Diferencias con el contrato».
+- `checks` es opcional (ausente = lista vacía), como dice el contrato desde 2026-10-25.
 
 Para alta de otro canal: añadir su tabla en `TABLES` (y su estado «publicado» en
 `PUBLISHED_STATE` si depende de la visibilidad) y una prueba.
@@ -83,7 +82,7 @@ uv run python scripts/pilots.py authorize --niche-label "…" --format long --la
   --dossier-id <uuid> --low 3 --likely 19 --high 41 --max-videos 10 --basis "…" \
   --authorized-by david
 # 3. Mac: bajar y reportar (el token es el del canal, no el de servicio)
-export NR_SYNC_URL=https://…  NR_SYNC_TOKEN=nrc_…
+export NR_SYNC_URL=http://127.0.0.1:18000 NR_SYNC_TOKEN=nrc_…
 uv run python scripts/channel_sync.py fetch  --channel-dir ~/Programming/youtube-project/canal-historias
 uv run python scripts/channel_sync.py report --channel-dir ~/Programming/youtube-project/canal-historias
 # 4. Humano: cuando el piloto esté en decisión pendiente
@@ -98,23 +97,23 @@ del paquete y no imprime el token. El reporte lo genera el script del canal
 
 ## Alcanzar la API desde el Mac
 
-La API de NicheRadar **no tiene dominio público** (regla del repositorio). Para que el Mac la
-alcance hace falta una de estas dos cosas, y es una decisión de infraestructura pendiente:
-un túnel SSH hacia el puerto interno, o publicar un subdominio. Con subdominio, el proxy no debe
-aplicar Basic Auth, porque chocaría con el token `Bearer`. `channel_sync.py` funciona con
-cualquier URL alcanzable.
+La API de NicheRadar **no tiene dominio público** (regla del repositorio). Decidido el
+2026-10-25: el Mac la alcanza por **túnel SSH**, sin publicar nada. `channel_sync.py` funciona con
+cualquier URL alcanzable; `scripts/pilots_tunnel.py` abre el túnel y deja la API en
+`http://127.0.0.1:<puerto local>` (http solo se admite en localhost). Publicar un subdominio
+queda descartado por ahora: exigiría quitar el Basic Auth del proxy, que chocaría con el `Bearer`.
 
 ## Respaldos (tarea 9.4)
 
-Las tablas de pilotos cuentan como datos de investigación: igual que `flow_research`, en cuanto
-tengan filas, `scripts/backup_snapshot.py` se niega a respaldar. La revisión esperada subió a
-`0015`. Sigue abierta la decisión de respaldar esos datos.
+Decidido el 2026-10-25: las tablas de pilotos se respaldan. `scripts/backup_snapshot.py` las
+admite con filas (`PILOT_TABLES`) y reporta `scope = "bootstrap+pilots"`; `channel_tokens` solo
+guarda hashes. Los datos de investigación de mercado y de flujo siguen bloqueando el respaldo.
+La revisión esperada es `0015`.
 
 ## Diferencias con el contrato
 
 | Tema | Contrato | Implementación |
 |---|---|---|
-| `checks` en el reporte | Listado sin decir que sea opcional | Opcional; ausente = `[]` |
 | Código de estado | `en_ejecución` (texto) | `en_ejecucion` (código ASCII) |
 | `cancelado` | No existe | Existe (ver arriba) |
 | `PUBLICADO` + visibilidad `unknown` | No dicho | `unknown` + advertencia |
