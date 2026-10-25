@@ -94,11 +94,17 @@ class Figure(Contract):
     origin: Literal["seller_declared", "estimate", "verified"]
 
 
+class LanguageShare(Contract):
+    language: Annotated[str, StringConstraints(pattern=r"^([a-z]{2}(-[A-Z]{2})?|unknown)$")]
+    share_pct: Number = Field(ge=0, le=100)
+
+
 class Evidence(Contract):
     captured_at: AwareDatetime
     scores: Scores
     confidence: Confidence
     listings_with_income: Annotated[int, Field(ge=0)]
+    language_mix: Annotated[list[LanguageShare], Field(max_length=10)]
     figures: Annotated[list[Figure], Field(max_length=30)]
 
 
@@ -210,6 +216,9 @@ def package_problems(package: Package, payload: dict[str, Any], now: datetime) -
             add(f"stop_rules.{index}.threshold", "debe ser null para esta métrica")
         if rule.metric not in UNMEASURABLE and rule.threshold is None:
             add(f"stop_rules.{index}.threshold", "es obligatorio para una métrica medible")
+    mix = package.evidence.language_mix
+    if mix and abs(sum((item.share_pct for item in mix), Decimal(0)) - 100) > 1:
+        add("evidence.language_mix", "los porcentajes deben sumar 100 (±1)")
     if package.evidence.confidence == "low" and not package.dossier.unknowns:
         add("dossier.unknowns", "es obligatoria cuando la confianza del nicho es baja")
     if package.package_sha256 != package_sha256(payload):

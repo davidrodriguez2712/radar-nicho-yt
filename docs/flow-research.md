@@ -48,14 +48,14 @@ Un encargo no usa `provider_requests`, presupuesto, vidIQ ni crea canales.
 
 | Método y ruta | Uso |
 | --- | --- |
-| `POST /api/v1/flow-research` | Crear (201) o devolver el activo (200) |
-| `GET /api/v1/flow-research` | Listar (`niche_label`, `format`, `status`, `limit`) |
+| `POST /api/v1/flow-research` | Crear (201) o devolver el activo (200). Cuerpo: `niche_label`, `format`, `language` (código `en`, `es`…; `unknown` se rechaza) |
+| `GET /api/v1/flow-research` | Listar (`niche_label`, `format`, `language`, `status`, `limit`) |
 | `GET /api/v1/flow-research/pending` | Pendientes (libera leases vencidos) |
 | `GET /api/v1/flow-research/{id}` | Encargo, evidencia y dossier |
 | `POST /api/v1/flow-research/{id}/claim` | Reclamar con `{"owner": ...}` |
 | `POST /api/v1/flow-research/{id}/dossier` | Enviar `{"owner": ..., "dossier": {...}}` |
 
-## Cambio acordado: el idioma entra en la clave (2026-10-25, pendiente de implementar)
+## Cambio acordado: el idioma entra en la clave (2026-10-25, implementado en la rama, sin desplegar)
 
 Decisión del propietario: el idioma se elige **al iniciar la investigación**, no al autorizar el
 piloto. La clave del encargo pasa de `(niche_label, format)` a `(niche_label, format, language)`.
@@ -66,6 +66,6 @@ Qué cambia al implementarlo:
 - `POST /api/v1/flow-research` exige `language`; el dashboard la preselecciona con el idioma dominante de `language_mix` y no preselecciona si hay empate o predomina `unknown`.
 - `dossier-v1` copia `language` del encargo, como ya hace con `niche_label` y `format`; la skill `flow-research` investiga competidores y precios en ese idioma.
 - El paquete del piloto toma el idioma del dossier (ver [`contracts/pilot-package-v1.md`](contracts/pilot-package-v1.md)).
-- Encargos existentes: la migración los marca `unknown`. Un `pendiente` o `en_curso` con `unknown` **no se investiga**: se cancela o se recrea con idioma. Al desplegar, el encargo pendiente de producción se rehace con idioma elegido.
+- Encargos existentes: la migración los marca `unknown`. Los `pendiente` o `en_curso` se cierran como `rechazado` (hay que iniciarlos de nuevo con idioma); los `listo` se conservan, pero no pueden convertirse en piloto (`language_unknown`).
 
-Es un cambio de esquema en producción: requiere migración y despliegue aprobados por el propietario.
+Migración `0016`: cierra (`rechazado`, con el motivo en `rejection`) los encargos `pendiente` o `en_curso` sin idioma y no toca los `listo`. `dossier-v1` gana el campo `language` (obligatorio): se asumió que producción aún no tiene dossiers; si los hubiera, se conservan tal cual. Es un cambio de esquema en producción: requiere migración y despliegue aprobados por el propietario.

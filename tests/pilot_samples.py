@@ -60,6 +60,7 @@ def package_body(**over: Any) -> dict[str, Any]:
             "scores": {"opportunity": 78, "automation": 64, "creator_fit": 71, "market": 69},
             "confidence": "medium",
             "listings_with_income": 5,
+            "language_mix": [{"language": "en", "share_pct": 100}],
             "figures": [
                 {
                     "name": "income_median",

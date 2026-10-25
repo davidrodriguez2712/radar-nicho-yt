@@ -178,6 +178,7 @@ class Dossier(Contract):
     request_id: UUID
     niche_label: Label
     format: Literal["long", "shorts"]
+    language: Annotated[str, StringConstraints(pattern=r"^[a-z]{2}(-[A-Z]{2})?$")]
     horizon: Literal["short", "medium"]
     generated_at: AwareDatetime
     verdict: Verdict

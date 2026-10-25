@@ -48,9 +48,6 @@ class AuthorizeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     niche_label: str = Field(min_length=1, max_length=140)
     format: Format
-    language: str = Field(
-        pattern=r"^[a-z]{2}(-[A-Z]{2})?$"
-    )  # lo elige el humano: sin valor por defecto
     dossier_request_id: UUID
     budget: Budget
     stop_rules: list[StopRule] | None = Field(default=None, min_length=1, max_length=10)
@@ -142,7 +139,6 @@ def pilots_router(
                 connection,
                 niche_label=body.niche_label,
                 format=body.format,
-                language=body.language,
                 dossier_request_id=body.dossier_request_id,
                 budget=body.budget.model_dump(mode="json", exclude={"currency"}),
                 stop_rules=None

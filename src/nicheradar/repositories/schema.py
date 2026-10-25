@@ -400,6 +400,7 @@ flow_research_requests = sa.Table(
     sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid4),
     sa.Column("niche_label", sa.String(140), nullable=False),
     sa.Column("format", sa.String(10), nullable=False),
+    sa.Column("language", sa.String(10), nullable=False, server_default="unknown"),
     sa.Column("status", sa.String(20), nullable=False),
     sa.Column("evidence", JSONB, nullable=False),
     sa.Column("attempts", sa.Integer, nullable=False, server_default="0"),
@@ -417,6 +418,7 @@ flow_research_requests = sa.Table(
         "uq_flow_research_active",
         "niche_label",
         "format",
+        "language",
         unique=True,
         postgresql_where=sa.text("status IN ('pendiente', 'en_curso')"),
     ),
@@ -435,11 +437,12 @@ flow_research_dossiers = sa.Table(
     ),
     sa.Column("niche_label", sa.String(140), nullable=False),
     sa.Column("format", sa.String(10), nullable=False),
+    sa.Column("language", sa.String(10), nullable=False, server_default="unknown"),
     sa.Column("schema_version", sa.String(20), nullable=False),
     sa.Column("content", JSONB, nullable=False),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("retain_until", sa.DateTime(timezone=True), nullable=False),
-    sa.Index("ix_flow_research_dossiers_lookup", "niche_label", "format", "created_at"),
+    sa.Index("ix_flow_research_dossiers_lookup", "niche_label", "format", "language", "created_at"),
 )
 
 pilots = sa.Table(

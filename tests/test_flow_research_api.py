@@ -24,7 +24,9 @@ def tentative_api(engine: Engine) -> TestClient:
 
 def create(api: TestClient) -> dict[str, Any]:
     response = api.post(
-        BASE, json={"niche_label": "personal_finance", "format": "long"}, headers=AUTH
+        BASE,
+        json={"niche_label": "personal_finance", "format": "long", "language": "en"},
+        headers=AUTH,
     )
     assert response.status_code == 201
     created: dict[str, Any] = response.json()
@@ -47,12 +49,22 @@ def test_create_is_idempotent_and_refuses_ineligible_niches(isolated_engine: Eng
     api = tentative_api(isolated_engine)
     first = create(api)
     assert first["status"] == "pendiente" and first["created"] is True
-    again = api.post(BASE, json={"niche_label": "personal_finance", "format": "long"}, headers=AUTH)
+    again = api.post(
+        BASE,
+        json={"niche_label": "personal_finance", "format": "long", "language": "en"},
+        headers=AUTH,
+    )
     assert again.status_code == 200 and again.json()["id"] == first["id"]
     assert again.json()["created"] is False
-    gaming = api.post(BASE, json={"niche_label": "gaming_general", "format": "long"}, headers=AUTH)
+    gaming = api.post(
+        BASE,
+        json={"niche_label": "gaming_general", "format": "long", "language": "en"},
+        headers=AUTH,
+    )
     assert gaming.status_code == 409 and gaming.json()["detail"]["code"] == "not_tentative"
-    missing = api.post(BASE, json={"niche_label": "nope", "format": "long"}, headers=AUTH)
+    missing = api.post(
+        BASE, json={"niche_label": "nope", "format": "long", "language": "en"}, headers=AUTH
+    )
     assert missing.status_code == 404
     bad = api.post(BASE, json={"niche_label": "personal_finance", "format": "x"}, headers=AUTH)
     assert bad.status_code == 422

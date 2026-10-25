@@ -65,7 +65,6 @@ def _parser() -> argparse.ArgumentParser:
     )
     lanzar.add_argument("--niche-label", required=True)
     lanzar.add_argument("--format", required=True, choices=["long", "shorts"])
-    lanzar.add_argument("--language", required=True, help="lo eliges tú; no hay valor por defecto")
     lanzar.add_argument("--dossier-id", required=True)
     lanzar.add_argument("--low", required=True, type=float)
     lanzar.add_argument("--likely", required=True, type=float)
@@ -108,7 +107,6 @@ def _authorize_body(args: argparse.Namespace) -> dict[str, Any]:
     body: dict[str, Any] = {
         "niche_label": args.niche_label,
         "format": args.format,
-        "language": args.language,
         "dossier_request_id": args.dossier_id,
         "budget": {
             "currency": "USD",

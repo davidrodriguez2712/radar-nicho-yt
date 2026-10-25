@@ -40,6 +40,7 @@ MESSAGES = {
     "gone": "El paquete venció y ya no se entrega.",
     "dossier_not_ready": "El encargo de investigación no tiene un dossier listo.",
     "niche_mismatch": "El dossier no corresponde al nicho y formato indicados.",
+    "language_unknown": "El encargo no tiene idioma: investígalo de nuevo eligiendo uno.",
     "no_go_requires_acceptance": "El dossier recomienda no avanzar: hay que aceptarlo.",
     "channel_busy": "Ese canal ya tiene un piloto abierto.",
     "bad_transition": "El piloto no está en un estado que permita esa acción.",
@@ -188,6 +189,7 @@ def _evidence(detail: dict[str, Any], now: datetime) -> dict[str, Any]:
         },
         "confidence": CONFIDENCE[niche["confidence"]],
         "listings_with_income": int(niche["metrics"]["n_income"]),
+        "language_mix": detail["language_mix"],
         "figures": _figures(niche),
     }
 
@@ -211,7 +213,6 @@ def authorize(
     *,
     niche_label: str,
     format: str,
-    language: str,
     dossier_request_id: UUID,
     budget: dict[str, Any],
     stop_rules: list[dict[str, Any]] | None,
@@ -234,6 +235,9 @@ def authorize(
         raise PilotError("dossier_not_ready")
     if (request["niche_label"], request["format"]) != (niche_label, format):
         raise PilotError("niche_mismatch")
+    language = request["language"]  # se eligió al iniciar la investigación y no se cambia aquí
+    if language == "unknown":
+        raise PilotError("language_unknown")
     verdict = dossier["verdict"]
     thesis = verdict["thesis"]
     if verdict["recommendation"] == "no_go":

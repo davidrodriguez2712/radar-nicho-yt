@@ -48,7 +48,6 @@ def authorize_body(request_id: str, **over: Any) -> dict[str, Any]:
     body: dict[str, Any] = {
         "niche_label": "personal_finance",
         "format": "long",
-        "language": "en",
         "dossier_request_id": request_id,
         "budget": {
             "currency": "USD",
@@ -176,9 +175,6 @@ def test_authorize_refuses_what_it_cannot_support(isolated_engine: Engine) -> No
     ready = ready_dossier_for(api, request_id)
     mismatch = authorize_body(ready, niche_label="gaming_general")
     assert api.post(BASE, json=mismatch, headers=AUTH).status_code == 409
-    no_lang = authorize_body(ready)
-    del no_lang["language"]
-    assert api.post(BASE, json=no_lang, headers=AUTH).status_code == 422  # el idioma no se asume
     bad_budget = authorize_body(ready, budget={**body["budget"], "low": 50, "high": 3})
     refused = api.post(BASE, json=bad_budget, headers=AUTH)
     assert refused.status_code == 422 and refused.json()["accepted"] is False
@@ -231,7 +227,7 @@ def test_only_one_open_pilot_per_channel_and_supersede_replaces(
     )
     assert again.status_code == 409 and again.json()["detail"]["code"] == "channel_busy"
     replaced = api.post(
-        BASE, json=authorize_body(_any_request(api), supersedes=first, language="es"), headers=AUTH
+        BASE, json=authorize_body(_any_request(api), supersedes=first), headers=AUTH
     )
     assert replaced.status_code == 201
     assert replaced.json()["package"]["supersedes"] == first

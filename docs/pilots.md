@@ -77,8 +77,8 @@ Para alta de otro canal: añadir su tabla en `TABLES` (y su estado «publicado»
 ```bash
 # 1. Humano: emitir un token para el canal (se imprime una vez)
 uv run python scripts/pilots.py token-issue --channel canal-historias --label mac
-# 2. Humano: lanzar un piloto desde un dossier listo (el idioma no tiene valor por defecto)
-uv run python scripts/pilots.py authorize --niche-label "…" --format long --language en \
+# 2. Humano: lanzar un piloto desde un dossier listo (el idioma ya viene del dossier: se eligió al iniciar la investigación)
+uv run python scripts/pilots.py authorize --niche-label "…" --format long \
   --dossier-id <uuid> --low 3 --likely 19 --high 41 --max-videos 10 --basis "…" \
   --authorized-by david
 # 3. Mac: bajar y reportar (el token es el del canal, no el de servicio)
@@ -108,7 +108,7 @@ queda descartado por ahora: exigiría quitar el Basic Auth del proxy, que chocar
 Decidido el 2026-10-25: las tablas de pilotos se respaldan. `scripts/backup_snapshot.py` las
 admite con filas (`PILOT_TABLES`) y reporta `scope = "bootstrap+pilots"`; `channel_tokens` solo
 guarda hashes. Los datos de investigación de mercado y de flujo siguen bloqueando el respaldo.
-La revisión esperada es `0015`.
+La revisión esperada es `0016`.
 
 ## Diferencias con el contrato
 

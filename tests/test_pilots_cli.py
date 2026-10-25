@@ -24,7 +24,7 @@ def run(argv: list[str], client: FakeClient) -> int:
     return main(argv, client=client)
 
 
-def test_authorize_maps_every_argument_and_never_defaults_the_language(
+def test_authorize_maps_every_argument_and_has_no_language_option(
     capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     client = FakeClient({"pilot_id": "pil_x"})
@@ -36,8 +36,6 @@ def test_authorize_maps_every_argument_and_never_defaults_the_language(
         "n",
         "--format",
         "long",
-        "--language",
-        "en",
         "--dossier-id",
         "d",
         "--low",
@@ -62,12 +60,12 @@ def test_authorize_maps_every_argument_and_never_defaults_the_language(
     assert run(argv, client) == 0
     method, path, body = client.calls[0]
     assert (method, path) == ("POST", "/pilots")
-    assert body["language"] == "en" and body["budget"]["likely"] == 19.5
+    assert "language" not in body and body["budget"]["likely"] == 19.5
     assert body["recipe"] == {"name": "faceless-storytelling", "version": "0.1.0"}
     assert body["stop_rules"] == [{"id": "r"}] and body["accept_no_go"] is False
     assert json.loads(capsys.readouterr().out) == {"pilot_id": "pil_x"}
-    with pytest.raises(SystemExit):  # sin --language el comando no existe
-        run([a for a in argv if a not in ("--language", "en")], client)
+    with pytest.raises(SystemExit):  # el idioma ya viene del dossier
+        run([*argv, "--language", "en"], client)
 
 
 def test_decide_cancel_list_show_and_summary(

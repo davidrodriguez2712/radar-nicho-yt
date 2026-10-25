@@ -14,6 +14,7 @@ from nicheradar.pilots.contracts import (
     stage_of,
     validate_package,
     validate_report,
+    with_sha256,
 )
 from nicheradar.pilots.translation import translate
 from tests.pilot_samples import NOW, iso, package, package_body, report, video
@@ -203,3 +204,23 @@ def test_at_most_100_videos_and_50_problems() -> None:
     broken = [video(f"v_{i}", cost_usd=-1) for i in range(80)]
     _, problems = validate_report(report(*broken), NOW)
     assert len(problems) <= 50
+
+
+def test_the_evidence_carries_the_language_mix_and_it_must_add_up() -> None:
+    body = package_body()
+    body["evidence"]["language_mix"] = [
+        {"language": "en", "share_pct": 80},
+        {"language": "es", "share_pct": 15},
+        {"language": "unknown", "share_pct": 5},
+    ]
+    parsed, problems = validate_package(with_sha256(body), NOW)
+    assert problems == [] and parsed is not None
+    body["evidence"]["language_mix"][0]["share_pct"] = 50
+    _, problems = validate_package(with_sha256(body), NOW)
+    assert "evidence.language_mix" in paths(problems)
+    body["evidence"]["language_mix"] = [{"language": "ingles", "share_pct": 100}]
+    _, problems = validate_package(with_sha256(body), NOW)
+    assert "evidence.language_mix.0.language" in paths(problems)
+    del body["evidence"]["language_mix"]
+    _, problems = validate_package(with_sha256(body), NOW)
+    assert "evidence.language_mix" in paths(problems)
