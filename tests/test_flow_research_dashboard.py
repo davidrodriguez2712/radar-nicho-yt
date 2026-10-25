@@ -170,3 +170,13 @@ def test_without_a_dominant_language_nothing_is_preselected_and_the_button_waits
     order.click().run()
     items = backend.get("/api/v1/flow-research?niche_label=personal_finance").json()["items"]
     assert [(item["status"], item["language"]) for item in items] == [("pendiente", "es")]
+
+
+@pytest.mark.postgres
+def test_the_scope_banner_does_not_claim_english_only(
+    monkeypatch: pytest.MonkeyPatch, isolated_engine: Engine
+) -> None:
+    app, _ = open_market(monkeypatch, isolated_engine)
+    banner = " ".join(markdown.value for markdown in app.markdown if "nr-scope" in markdown.value)
+    assert "Idioma elegido por investigación" in banner
+    assert "Contenido en inglés" not in banner

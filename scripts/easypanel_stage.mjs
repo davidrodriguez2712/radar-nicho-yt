@@ -810,6 +810,16 @@ print(json.dumps(r.json()))
       input:readFileSync(new URL('./read_flow_research_state.py',import.meta.url)),encoding:'utf8',timeout:60000,maxBuffer:1024*1024});
     if(result.error || result.status!==0) throw new Error(`Flow research state read failed (exit ${result.status}); output withheld`);
     console.log(JSON.stringify(JSON.parse(result.stdout)));
+  } else if(action==='delete-legacy-flow-request') {
+    const expected=process.argv[3];
+    if(!/^[0-9]$/.test(expected ?? '')) throw new Error('Expected row count (0-9) required');
+    const query=spawnSync('ssh',[...sshArgs,'docker ps --filter label=com.docker.swarm.service.name=proy1-credito-riesgo_nicheradar-api --format "{{.ID}}"'],{encoding:'utf8',timeout:20000});
+    const cid=query.stdout?.trim();
+    if(query.status!==0 || !/^[a-f0-9]{12}$/.test(cid)) throw new Error('Exactly one API container required');
+    const result=spawnSync('ssh',[...sshArgs,`docker exec -i ${cid} python - ${expected}`],{
+      input:readFileSync(new URL('./delete_legacy_flow_request.py',import.meta.url)),encoding:'utf8',timeout:60000,maxBuffer:1024*1024});
+    if(result.error || result.status!==0) throw new Error(`Legacy flow request cleanup failed (exit ${result.status}); output withheld`);
+    console.log(JSON.stringify(JSON.parse(result.stdout)));
   } else if(action==='read-llm-enrichment') {
     const query=spawnSync('ssh',[...sshArgs,'docker ps --filter label=com.docker.swarm.service.name=proy1-credito-riesgo_nicheradar-api --format "{{.ID}}"'],{encoding:'utf8',timeout:20000});
     const cid=query.stdout?.trim();
