@@ -45,6 +45,9 @@ const insightsScoreDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:8
 const batchSizeCrashFixBackend = 'davidrodriguez2712/nicheradar-backend@sha256:dc3b1c10066bf1a10aa30adf5b9e9f32f9300801a825b50f4198e745218aa6b6';
 const batchSizeCrashFixWorker = 'davidrodriguez2712/nicheradar-worker@sha256:d93066845bd95efdd187333c02fba7e2026957e8a6c65e194dfda0be51eefbdd';
 const batchSizeCrashFixDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:94f028e561f89943d6f1cd3c7110d089159a04612838580578b9020751d4335f';
+const marketFlowBackend = 'davidrodriguez2712/nicheradar-backend@sha256:f3907cd6041c0992b826a5bfa022eb4e9684a596f975568878dc24756756103c';
+const marketFlowWorker = 'davidrodriguez2712/nicheradar-worker@sha256:afdea300c1ca70fe6691450a2a66d083bd0e07e4bad425cab1e188a1c1efa14e';
+const marketFlowDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:d7d3313cddc6cb6b4df1d2648bac095545e907d90c6738816a12c22af18a9f03';
 const postgres = 'postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280';
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
@@ -429,6 +432,42 @@ try {
        env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
       throw new Error('Batch size crash fix release preconditions failed');
     const image=isDashboard?batchSizeCrashFixDashboard:name==='nicheradar-worker'?batchSizeCrashFixWorker:batchSizeCrashFixBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='migrate-live-0014') {
+    const env=appEnv('nicheradar-api');
+    if(env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true' || env.NR_DATABASE_URL!==dbURL() ||
+       env.NR_MARKET_INTEL_LIVE_ENABLED==='true')
+      throw new Error('Live migration preconditions failed');
+    const code='import json,os,subprocess,sys; os.environ.update(json.load(sys.stdin)); sys.exit(subprocess.call(["alembic","upgrade","head"]))';
+    const args=['docker','run','--rm','-i','--name','nicheradar-migration-20261025-012',
+      '--network','easypanel-proy1-credito-riesgo','--memory','512m','--cpus','1',
+      '--read-only','--tmpfs','/tmp:rw,noexec,nosuid,size=64m','--cap-drop','ALL',
+      '--security-opt','no-new-privileges',marketFlowBackend,'python','-c',code];
+    const result=spawnSync('ssh',[...sshArgs,args.map(quote).join(' ')],{
+      input:JSON.stringify({NR_DATABASE_URL:env.NR_DATABASE_URL}),
+      encoding:'utf8',timeout:180000,maxBuffer:1024*1024});
+    console.log(JSON.stringify({migrationExit:result.status,processError:result.error?.code ?? null}));
+    if(result.error || result.status!==0) throw new Error('Migration failed; raw response withheld. Inspect only this migration safely.');
+  } else if(action==='deploy-market-flow-code') {
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?batchSizeCrashFixDashboard:name==='nicheradar-worker'?batchSizeCrashFixWorker:batchSizeCrashFixBackend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true' ||
+       env.NR_MARKET_INTEL_LIVE_ENABLED==='true')
+      throw new Error('Market intel and flow research release preconditions failed');
+    const image=isDashboard?marketFlowDashboard:name==='nicheradar-worker'?marketFlowWorker:marketFlowBackend;
     cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
     const after=cli(['app','inspect',`${project}/${name}`]);
     for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
