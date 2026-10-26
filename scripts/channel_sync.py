@@ -8,7 +8,8 @@ Solo este script inicia conexiones; NicheRadar nunca abre una hacia el Mac. Ento
 argumento): ``NR_SYNC_URL`` (base de la API) y ``NR_SYNC_TOKEN`` (token DE ESTE CANAL, que no se
 imprime ni se escribe en disco). El paquete se verifica por su huella antes de guardarse y la
 entrega se confirma después.
-Contratos: docs/contracts/pilot-package-v1.md y channel-report-v1.md.
+Contratos: docs/contracts/pilot-package-v1.md, channel-report-v1.md (largo) y channel-report-v2.md
+(Shorts). `report` sube el archivo tal cual: el campo `contract` decide qué validador aplica.
 """
 
 import argparse

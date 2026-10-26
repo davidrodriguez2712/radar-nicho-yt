@@ -217,4 +217,4 @@ produce a diario, un fallo del script no puede afectar la producción.
 
 ## Preguntas abiertas
 
-- ¿Cómo se miden los pilotos de **Shorts**? `measurement` usa la retención media del formato largo; Shorts necesita otras métricas (p. ej. vistas atractivas). Opciones: un mapa genérico de métricas, o una `v2` por formato.
+- ¿Cómo se miden los pilotos de **Shorts**? **Resuelto:** una `v2` solo para Shorts, ver [`channel-report-v2.md`](channel-report-v2.md). `v1` queda para el formato largo.
