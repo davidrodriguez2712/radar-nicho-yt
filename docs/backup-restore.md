@@ -12,13 +12,13 @@ Alcance del snapshot (`scripts/backup_snapshot.py`, falla cerrado):
 | Grupo | Tablas | Estado |
 |---|---|---|
 | Arranque | configuración, catálogo, políticas, `radar_schedules`, `market_intel_schedule`, benchmarks | respaldado |
-| Pilotos | `pilots`, `pilot_videos`, `pilot_events`, `channel_tokens` (solo SHA-256) | respaldado |
+| Pilotos | `pilots`, `pilot_videos`, `pilot_shorts_measurements`, `pilot_events`, `channel_tokens` (solo SHA-256) | respaldado |
 | Mercado | `market_scrape_runs`, `marketplace_listings`, `listing_observations`, `listing_classifications`, `listing_verifications`, `niche_automation_priors`, `market_niche_snapshots`, `market_niche_decisions` | respaldado |
 | Flujo | `flow_research_requests`, `flow_research_dossiers` | respaldado |
 | Evidencia de proveedores | `raw_observations`, `provider_requests`, `topics`, rankings, evaluaciones... | **no revisada: sigue bloqueando** (`research_data_backup_not_enabled`) |
 
 Una tabla nueva queda fuera de las listas revisadas y, si tiene filas, bloquea el respaldo hasta
-que alguien la clasifique en el código. Siguen exigiéndose: esquema exacto, revisión `0016`
+que alguien la clasifique en el código. Siguen exigiéndose: esquema exacto, revisión `0017`
 (al migrar hay que revisar el alcance y subir esa constante), radar y programación de mercado
 en pausa y ningún proveedor real habilitado.
 

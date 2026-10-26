@@ -233,6 +233,8 @@ def pilots_router(
         try:
             result = service.submit_report(connection, channel, parsed, clock())
         except service.PilotError as error:
+            if error.code == "report_format_mismatch":
+                return _invalid(error)
             raise _http(error) from error
         return jsonable_encoder(result)
 

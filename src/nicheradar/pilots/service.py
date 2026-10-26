@@ -13,21 +13,27 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import Connection, or_, select, update
+from sqlalchemy import Connection, delete, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from nicheradar.flow_research.service import get_request
 from nicheradar.market_intel.niches import niche_detail
 from nicheradar.pilots import rules, tokens
 from nicheradar.pilots.contracts import (
+    AnyReport,
+    Measurement,
     Problem,
-    Report,
+    ShortsMeasurement,
+    ShortsVideo,
+    Video,
     package_sha256,
+    report_format,
     stage_of,
     validate_package,
     with_sha256,
 )
 from nicheradar.repositories.schema import pilot_events as events
+from nicheradar.repositories.schema import pilot_shorts_measurements as shorts
 from nicheradar.repositories.schema import pilot_videos as videos
 from nicheradar.repositories.schema import pilots
 
@@ -48,6 +54,7 @@ MESSAGES = {
     "not_delivered": "El paquete todavía no fue confirmado como entregado.",
     "closed": "El piloto ya está cerrado o cancelado.",
     "channel_mismatch": "El reporte pertenece a otro canal.",
+    "report_format_mismatch": "El contrato del reporte no corresponde al formato del piloto.",
     "invalid": "El contenido no cumple el contrato.",
 }
 
@@ -439,7 +446,12 @@ def confirm_delivery(
 
 
 def _videos_for_rules(connection: Connection, pk: UUID) -> list[dict[str, Any]]:
-    rows = connection.execute(select(videos).where(videos.c.pilot_pk == pk)).mappings()
+    joined = videos.outerjoin(shorts, shorts.c.pilot_video_id == videos.c.id)
+    rows = connection.execute(
+        select(videos, *(c for c in shorts.c if c.name != "pilot_video_id"))
+        .select_from(joined)
+        .where(videos.c.pilot_pk == pk)
+    ).mappings()
     return [
         {
             "video_id": r["video_id"],
@@ -452,6 +464,7 @@ def _videos_for_rules(connection: Connection, pk: UUID) -> list[dict[str, Any]]:
             "browse_share_pct": r["browse_share_pct"],
             "views": r["views"],
             "measured_at": r["measured_at"],
+            **{name: r[name] for name in SHORTS_FIELDS},
         }
         for r in rows
     ]
@@ -469,6 +482,12 @@ def _evaluate(connection: Connection, row: Any, now: datetime) -> dict[str, Any]
     )
 
 
+# Columnas de pilot_shorts_measurements que las reglas leen (channel-report-v2).
+SHORTS_FIELDS = (
+    "engaged_view_ratio_pct",
+    "avg_view_pct",
+    "shorts_feed_share_pct",
+)
 _VIDEO_FIELDS = (
     "source_state",
     "stage",
@@ -488,8 +507,26 @@ _VIDEO_FIELDS = (
 )
 
 
-def _video_values(video: Any, channel_id: str, reported_at: datetime) -> dict[str, Any]:
+def _shorts_values(m: ShortsMeasurement | None) -> dict[str, Any] | None:
+    if m is None:
+        return None
+    return {
+        "engaged_views": m.engaged_views,
+        "engaged_view_ratio_pct": m.engaged_view_ratio_pct,
+        "avg_view_pct": m.avg_view_pct,
+        "shorts_feed_share_pct": m.shorts_feed_share_pct,
+        "shares": m.shares,
+        "stayed_to_watch_pct": m.stayed_to_watch_pct,
+        "early_retention_pct": m.early_retention_pct,
+        "early_retention_second": m.early_retention_second,
+    }
+
+
+def _video_values(
+    video: Video | ShortsVideo, channel_id: str, reported_at: datetime
+) -> dict[str, Any]:
     m = video.measurement
+    long_form = m if isinstance(m, Measurement) else None
     return {
         "source_state": video.source_state,
         "stage": stage_of(channel_id, video),
@@ -501,21 +538,34 @@ def _video_values(video: Any, channel_id: str, reported_at: datetime) -> dict[st
         "failure_code": video.failure_code,
         "measured_at": m.measured_at if m else None,
         "window_days": m.window_days if m else None,
-        "avd_pct": m.avd_pct if m else None,
+        "avd_pct": long_form.avd_pct if long_form else None,
         "views": m.views if m else None,
-        "browse_share_pct": m.browse_share_pct if m else None,
+        "browse_share_pct": long_form.browse_share_pct if long_form else None,
         "subscribers_gained": m.subscribers_gained if m else None,
         "reported_at": reported_at,
     }
 
 
+def _store_shorts(connection: Connection, video_pk: UUID, measurement: object) -> None:
+    """La medición de Shorts de un video se reemplaza entera (o se borra si ya no viene)."""
+    connection.execute(delete(shorts).where(shorts.c.pilot_video_id == video_pk))
+    values = _shorts_values(measurement if isinstance(measurement, ShortsMeasurement) else None)
+    if values is not None:
+        connection.execute(shorts.insert().values(pilot_video_id=video_pk, **values))
+
+
 def submit_report(
-    connection: Connection, channel_id: str, report: Report, now: datetime
+    connection: Connection, channel_id: str, report: AnyReport, now: datetime
 ) -> dict[str, Any]:
     row = _row(connection, report.pilot_id)
     _own(row, channel_id)
     if report.channel_id != channel_id:
         raise PilotError("channel_mismatch")
+    if report_format(report) != row["format"]:
+        raise PilotError(
+            "report_format_mismatch",
+            [{"path": "contract", "message": MESSAGES["report_format_mismatch"]}],
+        )
     if row["status"] in ("cerrado", "cancelado"):
         raise PilotError("closed")
     if row["status"] == "autorizado":
@@ -529,16 +579,19 @@ def submit_report(
             )
         ).one_or_none()
         if stored is None:
+            video_pk = uuid4()
             connection.execute(
                 videos.insert().values(
-                    id=uuid4(), pilot_pk=row["id"], video_id=video.video_id, **values
+                    id=video_pk, pilot_pk=row["id"], video_id=video.video_id, **values
                 )
             )
+            _store_shorts(connection, video_pk, video.measurement)
             upserted += 1
         elif (
             report.reported_at > stored.reported_at
         ):  # gana el más reciente; si empata se conserva lo guardado
             connection.execute(update(videos).where(videos.c.id == stored.id).values(**values))
+            _store_shorts(connection, stored.id, video.measurement)
             upserted += 1
         else:
             ignored += 1

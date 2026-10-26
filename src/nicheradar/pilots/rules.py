@@ -22,6 +22,8 @@ MANUAL = "revision_manual"
 CONCLUDED = {MET, FAILED}
 NEEDS_HUMAN = {MANUAL, NOT_EVALUABLE}
 SHORTS_METRICS = {"engaged_view_ratio_pct", "avg_view_pct", "shorts_feed_share_pct"}
+MIN_SHORTS_VIEWS = 100  # un Short con menos vistas se guarda, pero no cuenta para una regla
+MEASURED_FIELDS = ("avd_pct", *sorted(SHORTS_METRICS))
 MONTH_DAYS = 30  # un «mes» del hito son 30 días corridos
 
 Video = dict[str, Any]
@@ -69,6 +71,14 @@ def _count_rule(rule: Rule, scope: list[Video], field: str) -> tuple[str, str]:
     return UNDECIDED, f"{meeting} llegan; faltan {unmeasured} por medir y se piden {needed}"
 
 
+def _counted(scope: list[Video], field: str) -> list[Video]:
+    """Shorts: la medición de un video con pocas vistas no cuenta (queda como sin medir)."""
+    return [
+        video if (video.get("views") or 0) >= MIN_SHORTS_VIEWS else {**video, field: None}
+        for video in scope
+    ]
+
+
 def _latest_rule(rule: Rule, scope: list[Video], field: str) -> tuple[str, str]:
     """Usa el último valor medido del alcance: la tendencia no se evalúa automáticamente."""
     threshold = Decimal(str(rule["threshold"]))
@@ -94,9 +104,12 @@ def _evaluate_rule(
     if metric == "pipeline_e2e":
         ok = bool(published)
         return (MET, "hay un video publicado") if ok else (FAILED, "no hay ningún video publicado")
-    if metric in SHORTS_METRICS:
-        return NOT_EVALUABLE, "falta ingerir channel-report-v2 de Shorts: lo decide el humano"
     scope = _scope(rule, published)
+    if metric in SHORTS_METRICS:
+        counted = _counted(scope, metric)
+        if metric == "shorts_feed_share_pct":
+            return _latest_rule(rule, counted, metric)
+        return _count_rule(rule, counted, metric)
     if metric == "avd_pct":
         return _count_rule(rule, scope, "avd_pct")
     if metric == "browse_share_pct":
@@ -120,7 +133,9 @@ def _totals(videos: Sequence[Video], max_videos: int) -> tuple[dict[str, Any], l
     totals = {
         "videos": len(videos),
         "published": published,
-        "measured": sum(1 for video in videos if video.get("avd_pct") is not None),
+        "measured": sum(
+            1 for video in videos if any(video.get(field) is not None for field in MEASURED_FIELDS)
+        ),
         "by_stage": by_stage,
         "spent_usd": sum((video["cost_usd"] for video in videos), Decimal(0)),
         "equivalent_usd": sum(equivalent, Decimal(0)),

@@ -9,6 +9,7 @@ huella.
 
 import hashlib
 import json
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Any, Literal, TypedDict
@@ -253,7 +254,7 @@ def validate_package(payload: object, now: datetime) -> tuple[Package | None, li
     return (None if problems else package), problems
 
 
-# ---- channel-report-v1 --------------------------------------------------------------
+# ---- channel-report-v1 y v2 ------------------------------------------------------------
 
 Stage = Literal[
     "in_production",
@@ -267,9 +268,12 @@ Stage = Literal[
 ]
 PUBLIC_STAGES = {"published", "measuring"}
 FAILED_STAGES = {"killed", "blocked"}
+RATIO_TOLERANCE = Decimal("0.1")  # v2: engaged_view_ratio_pct frente a engaged_views / views
 
 
 class Measurement(Contract):
+    """Medición del formato largo (channel-report-v1)."""
+
     measured_at: AwareDatetime
     window_days: Annotated[int, Field(ge=1)]
     avd_pct: Pct
@@ -278,7 +282,24 @@ class Measurement(Contract):
     subscribers_gained: Annotated[int, Field(ge=0)] | None
 
 
-class Video(Contract):
+class ShortsMeasurement(Contract):
+    """Medición de Shorts (channel-report-v2). Ver docs/contracts/channel-report-v2.md."""
+
+    measured_at: AwareDatetime
+    window_days: Annotated[int, Field(ge=1)]
+    views: Annotated[int, Field(ge=0)]
+    engaged_views: Annotated[int, Field(ge=0)]
+    engaged_view_ratio_pct: Pct | None
+    avg_view_pct: Pct | None
+    shorts_feed_share_pct: Pct | None
+    shares: Annotated[int, Field(ge=0)] | None
+    subscribers_gained: Annotated[int, Field(ge=0)] | None
+    stayed_to_watch_pct: Pct | None
+    early_retention_pct: Pct | None
+    early_retention_second: Annotated[Decimal, Field(ge=0, le=180, allow_inf_nan=False)] | None
+
+
+class VideoBase(Contract):
     video_id: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,60}$")]
     source_state: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_]{1,40}$")]
     visibility: Literal["private", "public", "unknown"]
@@ -286,8 +307,15 @@ class Video(Contract):
     cost_usd: Money
     cost_equivalent_usd: Money | None
     machine_minutes: Annotated[int, Field(ge=0)] | None
-    measurement: Measurement | None
     failure_code: Annotated[str, StringConstraints(min_length=1, max_length=60)] | None
+
+
+class Video(VideoBase):
+    measurement: Measurement | None
+
+
+class ShortsVideo(VideoBase):
+    measurement: ShortsMeasurement | None
 
 
 class Check(Contract):
@@ -298,23 +326,75 @@ class Check(Contract):
     expires_at: AwareDatetime | None
 
 
-class Report(Contract):
-    contract: Literal["channel-report-v1"]
+class ReportBase(Contract):
     pilot_id: Annotated[str, StringConstraints(pattern=PILOT_ID)]
     channel_id: Annotated[str, StringConstraints(pattern=CHANNEL_ID)]
     reported_at: AwareDatetime
     channel_status: Literal["active", "paused", "closed"]
-    videos: Annotated[list[Video], Field(max_length=MAX_REPORT_VIDEOS)]
     checks: Annotated[list[Check], Field(max_length=20)] = []
     note: Annotated[str, StringConstraints(max_length=1500)] | None
 
 
-def stage_of(channel_id: str, video: Video) -> str:
+class Report(ReportBase):
+    contract: Literal["channel-report-v1"]
+    videos: Annotated[list[Video], Field(max_length=MAX_REPORT_VIDEOS)]
+
+
+class ReportV2(ReportBase):
+    contract: Literal["channel-report-v2"]
+    format: Literal["shorts"]
+    videos: Annotated[list[ShortsVideo], Field(max_length=MAX_REPORT_VIDEOS)]
+
+
+AnyReport = Report | ReportV2
+REPORT_FORMAT = {"channel-report-v1": "long", "channel-report-v2": "shorts"}
+
+
+def report_format(report: AnyReport) -> str:
+    return REPORT_FORMAT[report.contract]
+
+
+def stage_of(channel_id: str, video: VideoBase) -> str:
     """Etapa gruesa tras traducir el estado del canal; las reglas de coherencia usan esta."""
     return translate(channel_id, video.source_state, video.visibility)
 
 
-def report_problems(report: Report, now: datetime) -> list[Problem]:
+def _shorts_problems(measurement: ShortsMeasurement, base: str) -> list[Problem]:
+    problems: list[Problem] = []
+    if measurement.engaged_views > measurement.views:
+        problems.append({"path": f"{base}.engaged_views", "message": "no puede superar a views"})
+    ratio = measurement.engaged_view_ratio_pct
+    if measurement.views == 0:
+        if ratio is not None:
+            problems.append(
+                {"path": f"{base}.engaged_view_ratio_pct", "message": "debe ser null sin vistas"}
+            )
+    elif ratio is None:
+        problems.append(
+            {"path": f"{base}.engaged_view_ratio_pct", "message": "es obligatorio con vistas"}
+        )
+    elif measurement.engaged_views <= measurement.views:
+        expected = Decimal(measurement.engaged_views) / Decimal(measurement.views) * 100
+        if abs(ratio - expected) > RATIO_TOLERANCE:
+            problems.append(
+                {
+                    "path": f"{base}.engaged_view_ratio_pct",
+                    "message": "no coincide con engaged_views / views",
+                }
+            )
+    has_pct = measurement.early_retention_pct is not None
+    has_second = measurement.early_retention_second is not None
+    if has_pct != has_second:
+        problems.append(
+            {
+                "path": f"{base}.early_retention_second",
+                "message": "va junto con early_retention_pct (ambos o ninguno)",
+            }
+        )
+    return problems
+
+
+def report_problems(report: AnyReport, now: datetime) -> list[Problem]:
     problems: list[Problem] = []
 
     def add(path: str, message: str) -> None:
@@ -328,7 +408,8 @@ def report_problems(report: Report, now: datetime) -> list[Problem]:
     check_ids = [check.id for check in report.checks]
     if len(set(check_ids)) != len(check_ids):
         add("checks", "los id de las comprobaciones no pueden repetirse")
-    for index, video in enumerate(report.videos):
+    items: Sequence[Video | ShortsVideo] = report.videos
+    for index, video in enumerate(items):
         base = f"videos.{index}"
         stage = stage_of(report.channel_id, video)
         if stage in PUBLIC_STAGES and video.published_at is None:
@@ -337,19 +418,26 @@ def report_problems(report: Report, now: datetime) -> list[Problem]:
             add(f"{base}.visibility", "un video publicado o medido debe ser público")
         if stage in FAILED_STAGES and video.failure_code is None:
             add(f"{base}.failure_code", "es obligatorio para esta etapa")
-        if video.measurement is not None:
+        measurement = video.measurement
+        if measurement is not None:
             if video.published_at is None:
                 add(f"{base}.measurement", "solo puede existir si el video tiene published_at")
-            elif video.measurement.measured_at <= video.published_at:
+            elif measurement.measured_at <= video.published_at:
                 add(f"{base}.measurement.measured_at", "debe ser posterior a published_at")
-            if video.measurement.measured_at > now + CLOCK_SKEW:
+            if measurement.measured_at > now + CLOCK_SKEW:
                 add(f"{base}.measurement.measured_at", "no puede ser futura")
+            if isinstance(measurement, ShortsMeasurement):
+                problems.extend(_shorts_problems(measurement, f"{base}.measurement"))
     return problems[:MAX_PROBLEMS]
 
 
-def validate_report(payload: object, now: datetime) -> tuple[Report | None, list[Problem]]:
+def validate_report(payload: object, now: datetime) -> tuple[AnyReport | None, list[Problem]]:
+    """El campo ``contract`` elige el validador; sin él (o desconocido) rige el de v1."""
+    model: type[Report] | type[ReportV2] = Report
+    if isinstance(payload, dict) and payload.get("contract") == "channel-report-v2":
+        model = ReportV2
     try:
-        report = Report.model_validate(payload)
+        report = model.model_validate(payload)
     except ValidationError as error:
         return None, _shape_problems(error)
     problems = report_problems(report, now)
