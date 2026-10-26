@@ -276,6 +276,10 @@ operativo del radar: se regeneran y pueden tener plazos contractuales). El repor
 ve vacías. `delete_after` ignora esas tablas. Una tabla nueva sin clasificar falla
 (`unclassified_table`).
 
+Un proveedor real habilitado en `provider_policies` ya no bloquea el respaldo (el radar sigue
+obligatoriamente pausado y sus filas no se copian); el reporte lo registra en
+`enabled_real_providers`.
+
 **Qué NO recupera:** un respaldo así restaura decisiones, mercado, flujo y pilotos, no el
 radar completo: se pierden el libro de costos y las reservas, que deben reconstruirse. Tras
 restaurar, el radar queda pausado y no libera ninguna responsabilidad de pago.

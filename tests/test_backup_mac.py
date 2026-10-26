@@ -74,7 +74,7 @@ def test_snapshot_accepts_pilot_data_and_reports_the_wider_scope(db: Connection)
 
 
 @pytest.mark.postgres
-def test_snapshot_rejects_enabled_real_provider_before_first_request(db: Connection) -> None:
+def test_snapshot_reports_an_enabled_real_provider_without_blocking(db: Connection) -> None:
     insert_record(
         db,
         "provider_policies",
@@ -89,8 +89,7 @@ def test_snapshot_rejects_enabled_real_provider_before_first_request(db: Connect
             "effective_at": NOW,
         },
     )
-    with pytest.raises(ValueError, match="real_provider_enabled"):
-        inspect_snapshot(db)
+    assert inspect_snapshot(db)["enabled_real_providers"] == ["vidiq"]
 
 
 @pytest.mark.postgres

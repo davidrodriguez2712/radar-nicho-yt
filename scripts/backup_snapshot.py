@@ -123,12 +123,15 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
         select(func.count()).select_from(schedules).where(schedules.c.paused.is_(False))
     ).scalar_one():
         raise ValueError("radar_not_paused")
-    if connection.execute(
-        select(func.count())
-        .select_from(policies)
-        .where(policies.c.provider != "synthetic", policies.c.status == "enabled")
-    ).scalar_one():
-        raise ValueError("real_provider_enabled")
+    # Decision 2026-10-26: a real provider may be enabled. Its evidence rows are left out of the
+    # dump and the radar must be paused, so the policy is only reported, not a blocker.
+    enabled_providers = sorted(
+        connection.execute(
+            select(policies.c.provider)
+            .where(policies.c.provider != "synthetic", policies.c.status == "enabled")
+            .distinct()
+        ).scalars()
+    )
     market_schedule = s.metadata.tables["market_intel_schedule"]
     if connection.execute(
         select(func.count()).select_from(market_schedule).where(market_schedule.c.paused.is_(False))
@@ -149,6 +152,7 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
         "revision": revision,
         "counts": counts,
         "excluded_rows": excluded_rows,
+        "enabled_real_providers": enabled_providers,
         "delete_after": deadline.isoformat() if deadline else None,
     }
 
