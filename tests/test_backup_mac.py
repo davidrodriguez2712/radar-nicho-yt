@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import shutil
 import stat
@@ -11,6 +12,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy import Connection, Engine, update
 
+import scripts.backup_mac as backup_mac
 from nicheradar.domain.profile import CreatorProfile, initial_catalog
 from nicheradar.repositories import schema_v1 as s
 from nicheradar.repositories.core import insert_record, seed_profile
@@ -43,7 +45,7 @@ def test_bootstrap_snapshot_guard_and_active_schedule(db: Connection) -> None:
     create_schedule(db, profile, NOW, {})
     report = inspect_snapshot(db)
     assert report["scope"] == "bootstrap-only"
-    assert report["revision"] == "0016"
+    assert report["revision"] == "0017"
     db.execute(update(s.radar_schedules).values(paused=False))
     with pytest.raises(ValueError, match="radar_not_paused"):
         inspect_snapshot(db)
@@ -120,7 +122,7 @@ def test_encrypted_archive_roundtrip_tamper_and_wrong_key(tmp_path: Path) -> Non
     payload = b"PGDMP synthetic private fixture; not a database"
     report: dict[str, object] = {
         "scope": "bootstrap-only",
-        "revision": "0016",
+        "revision": "0017",
         "created_at": NOW.isoformat(),
         "dump_sha256": hashlib.sha256(payload).hexdigest(),
     }
@@ -276,7 +278,7 @@ def test_snapshot_still_rejects_provider_evidence_with_research_present(db: Conn
 @pytest.mark.postgres
 def test_snapshot_still_pins_the_reviewed_schema_revision(db: Connection) -> None:
     add_request(db)
-    db.exec_driver_sql("UPDATE alembic_version SET version_num = '0017'")
+    db.exec_driver_sql("UPDATE alembic_version SET version_num = '0018'")
     with pytest.raises(ValueError, match="unreviewed_schema_revision"):
         inspect_snapshot(db)
 
@@ -295,7 +297,7 @@ def test_load_backup_accepts_every_reviewed_scope(tmp_path: Path) -> None:
     ):
         report: dict[str, object] = {
             "scope": scope,
-            "revision": "0016",
+            "revision": "0017",
             "created_at": NOW.isoformat(),
             "dump_sha256": hashlib.sha256(payload).hexdigest(),
         }
@@ -358,7 +360,7 @@ def test_prune_deletes_only_matching_local_archives_and_dry_run_deletes_nothing(
     def make(moment: datetime, delete_after: datetime | None = None) -> Path:
         report: dict[str, object] = {
             "scope": "bootstrap+research",
-            "revision": "0016",
+            "revision": "0017",
             "created_at": moment.isoformat(),
             "dump_sha256": hashlib.sha256(payload).hexdigest(),
             "delete_after": delete_after.isoformat() if delete_after else None,
@@ -395,3 +397,50 @@ def test_prune_refuses_symlinked_archives(tmp_path: Path) -> None:
     assert victim.exists()
     assert result["deleted"] == []
     assert result["skipped_unsafe"] == [archive_name(now - timedelta(days=90))]
+
+
+def _fake_ssh(env: list[str], ports: dict[str, object] | None = None):  # type: ignore[no-untyped-def]
+    inspected = [
+        {
+            "Config": {"Env": env, "Image": "img:tag"},
+            "Image": "sha256:abc",
+            "HostConfig": {"PortBindings": ports or {}},
+        }
+    ]
+
+    def fake(command: list[str], timeout: int = 60) -> bytes:
+        return b"abcdef123456\n" if command[1] == "ps" else json.dumps(inspected).encode()
+
+    return fake
+
+
+@pytest.mark.parametrize("mode", ["synthetic", "live"])
+def test_the_runtime_guard_accepts_a_paused_live_or_synthetic_service(
+    monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    env = [f"NR_MODE={mode}", "NR_RADAR_PAUSED=true", "NR_VIDIQ_TOKEN=x", "NR_LLM_API_KEY=y"]
+    monkeypatch.setattr(backup_mac, "ssh", _fake_ssh(env))
+    assert backup_mac.container("api")[0] == "abcdef123456"
+
+
+@pytest.mark.parametrize(
+    "env",
+    [
+        ["NR_MODE=live", "NR_RADAR_PAUSED=false"],
+        ["NR_MODE=live"],
+        ["NR_MODE=other", "NR_RADAR_PAUSED=true"],
+    ],
+)
+def test_the_runtime_guard_still_requires_a_paused_radar_and_a_known_mode(
+    monkeypatch: pytest.MonkeyPatch, env: list[str]
+) -> None:
+    monkeypatch.setattr(backup_mac, "ssh", _fake_ssh(env))
+    with pytest.raises(ValueError, match="unsafe_runtime"):
+        backup_mac.container("api")
+
+
+def test_the_runtime_guard_still_rejects_published_ports(monkeypatch: pytest.MonkeyPatch) -> None:
+    env = ["NR_MODE=live", "NR_RADAR_PAUSED=true"]
+    monkeypatch.setattr(backup_mac, "ssh", _fake_ssh(env, {"8000/tcp": [{}]}))
+    with pytest.raises(ValueError, match="unexpected_published_ports"):
+        backup_mac.container("api")

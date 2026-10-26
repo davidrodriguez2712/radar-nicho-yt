@@ -2,7 +2,8 @@
 
 Diseño y reparto de responsabilidades: [`ecosistema-youtube.md`](ecosistema-youtube.md).
 Formatos exactos (fuente única): [`contracts/pilot-package-v1.md`](contracts/pilot-package-v1.md)
-y [`contracts/channel-report-v1.md`](contracts/channel-report-v1.md). Este documento no los repite:
+[`contracts/channel-report-v1.md`](contracts/channel-report-v1.md) (formato largo) y
+[`contracts/channel-report-v2.md`](contracts/channel-report-v2.md) (Shorts). Este documento no los repite:
 dice **dónde está el código, cómo se usa y en qué se aparta o completa el contrato**.
 
 Estado (2026-10-25): **desplegado** en producción (release
@@ -108,7 +109,8 @@ queda descartado por ahora: exigiría quitar el Basic Auth del proxy, que chocar
 Decidido el 2026-10-25: las tablas de pilotos se respaldan. `scripts/backup_snapshot.py` las
 admite con filas (`PILOT_TABLES`) y reporta `scope = "bootstrap+pilots"`; `channel_tokens` solo
 guarda hashes. Los datos de investigación de mercado y de flujo siguen bloqueando el respaldo.
-La revisión esperada es `0016`.
+La revisión esperada es `0017` (la migración `0017` añade `pilot_shorts_measurements`, que se
+respalda con el resto de las tablas de pilotos).
 
 ## Diferencias con el contrato
 

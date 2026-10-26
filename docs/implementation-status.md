@@ -189,7 +189,8 @@ Detalle en [market-intel.md](market-intel.md).
 ## Respaldo de datos de investigación (2026-10-25, tarea 9.4, opción A)
 
 - El snapshot acepta mercado y flujo (alcance `bootstrap+pilots+research`), mantiene el bloqueo
-  de la evidencia de proveedores y de tablas no revisadas, y fija la revisión `0016`.
+  de la evidencia de proveedores y de tablas no revisadas, y fija la revisión `0017`
+  (subida desde `0016` al añadir `pilot_shorts_measurements`, ver `channel-report-v2`).
   Informa `delete_after` (`backup_deadline` ahora incluye mercado y flujo).
 - Retención local en el Mac: 7 diarias + 4 semanales y borrado al vencer los datos
   (`backup_mac.py prune`, simulación por defecto). Detalle y procedimiento de custodia/rotación

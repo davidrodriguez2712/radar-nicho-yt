@@ -12,13 +12,13 @@ Alcance del snapshot (`scripts/backup_snapshot.py`, falla cerrado):
 | Grupo | Tablas | Estado |
 |---|---|---|
 | Arranque | configuración, catálogo, políticas, `radar_schedules`, `market_intel_schedule`, benchmarks | respaldado |
-| Pilotos | `pilots`, `pilot_videos`, `pilot_events`, `channel_tokens` (solo SHA-256) | respaldado |
+| Pilotos | `pilots`, `pilot_videos`, `pilot_shorts_measurements`, `pilot_events`, `channel_tokens` (solo SHA-256) | respaldado |
 | Mercado | `market_scrape_runs`, `marketplace_listings`, `listing_observations`, `listing_classifications`, `listing_verifications`, `niche_automation_priors`, `market_niche_snapshots`, `market_niche_decisions` | respaldado |
 | Flujo | `flow_research_requests`, `flow_research_dossiers` | respaldado |
 | Evidencia de proveedores | `raw_observations`, `provider_requests`, `topics`, rankings, evaluaciones... | **no revisada: sigue bloqueando** (`research_data_backup_not_enabled`) |
 
 Una tabla nueva queda fuera de las listas revisadas y, si tiene filas, bloquea el respaldo hasta
-que alguien la clasifique en el código. Siguen exigiéndose: esquema exacto, revisión `0016`
+que alguien la clasifique en el código. Siguen exigiéndose: esquema exacto, revisión `0017`
 (al migrar hay que revisar el alcance y subir esa constante), radar y programación de mercado
 en pausa y ningún proveedor real habilitado.
 
@@ -250,8 +250,8 @@ proveedores basándose únicamente en el cifrado del Mac.
 El propietario aprobó programar el respaldo. Los archivos están en `scripts/launchd/`
 (`run_backup.sh` y `com.nicheradar.backup.plist.template`): diario 03:30, `backup` y luego
 `prune --apply`, con salida en `~/Library/Application Support/NicheRadar/backup.log`. **No se
-instala hasta que `backup` funcione contra producción** (hoy la guarda `unsafe_runtime` lo
-bloquea porque producción está en `live`). Para activarla:
+instala hasta que `backup` funcione contra producción** (hoy lo bloquea la evidencia de
+proveedores, no la guarda `unsafe_runtime`, que ya acepta `live` pausada). Para activarla:
 
 ```sh
 sed -e "s#@REPO@/#$PWD/#" -e "s#@HOME@#$HOME#" scripts/launchd/com.nicheradar.backup.plist.template \
@@ -260,3 +260,16 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.nicheradar.backup.pl
 ```
 
 Con el Mac apagado o dormido no hay copia hasta que despierte.
+
+## Guarda de ejecución relajada (2026-10-26)
+
+El propietario aprobó (opción A) aceptar producción en modo `live` con radar pausado. La guarda
+`unsafe_runtime` ya no exige `synthetic` ni la ausencia de credenciales de proveedores: exige
+modo `synthetic` o `live`, `NR_RADAR_PAUSED=true`, sin puertos publicados y sin proveedor real
+habilitado en `provider_policies`. La protección de la evidencia de proveedores sigue siendo la
+de datos: una tabla no revisada con filas bloquea el respaldo (`research_data_backup_not_enabled`).
+
+**Estado real:** producción tiene evidencia de proveedores (`provider_requests`, `topics`,
+`videos`, `jobs`, `opportunities`, rankings…), así que el primer respaldo real sigue bloqueado por
+esa regla hasta decidir qué hacer con esas tablas (ver NEEDS_HUMAN del informe del 2026-10-26).
+

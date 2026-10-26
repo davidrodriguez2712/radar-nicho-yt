@@ -1,6 +1,6 @@
 # channel-report-v2
 
-Estado: **BORRADOR, sin implementar** (propuesto el 2026-10-25). Dirección: **canal → NicheRadar**.
+Estado: **implementado en local y sin desplegar** (propuesto el 2026-10-25; implementado después, rama `feat/channel-report-v2`). Dirección: **canal → NicheRadar**.
 Nace de la decisión del propietario: el reporte de los pilotos de **Shorts** es una `v2`; el [`v1`](channel-report-v1.md)
 queda como el reporte del formato largo. Sustento de las métricas: [`../bench-shorts-metrics.md`](../bench-shorts-metrics.md).
 Contexto: [`../ecosistema-youtube.md`](../ecosistema-youtube.md) y [`../pilots.md`](../pilots.md).
@@ -78,7 +78,7 @@ Notas:
   `engaged_views` y `measured_at`/`window_days`, son opcionales.
 - Ninguna métrica de bucle o rewatch: la API no la entrega.
 - CTR e impresiones: no aplican a Shorts. La Analytics API directa no las entrega; la Reporting API masiva trae `video_thumbnail_impressions` y `..._ctr` desde 2026-01-15, y no se sabe si cubre Shorts.
-- Con `views` por debajo de un mínimo, la medición se **guarda pero no cuenta** para una regla de parada (ver abajo).
+- Con `views` por debajo de un mínimo (`MIN_SHORTS_VIEWS = 100` en `pilots/rules.py`), la medición se **guarda pero no cuenta** para una regla de parada (ver abajo).
 
 ## Qué cambia respecto a v1
 
@@ -106,12 +106,14 @@ del paquete), más:
 
 ## Reglas de parada y mínimo de vistas
 
-- `pilot-package-v1` limita hoy `stop_rules[].metric` a `pipeline_e2e`, `avd_pct`, `browse_share_pct`, `revenue_vs_cost`
-  y `manual`. Un piloto de Shorts necesita reglas sobre `engaged_view_ratio_pct`, `avg_view_pct`, `shorts_feed_share_pct`,
-  `shares` o `subscribers_gained`. **Esto exige ampliar la enumeración** (un `pilot-package-v2`, o una versión que admita
-  los nombres nuevos según `niche.format`). Queda fuera de este borrador y es una decisión del propietario.
-- Un video solo cuenta para `min_cases` si su `measurement.views` alcanza un mínimo (propuesta inicial: **100 vistas**,
-  a confirmar con los primeros datos). Por debajo, la medición se guarda y la propuesta dice «sin datos suficientes».
+- `pilot-package-v1` admite, según `niche.format`, las métricas `engaged_view_ratio_pct`, `avg_view_pct` y
+  `shorts_feed_share_pct` en un piloto de Shorts (PR #10). Con este contrato dejan de ser `no_evaluable`:
+  `engaged_view_ratio_pct` y `avg_view_pct` se evalúan como «al menos `min_cases` videos con la métrica ≥ umbral» y
+  `shorts_feed_share_pct` con el último valor contado, igual que sus equivalentes del largo. `shares` y
+  `subscribers_gained` se guardan y se muestran, pero todavía no son métricas de parada.
+- Un video solo cuenta para `min_cases` si su `measurement.views` alcanza el mínimo (**100 vistas**, constante
+  `MIN_SHORTS_VIEWS`; a confirmar con los primeros datos). Por debajo, la medición se guarda y la regla queda
+  `sin_datos_suficientes`.
 - No hay umbrales oficiales de YouTube para estas métricas. Los umbrales de cada piloto los fija el paquete, tras
   calibrar con los primeros Shorts. Ver el bench.
 
@@ -121,9 +123,9 @@ Los del piloto (`en_ejecución`, `cerrado`, etc.) y los de etapa (`stage`) no ca
 
 | Estado del contrato | Significado |
 |---|---|
-| `borrador` | **Hoy.** Nada implementado ni desplegado |
+| `borrador` | Propuesta inicial |
 | `aprobado` | El propietario lo revisó. Falta código |
-| `implementado` | Validador, almacenamiento y panel listos |
+| `implementado` | **Hoy.** Validador, almacenamiento (migración `0017`) y reglas listos; falta desplegar y probar con un canal real |
 | `desplegado` | En producción |
 
 ## Idempotencia, orden y envío
@@ -134,19 +136,22 @@ menciona, NicheRadar nunca edita lo reportado. Misma ruta `POST /api/v1/pilots/{
 
 | Código | Cuándo |
 |---|---|
-| `422` | El `contract` no corresponde al formato del piloto (un reporte `v1` a un piloto de Shorts, o `v2` a uno de formato largo). El mensaje lo dice sin repetir valores |
+| `422` | El `contract` no corresponde al formato del piloto (un reporte `v1` a un piloto de Shorts, o `v2` a uno de formato largo): `problems[0].path = "contract"`, sin repetir valores |
 
 ## Migración desde v1
 
 - **No hay datos de Shorts en `v1`**: hoy no hay pilotos de Shorts en marcha, así que no hay nada que convertir.
 - Los pilotos de formato largo siguen con `v1`, sin cambios.
-- **Almacenamiento (por decidir al implementar):** las mediciones de `v2` no caben en las columnas de `v1`
-  (`avd_pct`, `browse_share_pct`). Dos opciones: columnas nuevas nulas en la misma tabla, o una tabla propia de
-  mediciones de Shorts. Recomendación: **tabla propia**, para no mezclar métricas de formatos distintos ni dejar columnas
-  nulas permanentes.
-- `rules.py` y el cálculo de totales (`measured`) hoy leen `avd_pct`: tendrán que elegir la métrica según el formato.
-- El exportador de cada canal de Shorts cambia a `channel-report-v2`; `v1` sigue aceptándose para el largo.
-- Nada de esto se implementa en este documento.
+- **Almacenamiento (decidido al implementar):** **tabla propia** `pilot_shorts_measurements` (migración `0017`, aditiva),
+  una fila por video (`pilot_video_id`, con borrado en cascada). `measured_at`, `window_days`, `views` y
+  `subscribers_gained` siguen en `pilot_videos`; en la tabla nueva van `engaged_views`, `engaged_view_ratio_pct`,
+  `avg_view_pct`, `shorts_feed_share_pct`, `shares`, `stayed_to_watch_pct`, `early_retention_pct` y
+  `early_retention_second`, con `CHECK` de rango y de la pareja de retención temprana. Un reporte más reciente
+  reemplaza la fila entera; si ya no trae `measurement`, la fila se borra. La tabla se respalda con las demás de pilotos
+  (revisión esperada `0017`).
+- `rules.py` y el cálculo de totales (`measured`) eligen la métrica según la regla; un video con medición de v2 cuenta como medido.
+- El exportador de cada canal de Shorts cambia a `channel-report-v2`; `v1` sigue aceptándose para el largo. El
+  `channel_sync.py report` sube el archivo tal cual, así que no cambia.
 
 ## Ejemplo (datos de ejemplo, no reales)
 
@@ -203,5 +208,6 @@ API: si alguien lo carga a mano desde Studio, el canal lo pasa tal cual.
 - ¿Funciona `audienceWatchRatio` por `elapsedVideoTimeRatio` en Shorts, y cómo trata los bucles? Define si
   `early_retention_pct` pasa de experimental a oficial, y si `avg_view_pct` puede pasar de 100.
 - ¿Mínimo de vistas por video (100 propuesto) y ventana (`window_days`) para considerar válida una medición?
-- Reglas de parada de Shorts: **resuelto (2026-10-25)**: se amplió la enumeración de `pilot-package-v1` según `niche.format` (PR #10). Quedan `no_evaluable` hasta ingerir este contrato.
-- Tabla propia o columnas nuevas para guardar las mediciones (recomendada: tabla propia).
+- Reglas de parada de Shorts: **resuelto**: enumeración por `niche.format` (PR #10) y evaluación con este contrato.
+- Tabla propia o columnas nuevas: **resuelto**, tabla propia (`0017`).
+- Rango de `early_retention_second`: se acepta de 0 a 180 s (un Short puede durar hasta 3 min); ajustar si hace falta.

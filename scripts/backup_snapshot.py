@@ -29,7 +29,13 @@ BOOTSTRAP_TABLES = {
 
 # Datos propios del usuario (no datos retenidos de proveedores): se respaldan cuando existen.
 # `channel_tokens` solo guarda el SHA-256 de cada token, nunca el token.
-PILOT_TABLES = {"pilots", "pilot_videos", "pilot_events", "channel_tokens"}
+PILOT_TABLES = {
+    "pilots",
+    "pilot_videos",
+    "pilot_shorts_measurements",
+    "pilot_events",
+    "channel_tokens",
+}
 
 # Datos de investigación de mercado y de flujo (decisión del propietario, tarea 9.4, opción A):
 # se respaldan cifrados en el Mac con retención acotada (ver docs/backup-restore.md).
@@ -80,7 +86,7 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
     ).scalar_one():
         raise ValueError("market_intel_not_paused")
     revision = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-    if revision != "0016":
+    if revision != "0017":
         raise ValueError("unreviewed_schema_revision")
     has_pilots = any(counts[name] for name in PILOT_TABLES)
     has_research = any(counts[name] for name in RESEARCH_TABLES)
@@ -99,7 +105,7 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
 
 def main() -> None:
     config = Settings()
-    if config.mode != "synthetic" or not config.radar_paused:
+    if config.mode not in {"synthetic", "live"} or not config.radar_paused:
         raise ValueError("unsafe_runtime")
     engine = database_engine(config)
     try:

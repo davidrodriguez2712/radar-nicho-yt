@@ -112,8 +112,10 @@ Cada regla es verificable por máquina cuando se puede, y siempre legible por un
 | `milestone` | objeto | `{ "kind": "week" \| "video" \| "month", "value": entero ≥ 1 }` |
 
 Las métricas de Shorts (ver [bench-shorts-metrics.md](../bench-shorts-metrics.md)) se aceptan en el
-paquete, pero NicheRadar todavía no las evalúa: quedan `no_evaluable` hasta ingerir
-`channel-report-v2` (borrador). El autorizador de un piloto de Shorts debe pasar sus `stop_rules`
+paquete y NicheRadar las evalúa con las mediciones de [`channel-report-v2`](channel-report-v2.md)
+(implementado, sin desplegar): un Short con menos de 100 vistas se guarda pero no cuenta para
+`min_cases`. Hasta que llegue un reporte v2 con vistas suficientes, la regla queda
+`sin_datos_suficientes`. El autorizador de un piloto de Shorts debe pasar sus `stop_rules`
 con umbrales calibrados con un canal real; por defecto solo lleva `pipeline_e2e` y
 `revenue_vs_cost`, sin umbrales de retención inventados.
 
