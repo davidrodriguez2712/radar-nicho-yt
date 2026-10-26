@@ -27,10 +27,8 @@ from nicheradar.repositories.schema import (
 )
 
 
-def backup_deadline(connection: Connection, skip: frozenset[str] = frozenset()) -> datetime | None:
-    """An immutable dump cannot retain any evidence past its earliest deadline.
-
-    `skip` names tables whose rows the dump leaves out, so they set no deadline."""
+def backup_deadline(connection: Connection) -> datetime | None:
+    """An immutable dump cannot retain any evidence past its earliest deadline."""
     deadlines = [
         value
         for table in (
@@ -54,8 +52,7 @@ def backup_deadline(connection: Connection, skip: frozenset[str] = frozenset()) 
             flow_research_requests,
             flow_research_dossiers,
         )
-        if table.name not in skip
-        and (value := connection.execute(select(func.min(table.c.retain_until))).scalar_one())
+        if (value := connection.execute(select(func.min(table.c.retain_until))).scalar_one())
         is not None
     ]
     return min(deadlines) if deadlines else None

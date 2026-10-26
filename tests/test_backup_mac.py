@@ -459,3 +459,13 @@ def test_the_dump_leaves_out_the_rows_of_every_provider_evidence_table() -> None
     assert excluded == set(PROVIDER_EVIDENCE_TABLES)
     assert "--schema=public" in command and command[-1] == "--snapshot=00000003-0000001B-1"
     assert not any(a.startswith("--table") or a == "--data-only" for a in command)
+
+
+@pytest.mark.postgres
+def test_the_deadline_comes_only_from_tables_the_dump_keeps(db: Connection) -> None:
+    from scripts.backup_snapshot import copied_data_deadline
+
+    add_request(db)
+    kept = db.execute(sa.text("SELECT min(retain_until) FROM flow_research_requests")).scalar_one()
+    seed_evidence(db)  # provider evidence has its own, earlier deadlines
+    assert copied_data_deadline(db) == kept

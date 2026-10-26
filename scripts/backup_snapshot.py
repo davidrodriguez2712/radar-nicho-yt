@@ -6,13 +6,13 @@ The caller holds stdin open until pg_dump has consumed this exact snapshot.
 
 import json
 import sys
+from datetime import datetime
 
 from sqlalchemy import Connection, func, inspect, select
 
 from nicheradar.config import Settings
 from nicheradar.repositories import schema as s
 from nicheradar.repositories.database import database_engine
-from nicheradar.services.recovery import backup_deadline
 
 BOOTSTRAP_TABLES = {
     "alembic_version",
@@ -98,6 +98,21 @@ PROVIDER_EVIDENCE_TABLES = frozenset(
 )
 
 
+def copied_data_deadline(connection: Connection) -> datetime | None:
+    """Earliest `retain_until` among the tables whose rows the dump keeps.
+
+    Self-contained on purpose: this script runs inside the deployed API image, which may not
+    carry newer helpers from `services.recovery`."""
+    values = [
+        value
+        for table in s.metadata.tables.values()
+        if table.name not in PROVIDER_EVIDENCE_TABLES and "retain_until" in table.c
+        if (value := connection.execute(select(func.min(table.c.retain_until))).scalar_one())
+        is not None
+    ]
+    return min(values) if values else None
+
+
 def inspect_snapshot(connection: Connection) -> dict[str, object]:
     """Fail closed on unclassified tables; provider-evidence rows are reported and left out."""
     tables = set(inspect(connection).get_table_names())
@@ -146,7 +161,7 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
     if scope == "bootstrap":
         scope = "bootstrap-only"
     # Una copia inmutable no puede conservar evidencia después de su primer vencimiento.
-    deadline = backup_deadline(connection, PROVIDER_EVIDENCE_TABLES)
+    deadline = copied_data_deadline(connection)
     return {
         "scope": scope,
         "revision": revision,
