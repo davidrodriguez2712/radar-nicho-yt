@@ -51,7 +51,7 @@ Requisitos oficiales hoy (<https://support.google.com/youtube/answer/72851>):
 
 - 1.000 suscriptores **y** 4.000 horas de reproducción válidas en 12 meses (o 10 millones de vistas
   de Shorts en 90 días).
-- Aviso: desde el **2026-02-01 de 2027** el umbral para canales nuevos sube a 8.000 horas (o 20
+- Aviso: desde el **1 de febrero de 2027** el umbral para canales nuevos sube a 8.000 horas (o 20
   millones de vistas de Shorts), según la ayuda
   (<https://support.google.com/youtube/answer/12843009>).
 - Acceso temprano a financiación de fans: 500 suscriptores y 3.000 horas.
