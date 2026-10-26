@@ -245,6 +245,22 @@ Ese cambio está desplegado desde la candidata 003, pero no resuelve la eliminac
 de copias externas ni constituye una prueba de rollback. No habilitar backups de
 proveedores basándose únicamente en el cifrado del Mac.
 
+## Programación con launchd (2026-10-26, preparada, **no activada**)
+
+El propietario aprobó programar el respaldo. Los archivos están en `scripts/launchd/`
+(`run_backup.sh` y `com.nicheradar.backup.plist.template`): diario 03:30, `backup` y luego
+`prune --apply`, con salida en `~/Library/Application Support/NicheRadar/backup.log`. **No se
+instala hasta que `backup` funcione contra producción** (hoy lo bloquea la evidencia de
+proveedores, no la guarda `unsafe_runtime`, que ya acepta `live` pausada). Para activarla:
+
+```sh
+sed -e "s#@REPO@/#$PWD/#" -e "s#@HOME@#$HOME#" scripts/launchd/com.nicheradar.backup.plist.template \
+  > ~/Library/LaunchAgents/com.nicheradar.backup.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.nicheradar.backup.plist
+```
+
+Con el Mac apagado o dormido no hay copia hasta que despierte.
+
 ## Guarda de ejecución relajada (2026-10-26)
 
 El propietario aprobó (opción A) aceptar producción en modo `live` con radar pausado. La guarda
