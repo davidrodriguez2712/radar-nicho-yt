@@ -244,3 +244,19 @@ del esquema `public` desde un archivo cifrado en otro clúster. También se corr
 Ese cambio está desplegado desde la candidata 003, pero no resuelve la eliminación puntual
 de copias externas ni constituye una prueba de rollback. No habilitar backups de
 proveedores basándose únicamente en el cifrado del Mac.
+
+## Programación con launchd (2026-10-26, preparada, **no activada**)
+
+El propietario aprobó programar el respaldo. Los archivos están en `scripts/launchd/`
+(`run_backup.sh` y `com.nicheradar.backup.plist.template`): diario 03:30, `backup` y luego
+`prune --apply`, con salida en `~/Library/Application Support/NicheRadar/backup.log`. **No se
+instala hasta que `backup` funcione contra producción** (hoy la guarda `unsafe_runtime` lo
+bloquea porque producción está en `live`). Para activarla:
+
+```sh
+sed -e "s#@REPO@/#$PWD/#" -e "s#@HOME@#$HOME#" scripts/launchd/com.nicheradar.backup.plist.template \
+  > ~/Library/LaunchAgents/com.nicheradar.backup.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.nicheradar.backup.plist
+```
+
+Con el Mac apagado o dormido no hay copia hasta que despierte.
