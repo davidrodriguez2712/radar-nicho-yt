@@ -244,3 +244,16 @@ del esquema `public` desde un archivo cifrado en otro clúster. También se corr
 Ese cambio está desplegado desde la candidata 003, pero no resuelve la eliminación puntual
 de copias externas ni constituye una prueba de rollback. No habilitar backups de
 proveedores basándose únicamente en el cifrado del Mac.
+
+## Guarda de ejecución relajada (2026-10-26)
+
+El propietario aprobó (opción A) aceptar producción en modo `live` con radar pausado. La guarda
+`unsafe_runtime` ya no exige `synthetic` ni la ausencia de credenciales de proveedores: exige
+modo `synthetic` o `live`, `NR_RADAR_PAUSED=true`, sin puertos publicados y sin proveedor real
+habilitado en `provider_policies`. La protección de la evidencia de proveedores sigue siendo la
+de datos: una tabla no revisada con filas bloquea el respaldo (`research_data_backup_not_enabled`).
+
+**Estado real:** producción tiene evidencia de proveedores (`provider_requests`, `topics`,
+`videos`, `jobs`, `opportunities`, rankings…), así que el primer respaldo real sigue bloqueado por
+esa regla hasta decidir qué hacer con esas tablas (ver NEEDS_HUMAN del informe del 2026-10-26).
+
