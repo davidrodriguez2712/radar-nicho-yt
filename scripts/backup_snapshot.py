@@ -55,19 +55,68 @@ FLOW_TABLES = {"flow_research_requests", "flow_research_dossiers"}
 RESEARCH_TABLES = MARKET_TABLES | FLOW_TABLES
 REVIEWED_TABLES = BOOTSTRAP_TABLES | PILOT_TABLES | RESEARCH_TABLES
 
+# Evidencia de proveedores y estado operativo del radar (decisión del propietario, 2026-10-26,
+# opción A): su esquema se respalda pero sus FILAS NO. Los datos de vidIQ/YouTube se
+# regeneran con el radar y pueden tener plazos de retención contractuales. Toda tabla nueva
+# debe clasificarse en REVIEWED_TABLES o aquí; si no, el guard falla (`unclassified_table`).
+PROVIDER_EVIDENCE_TABLES = frozenset(
+    {
+        "analysis_runs",
+        "balance_reconciliations",
+        "budget_scenarios",
+        "channel_analyses",
+        "channel_observations",
+        "channels",
+        "cohort_memberships",
+        "cohorts",
+        "cost_ledger",
+        "cost_reservations",
+        "credit_balances",
+        "discovery_cursors",
+        "discovery_queries",
+        "evaluation_versions",
+        "evidence_links",
+        "feature_values",
+        "jobs",
+        "opportunities",
+        "opportunity_decisions",
+        "opportunity_recipe_assignments",
+        "opportunity_scoring_configs",
+        "provider_cache",
+        "provider_requests",
+        "ranking_entries",
+        "ranking_snapshots",
+        "raw_observations",
+        "scenario_items",
+        "topic_artifact_sources",
+        "topic_artifacts",
+        "topic_memberships",
+        "topics",
+        "video_observations",
+        "videos",
+    }
+)
+
 
 def inspect_snapshot(connection: Connection) -> dict[str, object]:
-    """Fail closed: only reviewed tables may hold rows; provider evidence is not reviewed."""
+    """Fail closed on unclassified tables; provider-evidence rows are reported and left out."""
     tables = set(inspect(connection).get_table_names())
     if tables != set(s.metadata.tables) | {"alembic_version"}:
         raise ValueError("unexpected_schema")
+    if tables - REVIEWED_TABLES - PROVIDER_EVIDENCE_TABLES:
+        raise ValueError("unclassified_table")
     counts = {}
+    excluded_rows = {}
     for name in sorted(tables):
         quoted = connection.dialect.identifier_preparer.quote(name)
         count = connection.exec_driver_sql(f"SELECT count(*) FROM {quoted}").scalar_one()
-        if name not in REVIEWED_TABLES and count:
-            raise ValueError("research_data_backup_not_enabled")
-        counts[name] = count
+        if name in PROVIDER_EVIDENCE_TABLES:
+            # The dump leaves these rows out, so a restore always sees them empty.
+            if count:
+                excluded_rows[name] = count
+            counts[name] = 0
+        else:
+            counts[name] = count
     schedules = s.metadata.tables["radar_schedules"]
     policies = s.metadata.tables["provider_policies"]
     if connection.execute(
@@ -94,11 +143,12 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
     if scope == "bootstrap":
         scope = "bootstrap-only"
     # Una copia inmutable no puede conservar evidencia después de su primer vencimiento.
-    deadline = backup_deadline(connection)
+    deadline = backup_deadline(connection, PROVIDER_EVIDENCE_TABLES)
     return {
         "scope": scope,
         "revision": revision,
         "counts": counts,
+        "excluded_rows": excluded_rows,
         "delete_after": deadline.isoformat() if deadline else None,
     }
 
