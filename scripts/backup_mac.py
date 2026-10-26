@@ -145,12 +145,10 @@ def container(service: str) -> tuple[str, dict[str, object]]:
     config = json.loads(ssh(["docker", "inspect", ids[0]]))[0]
     env = dict(item.split("=", 1) for item in config["Config"]["Env"] if "=" in item)
     if service in {"api", "worker"}:
-        if env.get("NR_MODE") != "synthetic" or env.get("NR_RADAR_PAUSED") != "true":
+        # Live mode is allowed (decision 2026-10-26): what protects provider evidence is the
+        # data guard in backup_snapshot (unreviewed tables with rows fail closed) plus the pause.
+        if env.get("NR_MODE") not in {"synthetic", "live"} or env.get("NR_RADAR_PAUSED") != "true":
             raise ValueError("unsafe_runtime")
-        if any(
-            env.get(name) for name in ("NR_VIDIQ_TOKEN", "NR_YOUTUBE_API_KEY", "NR_LLM_API_KEY")
-        ):
-            raise ValueError("provider_credentials_present")
     elif env.get("POSTGRES_DB") != "nicheradar":
         raise ValueError("unexpected_database")
     if config["HostConfig"]["PortBindings"]:

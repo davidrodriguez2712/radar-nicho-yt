@@ -99,7 +99,7 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
 
 def main() -> None:
     config = Settings()
-    if config.mode != "synthetic" or not config.radar_paused:
+    if config.mode not in {"synthetic", "live"} or not config.radar_paused:
         raise ValueError("unsafe_runtime")
     engine = database_engine(config)
     try:
