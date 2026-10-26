@@ -31,7 +31,9 @@ from scripts.backup_snapshot import (
     FLOW_TABLES,
     MARKET_TABLES,
     PILOT_TABLES,
+    PROVIDER_EVIDENCE_TABLES,
     RESEARCH_TABLES,
+    RUN_TABLES,
     inspect_snapshot,
 )
 from tests.test_flow_research_schema import add_dossier, add_request
@@ -52,10 +54,14 @@ def test_bootstrap_snapshot_guard_and_active_schedule(db: Connection) -> None:
 
 
 @pytest.mark.postgres
-def test_snapshot_rejects_research_even_in_synthetic_mode(db: Connection) -> None:
+def test_snapshot_reports_provider_evidence_rows_as_excluded(db: Connection) -> None:
     seed_evidence(db)
-    with pytest.raises(ValueError, match="research_data_backup_not_enabled"):
-        inspect_snapshot(db)
+    report = inspect_snapshot(db)
+    excluded = cast(dict[str, int], report["excluded_rows"])
+    assert excluded["raw_observations"] > 0 and excluded["provider_requests"] > 0
+    counts = cast(dict[str, int], report["counts"])
+    assert all(counts[name] == 0 for name in excluded)  # a restore sees them empty
+    assert report["scope"] == "bootstrap-only"
 
 
 @pytest.mark.postgres
@@ -69,7 +75,7 @@ def test_snapshot_accepts_pilot_data_and_reports_the_wider_scope(db: Connection)
 
 
 @pytest.mark.postgres
-def test_snapshot_rejects_enabled_real_provider_before_first_request(db: Connection) -> None:
+def test_snapshot_reports_an_enabled_real_provider_without_blocking(db: Connection) -> None:
     insert_record(
         db,
         "provider_policies",
@@ -84,8 +90,7 @@ def test_snapshot_rejects_enabled_real_provider_before_first_request(db: Connect
             "effective_at": NOW,
         },
     )
-    with pytest.raises(ValueError, match="real_provider_enabled"):
-        inspect_snapshot(db)
+    assert inspect_snapshot(db)["enabled_real_providers"] == ["vidiq"]
 
 
 @pytest.mark.postgres
@@ -163,6 +168,7 @@ def dump_and_restore(postgres_engine: Engine, tmp_path: Path) -> dict[str, objec
             "--format=custom",
             "--no-owner",
             "--no-acl",
+            *(f"--exclude-table-data=public.{n}" for n in sorted(PROVIDER_EVIDENCE_TABLES)),
         ],
         env=environment,
         capture_output=True,
@@ -236,12 +242,13 @@ def test_reviewed_table_groups_are_exact_and_disjoint() -> None:
     }
     assert FLOW_TABLES == {"flow_research_requests", "flow_research_dossiers"}
     assert RESEARCH_TABLES == MARKET_TABLES | FLOW_TABLES
-    groups = [BOOTSTRAP_TABLES, PILOT_TABLES, MARKET_TABLES, FLOW_TABLES]
+    groups = [BOOTSTRAP_TABLES, PILOT_TABLES, MARKET_TABLES, FLOW_TABLES, RUN_TABLES]
     assert sum(len(group) for group in groups) == len(set().union(*groups))
     reviewed = set().union(*groups)
     assert reviewed <= set(schema.metadata.tables) | {"alembic_version"}
-    # Provider evidence is deliberately NOT reviewed: those tables keep failing closed.
+    # Provider evidence is classified apart: its schema is dumped, its rows are not.
     unreviewed = (set(schema.metadata.tables) | {"alembic_version"}) - reviewed
+    assert unreviewed == set(PROVIDER_EVIDENCE_TABLES)
     assert {"raw_observations", "provider_requests", "topics", "ranking_snapshots"} <= unreviewed
 
 
@@ -268,11 +275,12 @@ def test_snapshot_reports_the_earliest_deletion_deadline_of_research(db: Connect
 
 
 @pytest.mark.postgres
-def test_snapshot_still_rejects_provider_evidence_with_research_present(db: Connection) -> None:
+def test_snapshot_keeps_research_and_excludes_provider_evidence_together(db: Connection) -> None:
     add_request(db)
     seed_evidence(db)
-    with pytest.raises(ValueError, match="research_data_backup_not_enabled"):
-        inspect_snapshot(db)
+    report = inspect_snapshot(db)
+    assert report["scope"] == "bootstrap+research"
+    assert cast(dict[str, int], report["excluded_rows"])["raw_observations"] > 0
 
 
 @pytest.mark.postgres
@@ -444,3 +452,35 @@ def test_the_runtime_guard_still_rejects_published_ports(monkeypatch: pytest.Mon
     monkeypatch.setattr(backup_mac, "ssh", _fake_ssh(env, {"8000/tcp": [{}]}))
     with pytest.raises(ValueError, match="unexpected_published_ports"):
         backup_mac.container("api")
+
+
+def test_the_dump_leaves_out_the_rows_of_every_provider_evidence_table() -> None:
+    command = backup_mac.dump_command("db1", "00000003-0000001B-1")
+    excluded = {a.split("public.", 1)[1] for a in command if a.startswith("--exclude-table-data=")}
+    assert excluded == set(PROVIDER_EVIDENCE_TABLES)
+    assert "--schema=public" in command and command[-1] == "--snapshot=00000003-0000001B-1"
+    assert not any(a.startswith("--table") or a == "--data-only" for a in command)
+
+
+@pytest.mark.postgres
+def test_the_deadline_comes_only_from_tables_the_dump_keeps(db: Connection) -> None:
+    from scripts.backup_snapshot import copied_data_deadline
+
+    add_request(db)
+    kept = db.execute(sa.text("SELECT min(retain_until) FROM flow_research_requests")).scalar_one()
+    seed_evidence(db)  # provider evidence has its own, earlier deadlines
+    assert copied_data_deadline(db) == kept
+
+
+def test_no_copied_table_depends_on_a_table_whose_rows_are_left_out() -> None:
+    """A restore would fail on the foreign key (found by the first real restore drill)."""
+    from nicheradar.repositories import schema
+
+    for table in schema.metadata.tables.values():
+        if table.name in PROVIDER_EVIDENCE_TABLES:
+            continue
+        for key in table.foreign_keys:
+            assert key.column.table.name not in PROVIDER_EVIDENCE_TABLES, (
+                table.name,
+                key.column.table.name,
+            )

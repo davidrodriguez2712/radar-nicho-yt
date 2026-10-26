@@ -124,6 +124,26 @@ def ssh(arguments: list[str], *, timeout: int = 30) -> bytes:
     return result.stdout
 
 
+def dump_command(database: str, snapshot: str) -> list[str]:
+    """Full schema, but no rows of provider evidence (decision 2026-10-26, option A)."""
+    from scripts.backup_snapshot import PROVIDER_EVIDENCE_TABLES
+
+    return [
+        "docker",
+        "exec",
+        database,
+        "pg_dump",
+        "--username=postgres",
+        "--dbname=nicheradar",
+        "--format=custom",
+        "--no-owner",
+        "--no-acl",
+        "--schema=public",
+        *(f"--exclude-table-data=public.{name}" for name in sorted(PROVIDER_EVIDENCE_TABLES)),
+        f"--snapshot={snapshot}",
+    ]
+
+
 def container(service: str) -> tuple[str, dict[str, object]]:
     ids = (
         ssh(
@@ -146,7 +166,7 @@ def container(service: str) -> tuple[str, dict[str, object]]:
     env = dict(item.split("=", 1) for item in config["Config"]["Env"] if "=" in item)
     if service in {"api", "worker"}:
         # Live mode is allowed (decision 2026-10-26): what protects provider evidence is the
-        # data guard in backup_snapshot (unreviewed tables with rows fail closed) plus the pause.
+        # exclusion of provider-evidence rows (dump_command) plus the pause.
         if env.get("NR_MODE") not in {"synthetic", "live"} or env.get("NR_RADAR_PAUSED") != "true":
             raise ValueError("unsafe_runtime")
     elif env.get("POSTGRES_DB") != "nicheradar":
@@ -177,22 +197,7 @@ def take_snapshot() -> tuple[dict[str, object], bytes]:
         snapshot = report.pop("snapshot")
         if not re.fullmatch(r"[A-Fa-f0-9]+-[A-Fa-f0-9]+-[0-9]+", snapshot):
             raise ValueError("invalid_snapshot")
-        dump = ssh(
-            [
-                "docker",
-                "exec",
-                database,
-                "pg_dump",
-                "--username=postgres",
-                "--dbname=nicheradar",
-                "--format=custom",
-                "--no-owner",
-                "--no-acl",
-                "--schema=public",
-                f"--snapshot={snapshot}",
-            ],
-            timeout=90,
-        )
+        dump = ssh(dump_command(database, snapshot), timeout=90)
         if len(dump) > MAX_BYTES or not dump.startswith(b"PGDMP"):
             raise ValueError("unexpected_dump")
         holder.stdin.write(b"release\n")
