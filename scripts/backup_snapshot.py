@@ -53,7 +53,11 @@ MARKET_TABLES = {
 }
 FLOW_TABLES = {"flow_research_requests", "flow_research_dossiers"}
 RESEARCH_TABLES = MARKET_TABLES | FLOW_TABLES
-REVIEWED_TABLES = BOOTSTRAP_TABLES | PILOT_TABLES | RESEARCH_TABLES
+# Metadatos de las corridas del radar (modo, disparador, estado, configuración, cobertura): no son
+# evidencia de proveedores y `market_scrape_runs` las referencia por clave foránea, así que el
+# dump debe conservarlas o la restauración falla.
+RUN_TABLES = {"analysis_runs"}
+REVIEWED_TABLES = BOOTSTRAP_TABLES | PILOT_TABLES | RESEARCH_TABLES | RUN_TABLES
 
 # Evidencia de proveedores y estado operativo del radar (decisión del propietario, 2026-10-26,
 # opción A): su esquema se respalda pero sus FILAS NO. Los datos de vidIQ/YouTube se
@@ -61,7 +65,6 @@ REVIEWED_TABLES = BOOTSTRAP_TABLES | PILOT_TABLES | RESEARCH_TABLES
 # debe clasificarse en REVIEWED_TABLES o aquí; si no, el guard falla (`unclassified_table`).
 PROVIDER_EVIDENCE_TABLES = frozenset(
     {
-        "analysis_runs",
         "balance_reconciliations",
         "budget_scenarios",
         "channel_analyses",

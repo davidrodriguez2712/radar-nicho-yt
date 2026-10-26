@@ -33,6 +33,7 @@ from scripts.backup_snapshot import (
     PILOT_TABLES,
     PROVIDER_EVIDENCE_TABLES,
     RESEARCH_TABLES,
+    RUN_TABLES,
     inspect_snapshot,
 )
 from tests.test_flow_research_schema import add_dossier, add_request
@@ -241,7 +242,7 @@ def test_reviewed_table_groups_are_exact_and_disjoint() -> None:
     }
     assert FLOW_TABLES == {"flow_research_requests", "flow_research_dossiers"}
     assert RESEARCH_TABLES == MARKET_TABLES | FLOW_TABLES
-    groups = [BOOTSTRAP_TABLES, PILOT_TABLES, MARKET_TABLES, FLOW_TABLES]
+    groups = [BOOTSTRAP_TABLES, PILOT_TABLES, MARKET_TABLES, FLOW_TABLES, RUN_TABLES]
     assert sum(len(group) for group in groups) == len(set().union(*groups))
     reviewed = set().union(*groups)
     assert reviewed <= set(schema.metadata.tables) | {"alembic_version"}
@@ -469,3 +470,17 @@ def test_the_deadline_comes_only_from_tables_the_dump_keeps(db: Connection) -> N
     kept = db.execute(sa.text("SELECT min(retain_until) FROM flow_research_requests")).scalar_one()
     seed_evidence(db)  # provider evidence has its own, earlier deadlines
     assert copied_data_deadline(db) == kept
+
+
+def test_no_copied_table_depends_on_a_table_whose_rows_are_left_out() -> None:
+    """A restore would fail on the foreign key (found by the first real restore drill)."""
+    from nicheradar.repositories import schema
+
+    for table in schema.metadata.tables.values():
+        if table.name in PROVIDER_EVIDENCE_TABLES:
+            continue
+        for key in table.foreign_keys:
+            assert key.column.table.name not in PROVIDER_EVIDENCE_TABLES, (
+                table.name,
+                key.column.table.name,
+            )
