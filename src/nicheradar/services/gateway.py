@@ -203,6 +203,9 @@ class Gateway:
                 .select_from(s.provider_requests)
                 .where(
                     s.provider_requests.c.run_id == self.run_id,
+                    # The cap is per provider: classification (openai) shares the analysis run
+                    # with channel verification (youtube) and must not exhaust its calls.
+                    s.provider_requests.c.provider == self.provider.name,
                     (s.provider_requests.c.sent_at.is_not(None))
                     | (
                         (s.provider_requests.c.state == "prepared")

@@ -332,6 +332,31 @@ def test_free_balance_refresh_counts_toward_durable_batch_limit(isolated_engine:
     assert gateway.provider.calls == [Operation.BALANCE]
 
 
+def test_batch_limit_counts_only_this_providers_requests(isolated_engine: Engine) -> None:
+    """Classification (openai) shares the analysis run with channel verification (youtube):
+    its requests must not use up the per-run call cap of another provider."""
+    gateway = fixture_gateway(isolated_engine, maximum_calls=3)
+    with isolated_engine.begin() as db:
+        for number in range(5):
+            insert_record(
+                db,
+                "provider_requests",
+                {
+                    "run_id": gateway.run_id,
+                    "provider": "openai",
+                    "operation": "niche_match",
+                    "auth_scope": "test",
+                    "cache_key": f"llm-{number}",
+                    "idempotency_key": f"llm-{number}",
+                    "state": "sent",
+                    "sent_at": NOW,
+                },
+            )
+    asyncio.run(gateway.fetch(Operation.CHANNEL_SEARCH, {"query": "first"}, NOW))
+    assert isinstance(gateway.provider, CreditFixture)
+    assert Operation.CHANNEL_SEARCH in gateway.provider.calls
+
+
 def test_unknown_charge_survives_balance_refresh_without_paid_repeat(
     isolated_engine: Engine,
 ) -> None:
