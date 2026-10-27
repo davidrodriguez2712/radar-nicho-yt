@@ -14,6 +14,7 @@ from sqlalchemy import Connection, Engine, create_engine, inspect
 from sqlalchemy.engine import URL, make_url
 
 from nicheradar.config import Settings
+from nicheradar.flow_research import gates as gate_rules
 
 
 @pytest.fixture(autouse=True)
@@ -27,6 +28,20 @@ def isolated_from_local_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         if name.startswith("NR_") and not name.startswith("NR_TEST_"):
             monkeypatch.delenv(name)
     monkeypatch.setitem(Settings.model_config, "env_file", None)
+
+
+@pytest.fixture(autouse=True)
+def open_selection_gates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The selection gates are off by default in tests that are about something else.
+
+    Production defaults are 90 automation and 60 human minutes (`Settings`); the fixtures'
+    niches and dossiers were not written to pass them. Tests of the gates build explicit
+    `Gates` / `Settings` and so never depend on this.
+    """
+    monkeypatch.setenv("NR_GATE_MIN_AUTOMATION", "0")
+    monkeypatch.setenv("NR_GATE_MAX_HUMAN_MINUTES", "10000")
+    monkeypatch.setenv("NR_GATE_BLOCK_HIGH_POLICY_RISK", "false")
+    monkeypatch.setattr(gate_rules, "DEFAULT_GATES", gate_rules.Gates(0, 10_000, False))
 
 
 @pytest.fixture(scope="session")

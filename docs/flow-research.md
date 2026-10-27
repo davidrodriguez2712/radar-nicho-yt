@@ -2,7 +2,8 @@
 
 Desde un nicho `tentativo` del backlog de Mercado, el botón **Iniciar investigación de
 flujo** crea un encargo. Claude Code lo atiende con búsqueda web (con la membresía del
-propietario, sin gasto de API) y entrega un dossier `dossier-v1` que la app valida y guarda.
+propietario, sin gasto de API) y entrega un dossier `dossier-v2` (derechos del material y plan de automatización incluidos) que
+la app valida y guarda. `dossier-v1` solo se conserva para leer dossiers guardados antes.
 
 ## Cómo se opera
 
@@ -25,11 +26,12 @@ propietario, sin gasto de API) y entrega un dossier `dossier-v1` que la app vali
 
 ## Qué valida la app
 
-Solo URLs `https`; precios con `price_checked_on` de máximo 90 días; totales recalculados
+Solo URLs `https`; el `schema_version` debe ser `dossier-v2`; precios con `price_checked_on` de máximo 90 días; totales recalculados
 (`subtotal = unitario × cantidad`, costo de fase = suma de sus partidas,
 `totals.likely` = suma de subtotales); fuentes, herramientas y fases citadas deben existir;
 cada fase con criterios de salida; el dossier debe corresponder al encargo. Si la confianza
-del nicho es `baja`, `verdict.unknowns` no puede ir vacío.
+del nicho es `baja`, `verdict.unknowns` no puede ir vacío. Contrato completo de v2:
+[`contracts/dossier-v2.md`](contracts/dossier-v2.md).
 
 ## Qué no garantiza
 
@@ -48,7 +50,7 @@ Un encargo no usa `provider_requests`, presupuesto, vidIQ ni crea canales.
 
 | Método y ruta | Uso |
 | --- | --- |
-| `POST /api/v1/flow-research` | Crear (201) o devolver el activo (200). Cuerpo: `niche_label`, `format`, `language` (código `en`, `es`…; `unknown` se rechaza) |
+| `POST /api/v1/flow-research` | Crear (201) o devolver el activo (200). Cuerpo: `niche_label`, `format`, `language` (código `en`, `es`…; `unknown` se rechaza) y, opcional, `gate_override` (`reason` de 10 a 500 caracteres y `by`). Si el nicho no pasa una compuerta responde `409 gate_failed` con `reasons` |
 | `GET /api/v1/flow-research` | Listar (`niche_label`, `format`, `language`, `status`, `limit`) |
 | `GET /api/v1/flow-research/pending` | Pendientes (libera leases vencidos) |
 | `GET /api/v1/flow-research/{id}` | Encargo, evidencia y dossier |
@@ -69,3 +71,48 @@ Qué cambia al implementarlo:
 - Encargos existentes: la migración los marca `unknown`. Los `pendiente` o `en_curso` se cierran como `rechazado` (hay que iniciarlos de nuevo con idioma); los `listo` se conservan, pero no pueden convertirse en piloto (`language_unknown`).
 
 Migración `0016`: cierra (`rechazado`, con el motivo en `rejection`) los encargos `pendiente` o `en_curso` sin idioma y no toca los `listo`. `dossier-v1` gana el campo `language` (obligatorio): se verificó el 2026-10-25 (solo lectura) que producción no tiene dossiers; si los hubiera, se conservan tal cual. Desplegado el 2026-10-25 en la release [014](release-20261025-014.md). Es un cambio de esquema en producción: requiere migración y despliegue aprobados por el propietario.
+
+
+## Compuertas de selección (2026-10-26)
+
+Decisión del propietario: los nichos que se investiguen deben ser casi automatizables, con poca
+intervención humana. Los scores del backlog solo ordenan y no restan riesgo de política
+([market-intel.md](market-intel.md)); las compuertas son el freno real. **Los umbrales son
+supuestos iniciales del agente, no datos medidos**: se ajustan con evidencia.
+
+| Compuerta | Umbral por defecto | Variable de entorno |
+|---|---|---|
+| Automatización mínima del nicho | 90 | `NR_GATE_MIN_AUTOMATION` |
+| Riesgo de política `alto` bloquea | sí | `NR_GATE_BLOCK_HIGH_POLICY_RISK` |
+| Minutos humanos máximos por video (suma de `production_flow`) | 60 | `NR_GATE_MAX_HUMAN_MINUTES` |
+| Derechos resueltos (`rights.verdict` distinto de `blocked`) | siempre | (no configurable) |
+
+Se aplican en tres puntos:
+
+1. **Al pedir la investigación** (`POST /flow-research`): si la automatización del nicho es
+   **conocida** y menor que el mínimo, o su riesgo de política es alto, responde `409 gate_failed`
+   con los motivos. Una automatización desconocida no bloquea aquí (el encargo ya exige que
+   exista score de automatización: `no_evidence`). Cada encargo congela en `evidence.gate` los
+   umbrales usados y lo que el nicho obtuvo.
+2. **Al entregar el dossier**: uno que recomiende `go` o `go_with_conditions` se rechaza si
+   `rights.verdict` es `blocked`, si los minutos humanos superan el máximo o si el nicho no pasa
+   (salvo excepción registrada). `no_go` siempre se acepta. Con `blocked`, el único veredicto
+   válido es `no_go`, y eso no se puede forzar.
+3. **Al autorizar el piloto**: se repiten las comprobaciones sobre el dossier guardado. Falla con
+   `409 gate_failed` salvo `accept_gate_failure: true` (`--accept-gate-failure` en
+   `scripts/pilots.py lanzar`); eso queda en el evento `gate_failure_accepted` y en el prefijo
+   `[COMPUERTAS NO CUMPLIDAS aceptadas por el humano: …]` de `thesis`. Un dossier `dossier-v1`
+   guardado no evalúa derechos ni plan de automatización, así que falla la compuerta de derechos
+   hasta que un humano lo acepte.
+
+**Excepción al pedir la investigación** (decisión humana, registrada): `gate_override` con
+`reason` y `by`; se congela en `evidence.gate_override` con la hora y levanta las compuertas de
+nicho y de minutos en la entrega del dossier de ese encargo. Solo se registra si la compuerta
+realmente falló. Desde la línea de comandos:
+
+```sh
+uv run python scripts/flow_research.py create gaming_general --format long --language en \
+  --gate-override-reason "Experimento barato decidido por el propietario" --gate-override-by david
+```
+
+La skill nunca pide ni usa excepciones; si el nicho no pasa, entrega `no_go` razonado.

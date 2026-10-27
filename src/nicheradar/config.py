@@ -77,6 +77,11 @@ class Settings(BaseSettings):
     # Compuerta del spec: en modo live el scraper no corre hasta que el propietario revise los
     # Términos de Servicio de la fuente y active este indicador de forma explícita.
     market_intel_live_enabled: bool = False
+    # Compuertas de selección (2026-10-26). Los umbrales son supuestos iniciales del agente, no
+    # datos medidos: ajústalos con evidencia. No cambian los scores; solo frenan el flujo.
+    gate_min_automation: int = Field(default=90, ge=0, le=100)
+    gate_max_human_minutes: int = Field(default=60, ge=0, le=10_000)
+    gate_block_high_policy_risk: bool = True
 
     @field_validator("timezone")
     @classmethod

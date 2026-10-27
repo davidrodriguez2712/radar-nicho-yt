@@ -77,7 +77,7 @@ como verificada.
 | Campo | Tipo | Reglas |
 |---|---|---|
 | `request_id` | UUID | Encargo de investigación de flujo de origen |
-| `schema` | texto | `"dossier-v1"` |
+| `schema` | texto | `"dossier-v1"` (dossiers guardados antes de 2026-10-26) o `"dossier-v2"` (el único que acepta un encargo nuevo) |
 | `recommendation` | texto | `"go"`, `"go_with_conditions"` o `"no_go"` |
 | `confidence` | texto | `"low"`, `"medium"` o `"high"` |
 | `thesis` | texto | 1 a 1500 caracteres |
@@ -85,6 +85,11 @@ como verificada.
 
 Un paquete con `recommendation = "no_go"` solo se emite si el humano lo autoriza explícitamente;
 NicheRadar lo marca en `thesis`.
+
+Si el piloto no pasa las compuertas de selección (ver [`dossier-v2.md`](dossier-v2.md)) solo se emite
+con `accept_gate_failure` explícito del humano; `thesis` empieza entonces por
+`[COMPUERTAS NO CUMPLIDAS aceptadas por el humano: …]` y queda un evento `gate_failure_accepted` en
+el registro del piloto. Ampliar `schema` a `dossier-v2` no añade campos al paquete.
 
 ### `budget`
 

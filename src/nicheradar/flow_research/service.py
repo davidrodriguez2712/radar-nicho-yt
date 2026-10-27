@@ -9,8 +9,22 @@ from uuid import UUID, uuid4
 from sqlalchemy import Connection, select, update
 from sqlalchemy.exc import IntegrityError
 
-from nicheradar.flow_research.contracts import SCHEMA_VERSION, Dossier, Problem, validate_dossier
+from nicheradar.flow_research import gates as gate_rules
+from nicheradar.flow_research.contracts import (
+    SCHEMA_VERSION,
+    DossierV2,
+    Problem,
+    human_minutes_per_video,
+    validate_dossier,
+)
 from nicheradar.flow_research.evidence import REASONS, build_evidence, ineligible_reason
+from nicheradar.flow_research.gates import (
+    GateReason,
+    Gates,
+    describe,
+    minutes_reasons,
+    niche_reasons,
+)
 from nicheradar.market_intel.ingest import LISTING_RETENTION
 from nicheradar.market_intel.niches import niche_detail
 from nicheradar.repositories.schema import flow_research_dossiers as dossiers
@@ -35,6 +49,7 @@ SUMMARY = (
 LANGUAGE = re.compile(r"^[a-z]{2}(-[A-Z]{2})?$")
 MESSAGES = REASONS | {
     "invalid_language": "El idioma debe ser un código como en o es; «unknown» no se investiga.",
+    "gate_failed": "El nicho no pasa las compuertas de selección.",
     "not_found": "Encargo o nicho no encontrado.",
     "not_claimable": "El encargo no está pendiente.",
     "lease_lost": "El encargo ya no está reclamado por este investigador.",
@@ -42,9 +57,10 @@ MESSAGES = REASONS | {
 
 
 class FlowResearchError(Exception):
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, reasons: list[GateReason] | None = None) -> None:
         super().__init__(MESSAGES[code])
         self.code = code
+        self.reasons = reasons or []
 
 
 def _summary(row: Any) -> dict[str, Any]:
@@ -85,8 +101,15 @@ def create_request(
     language: str,
     now: datetime,
     timezone: str = "UTC",
+    *,
+    gates: Gates | None = None,
+    gate_override: dict[str, str] | None = None,
 ) -> tuple[dict[str, Any], bool]:
     """Return ``(request, created)``; an active request is returned, never duplicated.
+
+    The selection gates (automation, policy risk) stop a niche before any research is ordered;
+    ``gate_override`` (``reason`` and ``by``, chosen by a human) lets it through and is frozen in
+    the evidence with its time. An unknown automation score does not fail the gate.
 
     The key is niche + format + language: the same niche researched in two languages is two
     markets, each with its own competitors, prices and tools.
@@ -103,6 +126,13 @@ def create_request(
     reason = ineligible_reason(detail["niche"])
     if reason is not None:
         raise FlowResearchError(reason)
+    gates = gates or gate_rules.DEFAULT_GATES
+    failing = niche_reasons(detail["niche"], gates)
+    if failing and gate_override is None:
+        raise FlowResearchError("gate_failed", failing)
+    override = None
+    if failing and gate_override is not None:
+        override = {**gate_override, "at": now.isoformat()}
     request_id = uuid4()
     try:
         with connection.begin_nested():
@@ -113,7 +143,7 @@ def create_request(
                     format=format,
                     language=language,
                     status="pendiente",
-                    evidence=build_evidence(detail, language),
+                    evidence=build_evidence(detail, language, gates, override),
                     attempts=0,
                     created_at=now,
                     updated_at=now,
@@ -205,9 +235,31 @@ def claim_request(
     return _stored(connection, request_id) | {"lease_owner": holder}
 
 
-def _request_problems(dossier: Dossier, row: Any) -> list[Problem]:
+def _gate_problems(dossier: DossierV2, row: Any, gates: Gates) -> list[Problem]:
+    """A dossier that recommends going ahead must pass the gates, unless a human overrode them.
+
+    ``no_go`` is always acceptable. Blocked rights are not overridable (contract-level check).
+    """
+    if dossier.verdict.recommendation == "no_go":
+        return []
+    evidence = row["evidence"]
+    reasons: list[GateReason] = []
+    if "gate_override" not in evidence:
+        reasons += niche_reasons(evidence["niche"], gates)
+        reasons += minutes_reasons(human_minutes_per_video(dossier), gates)
+    if not reasons:
+        return []
+    return [
+        {
+            "path": "verdict.recommendation",
+            "message": f"{describe(reasons)} Entrega no_go o pide una excepción al propietario.",
+        }
+    ]
+
+
+def _request_problems(dossier: DossierV2, row: Any, gates: Gates) -> list[Problem]:
     """Checks that need the request: the dossier must answer exactly what was ordered."""
-    problems: list[Problem] = []
+    problems: list[Problem] = _gate_problems(dossier, row, gates)
     if dossier.request_id != row["id"]:
         problems.append({"path": "request_id", "message": "no corresponde a este encargo"})
     if dossier.niche_label != row["niche_label"]:
@@ -227,7 +279,12 @@ def _request_problems(dossier: Dossier, row: Any) -> list[Problem]:
 
 
 def submit_dossier(
-    connection: Connection, request_id: UUID, owner: str, payload: object, now: datetime
+    connection: Connection,
+    request_id: UUID,
+    owner: str,
+    payload: object,
+    now: datetime,
+    gates: Gates | None = None,
 ) -> dict[str, Any]:
     release_expired(connection, now)
     row = _locked(connection, request_id)
@@ -235,7 +292,7 @@ def submit_dossier(
         raise FlowResearchError("lease_lost")
     dossier, problems = validate_dossier(payload, now)
     if dossier is not None:
-        problems = _request_problems(dossier, row)
+        problems = _request_problems(dossier, row, gates or gate_rules.DEFAULT_GATES)
     if dossier is None or problems:
         attempts = row["attempts"] + 1
         rejected = attempts >= MAX_REJECTIONS

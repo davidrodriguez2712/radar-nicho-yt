@@ -1,5 +1,5 @@
 # src/nicheradar/flow_research/contracts.py
-"""dossier-v1: the structured result a researcher hands back.
+"""dossier-v2: the structured result a researcher hands back (dossier-v1 is legacy, read-only).
 
 The payload is untrusted: it comes from a person-driven Claude Code session that read the web.
 Shape is checked by pydantic; cross-references and arithmetic by ``consistency_problems``.
@@ -23,7 +23,9 @@ from pydantic import (
 )
 from pydantic_core import ErrorDetails
 
-SCHEMA_VERSION = "dossier-v1"
+SCHEMA_VERSION = "dossier-v2"
+LEGACY_SCHEMA_VERSION = "dossier-v1"
+PLAN_TEXT_MIN = 120  # approach / summary must explain, not list
 MAX_PRICE_AGE = timedelta(days=90)
 GENERATED_WINDOW = timedelta(hours=24)
 CLOCK_SKEW = timedelta(minutes=5)
@@ -173,8 +175,9 @@ class BreakEven(Contract):
     months_to_recover: MonthsToRecover
 
 
-class Dossier(Contract):
-    schema_version: Literal["dossier-v1"]
+class DossierBody(Contract):
+    """Fields shared by every dossier version."""
+
     request_id: UUID
     niche_label: Label
     format: Literal["long", "shorts"]
@@ -193,11 +196,99 @@ class Dossier(Contract):
     sources: list[Source] = Field(min_length=1, max_length=60)
 
 
+class Dossier(DossierBody):
+    """dossier-v1: kept only to read dossiers that were stored before dossier-v2."""
+
+    schema_version: Literal["dossier-v1"]
+
+
+RightsOrigin = Literal[
+    "own_capture",
+    "own_generation",
+    "licensed",
+    "platform_policy",
+    "public_domain",
+    "third_party",
+    "unknown",
+]
+CITED_ORIGINS = {"licensed", "platform_policy", "public_domain", "third_party"}
+CLEAR_ORIGINS = {"own_capture", "own_generation", "licensed", "platform_policy", "public_domain"}
+LongText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=PLAN_TEXT_MIN, max_length=1500)
+]
+
+
+class RightsMaterial(Contract):
+    kind: Literal["visual", "audio", "voice", "text"]
+    description: Text
+    origin: RightsOrigin
+    license_or_policy: Text
+    source_id: SourceId | None = None
+    requires_permission: bool
+    permission_plan: Text | None = None
+
+
+class Rights(Contract):
+    verdict: Literal["cleared", "conditional", "blocked"]
+    summary: Text
+    materials: list[RightsMaterial] = Field(min_length=1, max_length=20)
+    conditions: list[Text] = Field(max_length=20)
+
+
+class StageTool(Contract):
+    name: Label
+    interface: Label
+    cost_usd_per_video: Money
+
+
+class AutomationStage(Contract):
+    step: Label
+    mode: Automation
+    approach: LongText
+    tools: list[StageTool] = Field(max_length=8)
+    inputs: Text
+    outputs: Text
+    quality_gate: Text
+    failure_mode: Text
+    retry_policy: Text
+    human_minutes_per_video: int = Field(ge=0, le=10_000)
+    stays_human: Text | None = None
+
+
+class ImplementationMilestone(Contract):
+    order: int = Field(ge=1, le=50)
+    name: Label
+    description: LongText
+    acceptance_criteria: list[Text] = Field(min_length=1, max_length=10)
+    depends_on: list[int] = Field(max_length=10)
+
+
+class AutomationPlan(Contract):
+    summary: LongText
+    stages: list[AutomationStage] = Field(min_length=3, max_length=15)
+    milestones: list[ImplementationMilestone] = Field(min_length=2, max_length=20)
+
+
+class DossierV2(DossierBody):
+    schema_version: Literal["dossier-v2"]
+    rights: Rights
+    automation_plan: AutomationPlan
+
+    @property
+    def human_minutes_per_video(self) -> int:
+        return human_minutes_per_video(self)
+
+
+def human_minutes_per_video(dossier: DossierBody) -> int:
+    """Total human time per video, derived from the production flow (never self-declared)."""
+    return sum(step.human_minutes_per_video for step in dossier.production_flow)
+
+
 def _close(left: Decimal, right: Decimal) -> bool:
     return abs(left - right) <= MONEY_TOLERANCE
 
 
-def consistency_problems(dossier: Dossier, now: datetime) -> list[Problem]:
+def consistency_problems(dossier: DossierBody, now: datetime) -> list[Problem]:
     problems: list[Problem] = []
 
     def add(path: str, message: str) -> None:
@@ -267,6 +358,69 @@ def consistency_problems(dossier: Dossier, now: datetime) -> list[Problem]:
     return problems
 
 
+def v2_problems(dossier: DossierV2) -> list[Problem]:
+    """Rights and automation plan: cross-references and the numbers that must agree."""
+    problems: list[Problem] = []
+
+    def add(path: str, message: str) -> None:
+        problems.append({"path": path, "message": message})
+
+    known = {source.id for source in dossier.sources}
+    rights = dossier.rights
+    for index, material in enumerate(rights.materials):
+        base = f"rights.materials.{index}"
+        if material.origin in CITED_ORIGINS and material.source_id is None:
+            add(f"{base}.source_id", "este origen exige citar la licencia o política en sources")
+        if material.source_id is not None and material.source_id not in known:
+            add(f"{base}.source_id", "la fuente citada no existe en sources")
+        if material.requires_permission and material.permission_plan is None:
+            add(f"{base}.permission_plan", "explica cómo se obtiene el permiso")
+    kinds = {material.kind for material in rights.materials}
+    if "visual" not in kinds or not kinds & {"audio", "voice"}:
+        add("rights.materials", "declara el origen del material visual y del audio o la voz")
+    if rights.verdict == "cleared" and any(
+        material.requires_permission or material.origin not in CLEAR_ORIGINS
+        for material in rights.materials
+    ):
+        add(
+            "rights.verdict", "«cleared» no admite material con permiso pendiente u origen incierto"
+        )
+    if rights.verdict == "conditional" and not rights.conditions:
+        add("rights.conditions", "un veredicto «conditional» debe listar sus condiciones")
+    if rights.verdict == "blocked" and dossier.verdict.recommendation != "no_go":
+        add("verdict.recommendation", "los derechos están bloqueados: la recomendación es no_go")
+
+    plan = dossier.automation_plan
+    flow = {step.name: step for step in dossier.production_flow}
+    stage_names = [stage.step for stage in plan.stages]
+    if len(set(stage_names)) != len(stage_names) or set(stage_names) != set(flow):
+        add("automation_plan.stages", "debe haber una etapa por cada paso de production_flow")
+    tool_names = {tool.name for tool in dossier.tools}
+    for index, stage in enumerate(plan.stages):
+        base = f"automation_plan.stages.{index}"
+        step = flow.get(stage.step)
+        if step is not None:
+            if stage.human_minutes_per_video != step.human_minutes_per_video:
+                add(f"{base}.human_minutes_per_video", "no coincide con production_flow")
+            if stage.mode != step.automation:
+                add(f"{base}.mode", "no coincide con la automatización de production_flow")
+        for number, tool in enumerate(stage.tools):
+            if tool.name not in tool_names:
+                add(f"{base}.tools.{number}.name", "la herramienta no existe en tools")
+        if stage.human_minutes_per_video > 0 and stage.stays_human is None:
+            add(f"{base}.stays_human", "explica qué sigue siendo humano y por qué")
+    orders = sorted(milestone.order for milestone in plan.milestones)
+    if orders != list(range(1, len(orders) + 1)):
+        add("automation_plan.milestones", "los hitos deben numerarse 1..n sin saltos")
+    for index, milestone in enumerate(plan.milestones):
+        if any(dep >= milestone.order or dep not in orders for dep in milestone.depends_on):
+            add(
+                f"automation_plan.milestones.{index}.depends_on",
+                "solo puede depender de hitos anteriores que existan",
+            )
+    return problems
+
+
 def _problem(item: ErrorDetails) -> Problem:
     location = [str(part) for part in item["loc"]]
     if item["type"] == "extra_forbidden" and location:
@@ -274,10 +428,20 @@ def _problem(item: ErrorDetails) -> Problem:
     return {"path": ".".join(location) or "(raiz)", "message": item["msg"]}
 
 
-def validate_dossier(payload: object, now: datetime) -> tuple[Dossier | None, list[Problem]]:
-    """Return the dossier, or ``None`` with every problem found; never raises on bad input."""
+def validate_dossier(payload: object, now: datetime) -> tuple[DossierV2 | None, list[Problem]]:
+    """Return the dossier, or ``None`` with every problem found; never raises on bad input.
+
+    Only ``dossier-v2`` is accepted: ``dossier-v1`` exists solely for stored dossiers.
+    """
+    if isinstance(payload, dict) and payload.get("schema_version") == LEGACY_SCHEMA_VERSION:
+        return None, [
+            {
+                "path": "schema_version",
+                "message": "dossier-v1 ya no se acepta en encargos nuevos: usa dossier-v2",
+            }
+        ]
     try:
-        dossier = Dossier.model_validate(payload)
+        dossier = DossierV2.model_validate(payload)
     except ValidationError as error:
         return None, [
             _problem(item)
@@ -285,5 +449,5 @@ def validate_dossier(payload: object, now: datetime) -> tuple[Dossier | None, li
                 :MAX_PROBLEMS
             ]
         ]
-    problems = consistency_problems(dossier, now)[:MAX_PROBLEMS]
+    problems = (consistency_problems(dossier, now) + v2_problems(dossier))[:MAX_PROBLEMS]
     return (None if problems else dossier), problems

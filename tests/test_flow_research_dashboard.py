@@ -11,12 +11,15 @@ from streamlit.testing.v1 import AppTest
 
 from nicheradar.api import create_app
 from nicheradar.config import Settings
-from nicheradar.flow_research.contracts import Dossier
+from nicheradar.flow_research.contracts import DossierV2
 from nicheradar.flow_research_dashboard import (
     budget_rows,
     flow_rows,
     language_options,
+    milestone_rows,
+    rights_rows,
     roadmap_rows,
+    stage_rows,
     suggested_language,
 )
 from tests.flow_research_samples import valid_dossier
@@ -28,7 +31,7 @@ HOSTILE = "**negrita** <script>alert(1)</script> [x](https://evil.test)"
 
 
 def stored_shape() -> dict[str, Any]:
-    dossier = Dossier.model_validate(valid_dossier(UUID(int=1), NOW))
+    dossier = DossierV2.model_validate(valid_dossier(UUID(int=1), NOW))
     return dossier.model_dump(mode="json")
 
 
@@ -39,6 +42,39 @@ def test_dossier_rows_expose_money_as_numbers_and_keep_the_price_date() -> None:
     assert first["Precio verificado el"] == content["budget"]["lines"][0]["price_checked_on"]
     assert roadmap_rows(content)[0]["Costo (US$)"] == 49.0
     assert flow_rows(content)[1]["Automatización"] == "automático"
+
+
+def test_the_v2_sections_render_rights_and_the_automation_plan() -> None:
+    content = stored_shape()
+    assert rights_rows(content)[1]["Origen"] == "con licencia"
+    assert rights_rows(content)[0]["Requiere permiso"] == "no"
+    stage = stage_rows(content)[0]
+    assert stage["Minutos humanos"] == 20 and "Voz sintética (API" in stage["Herramientas"]
+    assert [row["Hito"] for row in milestone_rows(content)] == [1, 2]
+    assert milestone_rows(content)[1]["Depende de"] == "1"
+
+
+def _render(content):  # type: ignore[no-untyped-def]  # AppTest runs it as a standalone script
+    from nicheradar.flow_research_dashboard import render_dossier as render
+
+    render(content)
+
+
+def test_a_stored_v1_dossier_still_renders_with_a_notice() -> None:
+    legacy = {k: v for k, v in stored_shape().items() if k not in ("rights", "automation_plan")}
+    legacy["schema_version"] = "dossier-v1"
+    app = AppTest.from_function(_render, kwargs={"content": legacy}).run()
+    assert not app.exception
+    assert any("no evalúa derechos" in item.value for item in app.caption)
+
+
+def test_a_v2_dossier_renders_its_rights_and_plan_sections() -> None:
+    app = AppTest.from_function(_render, kwargs={"content": stored_shape()}).run()
+    assert not app.exception
+    titles = [item.value for item in app.markdown]
+    assert "**Derechos del material**" in titles
+    assert "**Plan de automatización por etapa**" in titles
+    assert "**Hitos de implementación**" in titles
 
 
 def backend_for(monkeypatch: pytest.MonkeyPatch, engine: Engine) -> TestClient:

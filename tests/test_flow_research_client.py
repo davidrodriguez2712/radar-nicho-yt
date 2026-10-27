@@ -111,7 +111,7 @@ def test_submit_refuses_a_locally_invalid_dossier_without_calling_the_api(
 def test_the_schema_command_prints_the_contract(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["schema"]) == 0
     schema = json.loads(capsys.readouterr().out)
-    assert "verdict" in schema["properties"] and schema["title"] == "Dossier"
+    assert "verdict" in schema["properties"] and schema["title"] == "DossierV2"
 
 
 def test_the_skill_names_every_command_and_forbids_leaking_the_token() -> None:

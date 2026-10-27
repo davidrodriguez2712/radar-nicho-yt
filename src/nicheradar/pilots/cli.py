@@ -80,6 +80,11 @@ def _parser() -> argparse.ArgumentParser:
     lanzar.add_argument("--close-after", type=int, default=2)
     lanzar.add_argument("--valid-days", type=int, default=14)
     lanzar.add_argument("--accept-no-go", action="store_true")
+    lanzar.add_argument(
+        "--accept-gate-failure",
+        action="store_true",
+        help="autorizar aunque falle una compuerta de selección (queda registrado)",
+    )
     lanzar.add_argument("--supersedes")
     decide = commands.add_parser("decide", help="decidir: seguir o cerrar")
     decide.add_argument("pilot_id")
@@ -120,6 +125,7 @@ def _authorize_body(args: argparse.Namespace) -> dict[str, Any]:
         "valid_days": args.valid_days,
         "authorized_by": args.authorized_by,
         "accept_no_go": args.accept_no_go,
+        "accept_gate_failure": args.accept_gate_failure,
         "target_channel": args.target_channel,
         "supersedes": args.supersedes,
     }

@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import Connection
 
 from nicheradar.config import Settings
+from nicheradar.flow_research.gates import Gates
 from nicheradar.pilots import service, tokens
 from nicheradar.pilots.contracts import (
     CHANNEL_ID,
@@ -57,6 +58,7 @@ class AuthorizeRequest(BaseModel):
     valid_days: int = Field(default=service.DEFAULT_VALID_DAYS, ge=1, le=60)
     authorized_by: str = Field(min_length=1, max_length=160)
     accept_no_go: bool = False
+    accept_gate_failure: bool = False
     supersedes: str | None = Field(default=None, pattern=r"^pil_[0-9]{8}_[a-z0-9-]{1,40}$")
 
 
@@ -87,7 +89,10 @@ class TokenRequest(BaseModel):
 
 def _http(error: service.PilotError) -> HTTPException:
     status = {"not_found": 404, "forbidden": 403, "gone": 410}.get(error.code, 409)
-    return HTTPException(status, {"code": error.code, "message": service.MESSAGES[error.code]})
+    detail: dict[str, Any] = {"code": error.code, "message": service.MESSAGES[error.code]}
+    if error.reasons:
+        detail["reasons"] = error.reasons
+    return HTTPException(status, detail)
 
 
 def _invalid(error: service.PilotError) -> JSONResponse:
@@ -153,6 +158,8 @@ def pilots_router(
                 supersedes=body.supersedes,
                 now=clock(),
                 timezone=config.timezone,
+                gates=Gates.from_settings(config),
+                accept_gate_failure=body.accept_gate_failure,
             )
         except service.PilotError as error:
             if error.code == "invalid":
