@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     market_intel_live_enabled: bool = False
     # Compuertas de selección (2026-10-26). Los umbrales son supuestos iniciales del agente, no
     # datos medidos: ajústalos con evidencia. No cambian los scores; solo frenan el flujo.
-    gate_min_automation: int = Field(default=70, ge=0, le=100)
+    gate_min_automation: int = Field(default=90, ge=0, le=100)
     gate_max_human_minutes: int = Field(default=60, ge=0, le=10_000)
     gate_block_high_policy_risk: bool = True
 
