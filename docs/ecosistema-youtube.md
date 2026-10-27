@@ -13,6 +13,11 @@ se marca como `(existe)`.
 | Foundry de YouTube | `~/Foundries/david-youtube-foundry` (existe, solo documentos) | Guardar el método reutilizable: formatos, workflows, recetas y puertas de calidad | Contener código, claves ni datos de un canal |
 | Tú | | Autorizar el inicio, elegir la postura editorial, publicar, decidir seguir o cerrar | |
 
+> **Canales operados por el agente (2026-10-26).** Si el propietario lo decide, el agente se encarga de
+> todo lo que no exige identidad ni un clic interactivo, incluida la subida por API. El reparto, las
+> compuertas y los criterios están en [`contracts/channel-onboarding-v1.md`](contracts/channel-onboarding-v1.md) y
+> los pasos en [`runbook-canal-piloto.md`](runbook-canal-piloto.md). Primer caso: `canal-speedrun-ledger`.
+
 Reglas del core de foundries que se respetan: un canal es un proyecto (repo propio, claves y base
 de datos propias); un proyecto referencia al foundry por `nombre@versión` y nunca copia sus
 objetos; la evidencia vive en el proyecto y al foundry solo llega un resumen.
@@ -183,7 +188,7 @@ falta **tokens por canal con permiso solo sobre sus propios pilotos**.
 5. Manifiesto y `.nicheradar/` en `canal-historias`, sin cambiar su código. **Hecho como borrador (2026-10-25)**: `.foundry/manifest.yaml` y `.nicheradar/README.md`; faltan `inbox/` y `outbox/`, que dependen del punto 4.
 6. Decisión y workflow en el foundry. **Hecho como borrador (2026-10-25)**: `DEC-YT-0004` y `pilot-lifecycle@0.1.0` (`experimental`, sin ejecución real).
 7. `(hecho)` Panel de portafolio en el dashboard (el D6 del rediseño, de solo lectura).
-8. Canal 2 copiando `canal-historias`; después, extraer la plantilla genérica al foundry.
+8. Canal 2 copiando `canal-historias`; después, extraer la plantilla genérica al foundry. **En curso (2026-10-26)**: `canal-speedrun-ledger`; la tabla de estados y el permiso `--upload` están hechos, ver [`contracts/channel-onboarding-v1.md`](contracts/channel-onboarding-v1.md).
 
 ## 10. Límites que siguen valiendo
 
@@ -205,6 +210,7 @@ falta **tokens por canal con permiso solo sobre sus propios pilotos**.
 | 5 | Hitos fallidos para cerrar | Editable solo al autorizar, nunca después |
 | 6 | Quién genera el reporte | Un script aparte en el canal, con su base en solo lectura |
 | 7 | Quién traduce los estados | NicheRadar, con una tabla por canal (el reporte lleva `source_state`) |
+| 8 | Canal 2 operado por el agente (2026-10-26) | `canal-speedrun-ledger`; sube por API (A2), automatiza al máximo aceptando el riesgo de política (B2), aprobación única de producción para el piloto (C). Ver `channel-onboarding-v1` |
 
 ## 12. Preguntas abiertas
 

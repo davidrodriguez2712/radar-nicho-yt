@@ -1,6 +1,8 @@
 # Pilotos de canal: guía de implementación
 
 Diseño y reparto de responsabilidades: [`ecosistema-youtube.md`](ecosistema-youtube.md).
+Alta de un canal operado por el agente: [`contracts/channel-onboarding-v1.md`](contracts/channel-onboarding-v1.md) y
+[`runbook-canal-piloto.md`](runbook-canal-piloto.md).
 Formatos exactos (fuente única): [`contracts/pilot-package-v1.md`](contracts/pilot-package-v1.md)
 [`contracts/channel-report-v1.md`](contracts/channel-report-v1.md) (formato largo) y
 [`contracts/channel-report-v2.md`](contracts/channel-report-v2.md) (Shorts). Este documento no los repite:
@@ -72,6 +74,10 @@ El canal manda su estado interno (`source_state`); NicheRadar lo traduce con
 
 Para alta de otro canal: añadir su tabla en `TABLES` (y su estado «publicado» en
 `PUBLISHED_STATE` si depende de la visibilidad) y una prueba.
+
+`canal-speedrun-ledger` ya está dado de alta y comparte la tabla de `canal-historias` (copia su máquina
+de estados); `tests/test_channel_onboarding.py` fija los 16 estados. Proceso completo de alta de un canal:
+[`contracts/channel-onboarding-v1.md`](contracts/channel-onboarding-v1.md) y [`runbook-canal-piloto.md`](runbook-canal-piloto.md).
 
 ## Cómo se usa
 
