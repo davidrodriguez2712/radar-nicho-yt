@@ -412,7 +412,7 @@ def test_a_listing_with_an_unresolved_charge_is_skipped_without_stopping_the_sta
         return RunContext(
             engine=isolated_engine,
             config=settings_llm_enabled(),
-            source=SimpleNamespace(name="dealbaron"),  # type: ignore[arg-type]
+            source=SimpleNamespace(name="dealbaron"),
             run_id=uuid4(),
             analysis_run=run,
             owner="test-worker",
