@@ -154,6 +154,11 @@ def stage_classify(ctx: RunContext) -> dict[str, Any]:
                 selector=ctx.selector,
             )
             classification = answer["classification"]
+            if classification is None and answer["reason"] == "request_in_progress":
+                # An earlier request for this listing never resolved (unknown charge). It stays
+                # blocked for a person to reconcile; it must not freeze the rest of the backlog.
+                outcome["blocked_skips"] = outcome.get("blocked_skips", 0) + 1
+                continue
             if classification is None:
                 outcome["stopped_reason"] = answer["reason"]
                 return
