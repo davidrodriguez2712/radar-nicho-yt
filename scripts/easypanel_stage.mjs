@@ -265,6 +265,20 @@ try {
       cli(['app','deploy',`${project}/${name}`,'--yes']);
       console.log(JSON.stringify({name,configured:true,mode:'live',paused:true,providerCredential:isDashboard?false:true}));
     }
+  } else if(action==='set-market-caps') {
+    // Solo el worker corre el scraper; cambia únicamente dos topes de entorno (decisión 2026-10-27).
+    const name='nicheradar-worker';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    if(env.NR_MODE!=='live') throw new Error('Market caps preconditions failed');
+    const next={...env,NR_MARKET_INTEL_DETAIL_CAP_PER_RUN:'600',NR_MARKET_INTEL_CLASSIFY_CAP_PER_RUN:'500'};
+    cli(['app','update-env',`${project}/${name}`,'--yes'],{env:Object.entries(next).map(([k,v])=>`${k}=${v}`).join('\n')});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['source','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected non-environment change');
+    }
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,detailCap:600,classifyCap:500,deployRequested:true}));
   } else if(action==='deploy-quality-code') {
     const name=process.argv[3];
     if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
