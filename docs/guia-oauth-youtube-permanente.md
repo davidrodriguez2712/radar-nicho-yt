@@ -17,30 +17,48 @@ Cada semana el exportador del canal fallaría con `invalid_grant` hasta volver a
 Para **uso propio** (una app tuya que lee tu propio canal) no necesitas la verificación completa de
 Google. Se publica la app y se acepta el aviso de «app no verificada».
 
-### Paso a paso
+### Paso a paso (verificado con la consola real el 2026-10-26)
 
-1. Entra con la cuenta de Google del canal en <https://console.cloud.google.com> y selecciona el
-   proyecto del canal (p. ej. `canal-gaming`).
-2. Abre **Google Auth Platform** (antes «Pantalla de consentimiento de OAuth»):
-   <https://console.cloud.google.com/auth/overview>. Si te lo pide, completa la configuración: nombre
-   de la app, correo de asistencia, **Público: Externo**, correo de contacto.
-3. **Acceso a los datos** (*Data Access*) → **Agregar o quitar alcances** → añade solo:
+1. Entra en <https://console.cloud.google.com> y crea un **proyecto nuevo** por canal (p. ej.
+   `canal-gaming-yt`). Puede estar en cualquier cuenta tuya: la que autoriza en el paso 7 es la
+   dueña del canal, no la del proyecto.
+2. **APIs y servicios → Biblioteca**: habilita **YouTube Data API v3** y **YouTube Analytics API**.
+3. **Google Auth Platform → Comenzar**: nombre de la app, correo de asistencia, **Público: Externo**,
+   correo de contacto.
+4. **Acceso a los datos** → añade solo estos dos permisos de lectura:
    - `https://www.googleapis.com/auth/youtube.readonly`
    - `https://www.googleapis.com/auth/yt-analytics.readonly`
+5. **Información de la marca**. **No se puede dejar en blanco**: sin nombre, correo de asistencia,
+   **página principal** y **política de privacidad** el botón *Publicar app* sigue deshabilitado
+   («Se requieren un nombre de app, un correo electrónico de asistencia, una URL de página principal y
+   una URL de política de privacidad válidos»). Hacen falta dos páginas públicas y su dominio en
+   **Dominios autorizados**. Lo más simple es un sitio estático mínimo en Vercel (`*.vercel.app`, que
+   Google acepta como dominio autorizado). Ejemplo ya publicado para el canal gaming:
+   `https://canal-gaming-sync.vercel.app/` y `…/privacy.html`; dominio autorizado
+   `canal-gaming-sync.vercel.app`. Deja vacíos el logotipo (subirlo obliga a verificar) y las
+   condiciones del servicio.
+6. **Clientes → Crear cliente → App de escritorio**. Descarga el JSON y guárdalo fuera del repo, en
+   `~/Library/Application Support/NicheRadar/oauth/` (carpeta 0700, archivo 0600).
+7. **Público → Publicar app** → confirmar. El estado pasa a **«En producción»**. Aparecerá un banner
+   «Tu app requiere una verificación»: se ignora para uso propio. No pulses «Prepare for
+   verification».
+8. Autoriza **una sola vez** con la cuenta dueña del canal, ya en producción:
 
-   Nada de escritura (`youtube`, `youtube.upload`) si el canal no va a subir videos por API. Menos
-   permisos, menos riesgo si se filtra el token.
-4. **Público** (*Audience*): estado de publicación → botón **Publicar la aplicación** (*Publish app*)
-   → confirmar. El estado debe pasar de «Pruebas» a **«En producción»**.
-5. **Clientes** (*Clients*) → **Crear cliente** → tipo **Aplicación de escritorio**. Descarga el JSON
-   del cliente. Si ya habías creado el cliente en modo Pruebas, **no sirve el token viejo**: hay que
-   autorizar de nuevo después de publicar.
-6. Autoriza **una vez**, ya en producción, con tu cuenta del canal. Verás «Google no ha verificado
-   esta app» → **Avanzado** → **Ir a <nombre de la app> (no seguro)** → marca los dos permisos →
-   **Continuar**. Si la cuenta tiene un canal de marca (*brand account*), elige el canal correcto en
-   la pantalla de selección.
-7. Guarda el **refresh token** y el JSON del cliente fuera del repo, con permisos 0600 (carpeta
-   privada del canal o gestor de contraseñas). Nunca en el chat ni en `git`.
+   ```sh
+   uv run python scripts/youtube_oauth.py authorize
+   ```
+
+   Abre el navegador. Verás «Google no ha verificado esta app» → **Avanzado** → **Ir a … (no seguro)**
+   → marca los dos permisos → **Continuar**. Si el canal es de marca, elige el canal correcto. El
+   script guarda el refresh token en `~/Library/Application Support/NicheRadar/oauth/canal-gaming-token.json`
+   (0600) y no imprime ningún secreto.
+9. Comprueba que funciona contra las dos APIs:
+
+   ```sh
+   uv run python scripts/youtube_oauth.py check
+   ```
+
+   Muestra el id y el título del canal y si Analytics responde.
 
 ## Qué lo hace «permanente» y qué todavía lo puede invalidar
 
