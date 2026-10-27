@@ -385,3 +385,56 @@ def test_injected_label_outside_the_list_comes_back_invalid(isolated_engine: Eng
 def test_an_incomplete_response_is_marked_as_transient() -> None:
     result = parse_classification_response(payload(answer(), status="incomplete"), TARIFF, LABELS)
     assert result.reason == "incomplete_response" and result.niche_label is None
+
+
+@pytest.mark.postgres
+def test_a_listing_with_an_unresolved_charge_is_skipped_without_stopping_the_stage(
+    isolated_engine: Engine,
+) -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from nicheradar.market_intel.context import RunContext
+    from nicheradar.market_intel.stages import stage_classify
+
+    def unreachable(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("no route")
+
+    with isolated_engine.begin() as connection:
+        profile_id = seed_profile(connection, funded_profile(), initial_catalog())
+        first_run = seed_run(connection, profile_id)
+        second_run = seed_run(connection, profile_id)
+        seed_policies(connection)
+        stuck = listing_in(connection, "1", income="900")  # first in the queue
+        others = {listing_in(connection, "2"), listing_in(connection, "3")}
+
+    def context(run: dict[str, Any], client: OpenAISelector) -> RunContext:
+        return RunContext(
+            engine=isolated_engine,
+            config=settings_llm_enabled(),
+            source=SimpleNamespace(name="dealbaron"),
+            run_id=uuid4(),
+            analysis_run=run,
+            owner="test-worker",
+            started_at=NOW,
+            selector=client,
+            clock=lambda: NOW,
+        )
+
+    broken = OpenAISelector(
+        SecretStr("secret-for-mocked-http-only"), transport=httpx.MockTransport(unreachable)
+    )
+    first = stage_classify(context(first_run, broken))
+    assert first["stopped_reason"] == "llm_failed" and first["classified"] == 0
+
+    # The next day's run meets the same listing again; its unresolved request must not freeze
+    # the whole backlog behind it.
+    second = stage_classify(context(second_run, selector(answer())))
+    assert second["classified"] == 2
+    assert second["blocked_skips"] == 1
+    assert "stopped_reason" not in second
+    with isolated_engine.connect() as connection:
+        classified = set(
+            connection.execute(sa.select(listing_classifications.c.listing_id)).scalars()
+        )
+    assert classified == others and stuck not in classified
