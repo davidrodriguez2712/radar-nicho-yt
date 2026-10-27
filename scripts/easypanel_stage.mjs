@@ -58,6 +58,9 @@ const languageDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:c889d5
 const stopRulesBackend = 'davidrodriguez2712/nicheradar-backend@sha256:8f437decfea1f89a38e0e570cf68efa5804f99c873b77277bc173c78d8541366';
 const stopRulesWorker = 'davidrodriguez2712/nicheradar-worker@sha256:e66e49927a35b03945f34bf8cb064a35bfb6acdf5b364269e1d09a8f0322aaf0';
 const stopRulesDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:70ba90d5f7ae56f816ecda1fbc86f9c81c54c6e4a1fc829092a4a71cee5c3202';
+const shortsReportBackend = 'davidrodriguez2712/nicheradar-backend@sha256:d0e5e1a6fd6053006866394e6404a59e87c46f308e95691f55b24b1e025e3372';
+const shortsReportWorker = 'davidrodriguez2712/nicheradar-worker@sha256:76914e257c87df3944ba3b4ee65fd476d2166bc772edc35d9a294b8e42c15edc';
+const shortsReportDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:fe0c627c3aa6b9b7bfa3107433a623457c25c3041ee7c3aeeef79e76aa860017';
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
 const resources = (cpu) => ({memoryLimit:512,memoryReservation:128,cpuLimit:cpu,cpuReservation:0.1});
@@ -569,6 +572,42 @@ try {
        env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
       throw new Error('Stop rules release preconditions failed');
     const image=isDashboard?stopRulesDashboard:name==='nicheradar-worker'?stopRulesWorker:stopRulesBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='migrate-live-0017') {
+    const env=appEnv('nicheradar-api');
+    // NR_MARKET_INTEL_LIVE_ENABLED puede ser true (decisión del propietario tras 012): se exige
+    // que el radar esté pausado y se comprueba aparte que la programación de mercado también.
+    if(env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true' || env.NR_DATABASE_URL!==dbURL())
+      throw new Error('Live migration preconditions failed');
+    const code='import json,os,subprocess,sys; os.environ.update(json.load(sys.stdin)); sys.exit(subprocess.call(["alembic","upgrade","head"]))';
+    const args=['docker','run','--rm','-i','--name','nicheradar-migration-20261026-016',
+      '--network','easypanel-proy1-credito-riesgo','--memory','512m','--cpus','1',
+      '--read-only','--tmpfs','/tmp:rw,noexec,nosuid,size=64m','--cap-drop','ALL',
+      '--security-opt','no-new-privileges',shortsReportBackend,'python','-c',code];
+    const result=spawnSync('ssh',[...sshArgs,args.map(quote).join(' ')],{
+      input:JSON.stringify({NR_DATABASE_URL:env.NR_DATABASE_URL}),
+      encoding:'utf8',timeout:180000,maxBuffer:1024*1024});
+    console.log(JSON.stringify({migrationExit:result.status,processError:result.error?.code ?? null}));
+    if(result.error || result.status!==0) throw new Error('Migration failed; raw response withheld. Inspect only this migration safely.');
+  } else if(action==='deploy-shorts-report-code') {
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?stopRulesDashboard:name==='nicheradar-worker'?stopRulesWorker:stopRulesBackend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Shorts report release preconditions failed');
+    const image=isDashboard?shortsReportDashboard:name==='nicheradar-worker'?shortsReportWorker:shortsReportBackend;
     cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
     const after=cli(['app','inspect',`${project}/${name}`]);
     for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
