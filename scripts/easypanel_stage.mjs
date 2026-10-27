@@ -690,7 +690,7 @@ try {
        before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
        env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
       throw new Error('Classify skip release preconditions failed');
-    const image=isDashboard?CLS_D:name==='nicheradar-worker'?CLS_W:CLS_B;
+    const image=isDashboard?classifyDashboard:name==='nicheradar-worker'?classifyWorker:classifyBackend;
     cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
     const after=cli(['app','inspect',`${project}/${name}`]);
     for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
