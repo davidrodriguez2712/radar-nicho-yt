@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import Connection
 
 from nicheradar.config import Settings
+from nicheradar.flow_research.gates import Gates
 from nicheradar.flow_research.service import (
     MESSAGES,
     FlowResearchError,
@@ -30,11 +31,20 @@ Owner = Annotated[str, Field(min_length=1, max_length=120)]
 Language = Annotated[str, Field(pattern=r"^[a-z]{2}(-[A-Z]{2})?$")]
 
 
+class GateOverride(BaseModel):
+    """A human's explicit, recorded decision to research a niche that fails a selection gate."""
+
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=10, max_length=500)
+    by: str = Field(min_length=1, max_length=160)
+
+
 class CreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     niche_label: str = Field(min_length=1, max_length=140)
     format: Format
     language: Language
+    gate_override: GateOverride | None = None
 
 
 class ClaimRequest(BaseModel):
@@ -50,7 +60,10 @@ class SubmitRequest(BaseModel):
 
 def _http(error: FlowResearchError) -> HTTPException:
     status = 404 if error.code == "not_found" else 409
-    return HTTPException(status, {"code": error.code, "message": MESSAGES[error.code]})
+    detail: dict[str, Any] = {"code": error.code, "message": MESSAGES[error.code]}
+    if error.reasons:
+        detail["reasons"] = error.reasons
+    return HTTPException(status, detail)
 
 
 def flow_research_router(
@@ -74,6 +87,10 @@ def flow_research_router(
                 request.language,
                 clock(),
                 config.timezone,
+                gates=Gates.from_settings(config),
+                gate_override=None
+                if request.gate_override is None
+                else request.gate_override.model_dump(),
             )
         except FlowResearchError as error:
             raise _http(error) from error
@@ -127,7 +144,14 @@ def flow_research_router(
         request_id: UUID, request: SubmitRequest, connection: Annotated[Connection, Depends(db)]
     ) -> Any:
         try:
-            result = submit_dossier(connection, request_id, request.owner, request.dossier, clock())
+            result = submit_dossier(
+                connection,
+                request_id,
+                request.owner,
+                request.dossier,
+                clock(),
+                Gates.from_settings(config),
+            )
         except FlowResearchError as error:
             raise _http(error) from error
         if result["accepted"]:

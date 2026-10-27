@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic_core import to_jsonable_python
 
+from nicheradar.flow_research.gates import Gates, annotation
+
 MAX_EVIDENCE_LISTINGS = 10
 REASONS = {
     "not_tentative": "El nicho debe estar marcado como tentativo.",
@@ -21,8 +23,13 @@ def ineligible_reason(niche: dict[str, Any]) -> str | None:
     return None
 
 
-def build_evidence(detail: dict[str, Any], language: str) -> dict[str, Any]:
-    """Freeze scores, metrics, language, history and the top verified listings (income-ordered)."""
+def build_evidence(
+    detail: dict[str, Any],
+    language: str,
+    gates: Gates,
+    gate_override: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Freeze scores, metrics, language, gate result and the top verified listings."""
     verified = [item for item in detail["listings"] if item.get("verification") == "verified"]
     package = {
         "niche": detail["niche"],
@@ -32,6 +39,9 @@ def build_evidence(detail: dict[str, Any], language: str) -> dict[str, Any]:
         "verified_count": len(verified),
         "listing_count": len(detail["listings"]),
         "history": detail["history"],
+        "gate": annotation(detail["niche"], gates),
     }
+    if gate_override is not None:
+        package["gate_override"] = gate_override
     frozen: dict[str, Any] = to_jsonable_python(package)
     return frozen

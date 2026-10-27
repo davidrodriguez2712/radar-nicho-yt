@@ -44,6 +44,19 @@ class FlowResearchClient:
             raise _fail(response)
         return response.json()
 
+    def create(
+        self,
+        niche_label: str,
+        format: str,
+        language: str,
+        gate_override: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"niche_label": niche_label, "format": format, "language": language}
+        if gate_override is not None:
+            body["gate_override"] = gate_override
+        created: dict[str, Any] = self._json(self.http.post(PREFIX, json=body), accept=(200, 201))
+        return created
+
     def pending(self) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = self._json(self.http.get(PREFIX + "/pending"))["items"]
         return items

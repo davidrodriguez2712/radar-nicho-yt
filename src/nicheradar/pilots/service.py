@@ -16,6 +16,13 @@ from uuid import UUID, uuid4
 from sqlalchemy import Connection, delete, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
+from nicheradar.flow_research import gates as gate_rules
+from nicheradar.flow_research.gates import (
+    GateReason,
+    Gates,
+    authorization_reasons,
+    describe,
+)
 from nicheradar.flow_research.service import get_request
 from nicheradar.market_intel.niches import niche_detail
 from nicheradar.pilots import rules, tokens
@@ -48,6 +55,7 @@ MESSAGES = {
     "niche_mismatch": "El dossier no corresponde al nicho y formato indicados.",
     "language_unknown": "El encargo no tiene idioma: investígalo de nuevo eligiendo uno.",
     "no_go_requires_acceptance": "El dossier recomienda no avanzar: hay que aceptarlo.",
+    "gate_failed": "El piloto no pasa las compuertas de selección.",
     "channel_busy": "Ese canal ya tiene un piloto abierto.",
     "bad_transition": "El piloto no está en un estado que permita esa acción.",
     "hash_mismatch": "La huella no coincide con la del paquete entregado.",
@@ -100,10 +108,16 @@ DEFAULT_STOP_RULES: list[dict[str, Any]] = [
 
 
 class PilotError(Exception):
-    def __init__(self, code: str, problems: list[Problem] | None = None) -> None:
+    def __init__(
+        self,
+        code: str,
+        problems: list[Problem] | None = None,
+        reasons: list[GateReason] | None = None,
+    ) -> None:
         super().__init__(MESSAGES[code])
         self.code = code
         self.problems = problems or []
+        self.reasons = reasons or []
 
 
 def _plain(value: Any) -> Any:
@@ -232,8 +246,14 @@ def authorize(
     supersedes: str | None,
     now: datetime,
     timezone: str = "UTC",
+    gates: Gates | None = None,
+    accept_gate_failure: bool = False,
 ) -> dict[str, Any]:
-    """El humano pulsa «Lanzar»: se congela el paquete (evidencia, dossier, presupuesto, reglas)."""
+    """El humano pulsa «Lanzar»: se congela el paquete (evidencia, dossier, presupuesto, reglas).
+
+    Repite las compuertas de selección sobre el dossier guardado: sin ``accept_gate_failure``
+    falla con ``gate_failed``; con él, queda registrado y se marca en la tesis del paquete.
+    """
     request = get_request(connection, dossier_request_id)
     if request is None:
         raise PilotError("not_found")
@@ -254,6 +274,14 @@ def authorize(
     detail = niche_detail(connection, niche_label, format, now, timezone)
     if detail is None:
         raise PilotError("not_found")
+    failures = authorization_reasons(
+        dossier, request["evidence"]["niche"], gates or gate_rules.DEFAULT_GATES
+    )
+    if failures:
+        if not accept_gate_failure:
+            raise PilotError("gate_failed", reasons=failures)
+        thesis = f"[COMPUERTAS NO CUMPLIDAS aceptadas por el humano: {describe(failures)}] {thesis}"
+        thesis = thesis[:1500]
     previous = None
     if supersedes is not None:
         previous = (
@@ -330,6 +358,8 @@ def authorize(
     except IntegrityError as error:
         raise PilotError("channel_busy") from error
     _log(connection, pk, authorized_by, "authorized", now, sha256=payload["package_sha256"])
+    if failures:
+        _log(connection, pk, authorized_by, "gate_failure_accepted", now, reasons=failures)
     return {"pilot_id": pilot_id, "status": "autorizado", "package": payload}
 
 

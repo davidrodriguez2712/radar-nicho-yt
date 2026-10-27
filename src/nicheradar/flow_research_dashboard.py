@@ -110,6 +110,72 @@ def tool_rows(content: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+RIGHTS_VERDICT = {
+    "cleared": "resuelto",
+    "conditional": "con condiciones",
+    "blocked": "bloqueado",
+}
+ORIGIN = {
+    "own_capture": "captura propia",
+    "own_generation": "generación propia",
+    "licensed": "con licencia",
+    "platform_policy": "política del editor o plataforma",
+    "public_domain": "dominio público",
+    "third_party": "de terceros",
+    "unknown": "sin determinar",
+}
+
+
+def rights_rows(content: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "Material": item["kind"],
+            "Descripción": item["description"],
+            "Origen": ORIGIN[item["origin"]],
+            "Licencia o política": item["license_or_policy"],
+            "Requiere permiso": "sí" if item["requires_permission"] else "no",
+            "Plan del permiso": item.get("permission_plan") or "",
+            "Fuente": item.get("source_id") or "",
+        }
+        for item in content["rights"]["materials"]
+    ]
+
+
+def stage_rows(content: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "Etapa": stage["step"],
+            "Automatización": AUTOMATION[stage["mode"]],
+            "Cómo se automatiza": stage["approach"],
+            "Herramientas": ", ".join(
+                f"{tool['name']} ({tool['interface']}, US$ {float(tool['cost_usd_per_video']):.2f}"
+                " por video)"
+                for tool in stage["tools"]
+            ),
+            "Entrada": stage["inputs"],
+            "Salida": stage["outputs"],
+            "Compuerta de calidad": stage["quality_gate"],
+            "Si falla": f"{stage['failure_mode']} → {stage['retry_policy']}",
+            "Minutos humanos": stage["human_minutes_per_video"],
+            "Sigue siendo humano": stage.get("stays_human") or "",
+        }
+        for stage in content["automation_plan"]["stages"]
+    ]
+
+
+def milestone_rows(content: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "Hito": item["order"],
+            "Nombre": item["name"],
+            "Descripción": item["description"],
+            "Criterios de aceptación": " | ".join(item["acceptance_criteria"]),
+            "Depende de": ", ".join(str(dep) for dep in item["depends_on"]),
+        }
+        for item in sorted(content["automation_plan"]["milestones"], key=lambda m: m["order"])
+    ]
+
+
 def competitor_rows(content: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         {
@@ -160,6 +226,17 @@ def render_dossier(content: dict[str, Any]) -> None:
         st.text("Riesgo: " + risk)
     for unknown in verdict["unknowns"]:
         st.text("No verificado: " + unknown)
+    if "rights" in content:
+        st.markdown("**Derechos del material**")
+        st.text(f"Veredicto: {RIGHTS_VERDICT[content['rights']['verdict']]}")
+        st.text(content["rights"]["summary"])
+        st.dataframe(rights_rows(content), hide_index=True, width="stretch")
+        for condition in content["rights"]["conditions"]:
+            st.text("Condición: " + condition)
+    else:
+        st.caption(
+            f"Dossier {content['schema_version']}: no evalúa derechos ni plan de automatización."
+        )
     st.markdown("**Competencia de referencia**")
     st.dataframe(competitor_rows(content), hide_index=True, width="stretch")
     st.markdown("**Flujo de producción**")
@@ -177,6 +254,15 @@ def render_dossier(content: dict[str, Any]) -> None:
         st.text("Supuesto: " + assumption)
     st.markdown("**Herramientas**")
     st.dataframe(tool_rows(content), hide_index=True, width="stretch")
+    if "automation_plan" in content:
+        plan = content["automation_plan"]
+        minutes = sum(step["human_minutes_per_video"] for step in content["production_flow"])
+        st.markdown("**Plan de automatización por etapa**")
+        st.text(f"Minutos humanos por video (suma del flujo): {minutes}")
+        st.text(plan["summary"])
+        st.dataframe(stage_rows(content), hide_index=True, width="stretch")
+        st.markdown("**Hitos de implementación**")
+        st.dataframe(milestone_rows(content), hide_index=True, width="stretch")
     st.markdown("**Mapa de automatización**")
     for item in content["automation_map"]:
         st.text(
