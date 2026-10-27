@@ -2,6 +2,7 @@
 """Autoriza una sola vez el acceso de SOLO LECTURA a un canal de YouTube y guarda el refresh token.
 
     youtube_oauth.py authorize   # abre el navegador; guarda el token con permisos 0600
+    youtube_oauth.py authorize --upload   # además pide subir videos (escritura)
     youtube_oauth.py check       # comprueba el token contra la Data API y la Analytics API
 
 Solo biblioteca estándar. Flujo de «app de escritorio» con PKCE y redirección a 127.0.0.1.
@@ -33,6 +34,8 @@ SCOPES = (
     "https://www.googleapis.com/auth/youtube.readonly",
     "https://www.googleapis.com/auth/yt-analytics.readonly",
 )
+# Permiso de ESCRITURA (subir videos). Aparte de SCOPES y nunca por defecto: solo con `--upload`.
+UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
 AUTH_URI = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 CHANNELS_URL = "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true"
@@ -78,12 +81,15 @@ def pkce_pair() -> tuple[str, str]:
     return verifier, base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
 
-def authorization_url(client_id: str, redirect_uri: str, state: str, challenge: str) -> str:
+def authorization_url(
+    client_id: str, redirect_uri: str, state: str, challenge: str, upload: bool = False
+) -> str:
+    scopes = (*SCOPES, UPLOAD_SCOPE) if upload else SCOPES
     query = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": " ".join(SCOPES),
+        "scope": " ".join(scopes),
         "state": state,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
@@ -120,7 +126,12 @@ def http_get(url: str, bearer: str) -> dict[str, Any]:
 
 
 def exchange_code(
-    client: Mapping[str, str], code: str, verifier: str, redirect_uri: str, post: Post
+    client: Mapping[str, str],
+    code: str,
+    verifier: str,
+    redirect_uri: str,
+    post: Post,
+    upload: bool = False,
 ) -> dict[str, Any]:
     token = post(
         TOKEN_URI,
@@ -141,6 +152,8 @@ def exchange_code(
     granted = set(str(token.get("scope", "")).split())
     if not set(SCOPES) <= granted:
         raise OAuthError("no se concedieron los dos permisos de solo lectura")
+    if upload and UPLOAD_SCOPE not in granted:
+        raise OAuthError("no se concedió el permiso youtube.upload: márcalo al autorizar")
     return token
 
 
@@ -210,23 +223,27 @@ def wait_for_code(server: HTTPServer, state: str) -> str:
     return result["code"]
 
 
-def authorize(client_path: Path, token_path: Path, force: bool) -> None:
+def authorize(client_path: Path, token_path: Path, force: bool, upload: bool = False) -> None:
     client = load_client(client_path)
     server = HTTPServer(("127.0.0.1", 0), _Callback)
     redirect = f"http://127.0.0.1:{server.server_port}"
     verifier, challenge = pkce_pair()
     state = secrets.token_urlsafe(24)
-    url = authorization_url(client["client_id"], redirect, state, challenge)
-    print("Abriendo el navegador. Entra con la cuenta DUEÑA DEL CANAL y acepta los dos permisos.")
+    url = authorization_url(client["client_id"], redirect, state, challenge, upload)
+    count = 3 if upload else 2
+    print(
+        "Abriendo el navegador. Entra con la cuenta DUEÑA DEL CANAL y acepta los "
+        f"{count} permisos" + (" (incluye SUBIR videos)." if upload else " de solo lectura.")
+    )
     print("Si no se abre, copia esta dirección en el navegador:\n" + url)
     webbrowser.open(url)
     try:
         code = wait_for_code(server, state)
     finally:
         server.server_close()
-    token = exchange_code(client, code, verifier, redirect, http_post)
+    token = exchange_code(client, code, verifier, redirect, http_post, upload)
     save_token(token_path, token, datetime.now(UTC), force)
-    print(json.dumps({"token_saved": True, "path": str(token_path), "scopes": 2}))
+    print(json.dumps({"token_saved": True, "path": str(token_path), "scopes": count}))
 
 
 def check(
@@ -234,6 +251,7 @@ def check(
 ) -> dict[str, Any]:
     client = load_client(client_path)
     bearer = access_token(client, token_path, post)
+    granted = json.loads(token_path.read_text()).get("scopes", [])
     channels = get(CHANNELS_URL, bearer).get("items", [])
     end = datetime.now(UTC).date()
     window = {
@@ -249,6 +267,7 @@ def check(
             {"id": c.get("id"), "title": c.get("snippet", {}).get("title")} for c in channels
         ],
         "analytics_api_ok": isinstance(report.get("rows"), list),
+        "upload_scope": UPLOAD_SCOPE in granted,
     }
 
 
@@ -260,9 +279,14 @@ def main() -> None:
     parser.add_argument(
         "--force", action="store_true", help="authorize: reemplazar un token existente"
     )
+    parser.add_argument(
+        "--upload",
+        action="store_true",
+        help="authorize: añade el permiso de SUBIR videos (escritura); nunca va por defecto",
+    )
     args = parser.parse_args()
     if args.action == "authorize":
-        authorize(args.client, args.token, args.force)
+        authorize(args.client, args.token, args.force, args.upload)
     else:
         print(json.dumps(check(args.client, args.token)))
 

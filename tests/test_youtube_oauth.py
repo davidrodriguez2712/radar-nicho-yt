@@ -109,6 +109,7 @@ def test_check_reads_both_apis_without_printing_secrets(
         "data_api_ok": True,
         "channels": [{"id": "UC1", "title": "Gaming"}],
         "analytics_api_ok": True,
+        "upload_scope": False,
     }
     assert len(seen) == 2
     printed = capsys.readouterr()

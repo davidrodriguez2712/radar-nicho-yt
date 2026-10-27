@@ -60,6 +60,29 @@ Google. Se publica la app y se acepta el aviso de «app no verificada».
 
    Muestra el id y el título del canal y si Analytics responde.
 
+## Permiso para subir videos (`--upload`, decisión A2 del 2026-10-26)
+
+Cuando el agente sube los videos por API hace falta un tercer permiso, de **escritura**:
+`https://www.googleapis.com/auth/youtube.upload`. No va por defecto.
+
+1. En **Google Auth Platform → Acceso a los datos → Agregar o quitar permisos**, añade
+   `youtube.upload` (junto a los dos de lectura) y guarda. La app ya publicada sigue «En producción».
+2. Autoriza de nuevo con la bandera, con la cuenta dueña del canal:
+
+   ```sh
+   uv run python scripts/youtube_oauth.py authorize --upload --force
+   ```
+
+   Si Google no concede el permiso, el script falla y **no** guarda el token. `--force` reemplaza el token
+   de solo lectura anterior.
+3. Comprueba: `uv run python scripts/youtube_oauth.py check` debe mostrar `"upload_scope": true`.
+
+**Restricción de YouTube (verificada en la documentación de `videos.insert`):** los videos subidos por API
+desde un proyecto no verificado creado después del 2020-07-28 quedan **restringidos a privado** hasta que el
+proyecto pasa una auditoría de cumplimiento. `canal-gaming-yt` es nuevo; mientras no se apruebe la
+auditoría, la publicación pública no es automática. Ver el contrato
+[`channel-onboarding-v1`](contracts/channel-onboarding-v1.md), sección «Subida por API».
+
 ## Qué lo hace «permanente» y qué todavía lo puede invalidar
 
 Un refresh token de una app en producción **no tiene** el límite de 7 días. Sigue dejando de
