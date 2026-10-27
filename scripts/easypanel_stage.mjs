@@ -61,6 +61,9 @@ const stopRulesDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:70ba9
 const shortsReportBackend = 'davidrodriguez2712/nicheradar-backend@sha256:d0e5e1a6fd6053006866394e6404a59e87c46f308e95691f55b24b1e025e3372';
 const shortsReportWorker = 'davidrodriguez2712/nicheradar-worker@sha256:76914e257c87df3944ba3b4ee65fd476d2166bc772edc35d9a294b8e42c15edc';
 const shortsReportDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:fe0c627c3aa6b9b7bfa3107433a623457c25c3041ee7c3aeeef79e76aa860017';
+const gatesBackend = 'davidrodriguez2712/nicheradar-backend@sha256:6cbe74615cfe097dcd09be5abb80e336eff9f251fb1975fe172d9737f70040d9';
+const gatesWorker = 'davidrodriguez2712/nicheradar-worker@sha256:b647cf4bbe2a0be0e7d5d652e6148de846968ba1ed4a1ac5f95e213faa9a961e';
+const gatesDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:7cb948776289acd27f40dd00e5ee65b07124ca94fc092fa9bf7e965496692be0';
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
 const resources = (cpu) => ({memoryLimit:512,memoryReservation:128,cpuLimit:cpu,cpuReservation:0.1});
@@ -622,6 +625,26 @@ try {
        env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
       throw new Error('Shorts report release preconditions failed');
     const image=isDashboard?shortsReportDashboard:name==='nicheradar-worker'?shortsReportWorker:shortsReportBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='deploy-gates-code') {
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?shortsReportDashboard:name==='nicheradar-worker'?shortsReportWorker:shortsReportBackend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Gates release preconditions failed');
+    const image=isDashboard?gatesDashboard:name==='nicheradar-worker'?gatesWorker:gatesBackend;
     cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
     const after=cli(['app','inspect',`${project}/${name}`]);
     for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
