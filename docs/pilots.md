@@ -82,6 +82,8 @@ uv run python scripts/pilots.py token-issue --channel canal-historias --label ma
 uv run python scripts/pilots.py authorize --niche-label "…" --format long \
   --dossier-id <uuid> --low 3 --likely 19 --high 41 --max-videos 10 --basis "…" \
   --authorized-by david
+#    (si el piloto no pasa las compuertas de selección falla con gate_failed; --accept-gate-failure
+#     lo acepta de forma explícita y queda registrado: ver docs/flow-research.md)
 # 3. Mac: bajar y reportar (el token es el del canal, no el de servicio)
 export NR_SYNC_URL=http://127.0.0.1:18000 NR_SYNC_TOKEN=nrc_…
 uv run python scripts/channel_sync.py fetch  --channel-dir ~/Programming/youtube-project/canal-historias

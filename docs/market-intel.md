@@ -55,6 +55,11 @@ corrida en `blocked` y **pausa el scraper**.
 (`niche_automation_priors`). Se necesitan al menos 3 rasgos. `policy_risk` se muestra aparte
 (`bajo` < 0,67 ≤ `medio` < 1,34 ≤ `alto`) y nunca se resta.
 
+**Los scores siguen siendo solo un orden**: no bloquean nada. Lo que frena el flujo son las
+[compuertas de selección](flow-research.md#compuertas-de-selección-2026-10-26) de la investigación de
+flujo, que leen estos scores sin cambiarlos (automatización mínima, riesgo de política alto, minutos
+humanos por video y derechos).
+
 Long y Shorts se puntúan por separado. Shorts no tiene benchmark de RPM (`uncalibrated`).
 
 ## Operación
