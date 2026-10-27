@@ -31,8 +31,13 @@ _CANAL_HISTORIAS: dict[str, str] = {
     "FALLO_QA": "blocked",
 }
 
-TABLES: dict[str, dict[str, str]] = {"canal-historias": _CANAL_HISTORIAS}
-PUBLISHED_STATE = {"canal-historias": "PUBLICADO"}
+# `canal-speedrun-ledger` copia la máquina de estados de `canal-historias` (receta del foundry),
+# así que su tabla es la misma. Si el canal cambia su vocabulario, se separa aquí con una prueba.
+TABLES: dict[str, dict[str, str]] = {
+    "canal-historias": _CANAL_HISTORIAS,
+    "canal-speedrun-ledger": _CANAL_HISTORIAS,
+}
+PUBLISHED_STATE = {"canal-historias": "PUBLICADO", "canal-speedrun-ledger": "PUBLICADO"}
 
 
 def translate(channel_id: str, source_state: str, visibility: str) -> str:
