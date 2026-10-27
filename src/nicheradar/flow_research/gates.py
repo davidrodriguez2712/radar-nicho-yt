@@ -20,7 +20,7 @@ class GateReason(TypedDict):
 
 @dataclass(frozen=True)
 class Gates:
-    min_automation: float = 70
+    min_automation: float = 90
     max_human_minutes: int = 60
     block_high_policy_risk: bool = True
 

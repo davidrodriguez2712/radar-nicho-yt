@@ -93,7 +93,7 @@ No hay un campo con el total. Se **calcula** como la suma de `production_flow[].
 ## Compuertas que valida el servicio
 
 Además del contrato, el servicio compara el dossier con los umbrales vigentes
-(`NR_GATE_MIN_AUTOMATION` = 70, `NR_GATE_MAX_HUMAN_MINUTES` = 60, `NR_GATE_BLOCK_HIGH_POLICY_RISK` =
+(`NR_GATE_MIN_AUTOMATION` = 90, `NR_GATE_MAX_HUMAN_MINUTES` = 60, `NR_GATE_BLOCK_HIGH_POLICY_RISK` =
 `true`; **supuestos iniciales, no medidos**). Un dossier con `recommendation` `go` o
 `go_with_conditions` se rechaza (`422`, ruta `verdict.recommendation`) si:
 

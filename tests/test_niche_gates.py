@@ -42,7 +42,7 @@ def niche(db: Connection, label: str, automation: int, policy: int) -> None:
 
 def test_settings_defaults_are_the_documented_assumptions() -> None:
     fields = Settings.model_fields
-    assert fields["gate_min_automation"].default == 70
+    assert fields["gate_min_automation"].default == 90
     assert fields["gate_max_human_minutes"].default == 60
     assert fields["gate_block_high_policy_risk"].default is True
     assert Gates.from_settings(Settings(gate_min_automation=55)).min_automation == 55

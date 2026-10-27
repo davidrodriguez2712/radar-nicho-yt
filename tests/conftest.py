@@ -34,7 +34,7 @@ def isolated_from_local_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 def open_selection_gates(monkeypatch: pytest.MonkeyPatch) -> None:
     """The selection gates are off by default in tests that are about something else.
 
-    Production defaults are 70 automation and 60 human minutes (`Settings`); the fixtures'
+    Production defaults are 90 automation and 60 human minutes (`Settings`); the fixtures'
     niches and dossiers were not written to pass them. Tests of the gates build explicit
     `Gates` / `Settings` and so never depend on this.
     """

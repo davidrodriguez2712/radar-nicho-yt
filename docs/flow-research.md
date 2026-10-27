@@ -82,7 +82,7 @@ supuestos iniciales del agente, no datos medidos**: se ajustan con evidencia.
 
 | Compuerta | Umbral por defecto | Variable de entorno |
 |---|---|---|
-| Automatización mínima del nicho | 70 | `NR_GATE_MIN_AUTOMATION` |
+| Automatización mínima del nicho | 90 | `NR_GATE_MIN_AUTOMATION` |
 | Riesgo de política `alto` bloquea | sí | `NR_GATE_BLOCK_HIGH_POLICY_RISK` |
 | Minutos humanos máximos por video (suma de `production_flow`) | 60 | `NR_GATE_MAX_HUMAN_MINUTES` |
 | Derechos resueltos (`rights.verdict` distinto de `blocked`) | siempre | (no configurable) |
