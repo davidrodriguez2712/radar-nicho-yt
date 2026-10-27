@@ -67,6 +67,9 @@ const gatesDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:7cb948776
 const batchBackend = 'davidrodriguez2712/nicheradar-backend@sha256:6678ad1227d6de0f266f5e4145784b018230da93e5089cd7af7e1e5407e3e5e2';
 const batchWorker = 'davidrodriguez2712/nicheradar-worker@sha256:3961e6681f57c68c8f85778e3d26fd4286fb34ad2515678ed6b81005040ff0fc';
 const batchDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:53e92317c3783474ec0acbdcb5340c93ef830fc29d9d42563273035dd7cff9a1';
+const classifyBackend = 'davidrodriguez2712/nicheradar-backend@sha256:5b0b2d30f464644d9ae816bb0f2565e9fde049be01af033db30f7a91c32cc733';
+const classifyWorker = 'davidrodriguez2712/nicheradar-worker@sha256:766f98011e8bdce7a3f9406508806d34b05a24fbc388cd2b33f5d41986c4909e';
+const classifyDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:d8ab255db72b512f591c87342ddc12b4359d5f805458a8f240550646ba3beabc';
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
 const resources = (cpu) => ({memoryLimit:512,memoryReservation:128,cpuLimit:cpu,cpuReservation:0.1});
@@ -668,6 +671,26 @@ try {
        env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
       throw new Error('Batch limit release preconditions failed');
     const image=isDashboard?batchDashboard:name==='nicheradar-worker'?batchWorker:batchBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='deploy-classify-skip-code') {
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?batchDashboard:name==='nicheradar-worker'?batchWorker:batchBackend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Classify skip release preconditions failed');
+    const image=isDashboard?CLS_D:name==='nicheradar-worker'?CLS_W:CLS_B;
     cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
     const after=cli(['app','inspect',`${project}/${name}`]);
     for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
