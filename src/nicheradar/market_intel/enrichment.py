@@ -158,15 +158,39 @@ def build_fetcher(ctx: RunContext, channels_to_fetch: int) -> Fetcher:
     return GatewayFetcher(gateway, ctx.clock)
 
 
+# A request that failed in a way that blames only itself (a malformed or missing playlist, an
+# earlier charge that never resolved). It degrades that one channel instead of the whole stage.
+CHANNEL_LEVEL_FAILURES = {"provider_response_failed", "unknown_charge"}
+
+
+async def _channels_of(fetcher: Fetcher, ids: list[str]) -> dict[str, Channel]:
+    """One batched call; if it fails for a request-level reason, retry one channel at a time."""
+    try:
+        return await fetcher.channels(ids)
+    except ProviderError as error:
+        if error.code not in CHANNEL_LEVEL_FAILURES or len(ids) == 1:
+            raise
+    found: dict[str, Channel] = {}
+    for single in ids:
+        try:
+            found |= await fetcher.channels([single])
+        except ProviderError as error:
+            if error.code not in CHANNEL_LEVEL_FAILURES:
+                raise
+    return found
+
+
 async def _enrich(
     ctx: RunContext, pending: list[dict[str, Any]], fetcher: Fetcher
 ) -> dict[str, Any]:
-    saved = not_found = 0
+    saved = not_found = videos_failed = 0
     stopped: str | None = None
     for start in range(0, len(pending), BATCH_SIZE):
         group = pending[start : start + BATCH_SIZE]
         try:
-            found = await fetcher.channels(list({item["youtube_channel_id"] for item in group}))
+            found = await _channels_of(
+                fetcher, list(dict.fromkeys(item["youtube_channel_id"] for item in group))
+            )
         except ProviderError as error:
             stopped = error.code
             break
@@ -177,8 +201,11 @@ async def _enrich(
                 try:
                     videos = await fetcher.recent_videos(channel)
                 except ProviderError as error:
-                    stopped = error.code
-                    break
+                    if error.code not in CHANNEL_LEVEL_FAILURES:
+                        stopped = error.code
+                        break
+                    # Keep the channel facts; an empty list with `video_count > 0` marks the gap.
+                    videos_failed += 1
             with ctx.engine.begin() as connection:
                 save_snapshot(
                     connection, item["id"], item["youtube_channel_id"], channel, videos, ctx.clock()
@@ -188,6 +215,8 @@ async def _enrich(
         if stopped is not None:
             break
     result: dict[str, Any] = {"pending": len(pending), "saved": saved, "not_found": not_found}
+    if videos_failed:
+        result["videos_failed"] = videos_failed
     if stopped is not None:
         result |= {"stopped_reason": stopped, "partial": True}
     return result
