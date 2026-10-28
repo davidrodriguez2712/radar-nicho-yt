@@ -76,6 +76,7 @@ class Channel(Contract):
     keywords: tuple[str, ...] = ()
     published_at: AwareDatetime | None = None
     video_count: int | None = Field(default=None, ge=0)
+    total_views: int | None = Field(default=None, ge=0)
     metrics: dict[str, Metric] = Field(default_factory=dict)
 
 

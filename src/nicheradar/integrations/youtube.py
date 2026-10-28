@@ -238,6 +238,7 @@ class YouTubeProvider:
                     ),
                     published_at=row["snippet"].get("publishedAt"),
                     video_count=row.get("statistics", {}).get("videoCount"),
+                    total_views=row.get("statistics", {}).get("viewCount"),
                 )
                 for row in rows
             )

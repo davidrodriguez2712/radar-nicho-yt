@@ -362,6 +362,31 @@ listing_verifications = sa.Table(
     ),
     sa.Index("ix_listing_verifications_listing_id", "listing_id"),
 )
+listing_channel_snapshots = sa.Table(
+    "listing_channel_snapshots",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid4),
+    sa.Column(
+        "listing_id",
+        UUID(as_uuid=True),
+        sa.ForeignKey("marketplace_listings.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    sa.Column("youtube_channel_id", sa.String(40), nullable=False),
+    sa.Column("status", sa.String(20), nullable=False),
+    sa.Column("fetched_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("title", sa.String(200)),
+    sa.Column("country", sa.String(2)),
+    sa.Column("channel_created_at", sa.DateTime(timezone=True)),
+    sa.Column("subscribers", sa.BigInteger),
+    sa.Column("total_views", sa.BigInteger),
+    sa.Column("video_count", sa.BigInteger),
+    sa.Column("recent_videos", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    # YouTube API data may not be kept more than 30 days without a refresh.
+    sa.Column("retain_until", sa.DateTime(timezone=True), nullable=False),
+    sa.CheckConstraint("status IN ('ok', 'not_found')", name="channel_snapshot_status"),
+    sa.Index("ix_listing_channel_snapshots_listing_id", "listing_id"),
+)
 niche_automation_priors = sa.Table(
     "niche_automation_priors",
     metadata,
