@@ -20,7 +20,7 @@ from nicheradar.market_intel.evidence.tolerant import tolerant_evidence
 
 PROMPT_VERSION = "listing-evidence-v1-p3"
 # Set from the 2026-10-28 experiment: 23 real calls, output including reasoning, median ~3.5k and
-# max 4937 tokens (p1's 4096 truncated listings). About 1.8x the maximum; revisit via `derived.call`.
+# max 4937 tokens (p1's 4096 truncated listings). About 1.8x the maximum; revisit with derived.call.
 MAX_OUTPUT_TOKENS = 9000
 # Keywords strict mode rejects or that add nothing once pydantic validates the result.
 _DROPPED = frozenset(
