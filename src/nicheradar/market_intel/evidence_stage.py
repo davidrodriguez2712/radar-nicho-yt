@@ -141,7 +141,9 @@ def save_evidence(
             image_count_processed=len(hashes),
             image_hashes=hashes,
             model_evidence=evidence.model_dump(mode="json") if evidence else None,
-            derived=derived if derived else (result.diagnostic if result else None),
+            derived=derived
+            if derived
+            else ({"call": result.diagnostic} if result and result.diagnostic else None),
             evidence_grade=derived["evidence_grade"] if derived else None,
             income_level=derived["income_level"] if derived else None,
             observed_monthly_income_usd=(

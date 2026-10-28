@@ -16,12 +16,12 @@ from nicheradar.integrations.contracts import Contract
 from nicheradar.integrations.llm import LLMTariff, TokenUsage
 from nicheradar.market_intel.evidence.contracts import ModelEvidence
 from nicheradar.market_intel.evidence.reconcile import drop_unverifiable_entries
+from nicheradar.market_intel.evidence.tolerant import tolerant_evidence
 
-PROMPT_VERSION = "listing-evidence-v1-p2"
-# Technical ceiling, not a tuned cap: the first real run (p1, 4096) ended near that limit on most
-# listings, so p2 records the real output of every call (`derived.call`) to fix the cap from data.
-# Worst case stays inside the reservation, which the context window dominates.
-MAX_OUTPUT_TOKENS = 16000
+PROMPT_VERSION = "listing-evidence-v1-p3"
+# Set from the 2026-10-28 experiment: 23 real calls, output including reasoning, median ~3.5k and
+# max 4937 tokens (p1's 4096 truncated listings). About 1.8x the maximum; revisit with derived.call.
+MAX_OUTPUT_TOKENS = 9000
 # Keywords strict mode rejects or that add nothing once pydantic validates the result.
 _DROPPED = frozenset(
     {
@@ -52,7 +52,12 @@ Rules:
 `unresolved` entry with the reason instead. Never estimate, convert or infer a number.
 - Every number needs `raw_text`: the exact text you read (for example "$295.18" or "69.7K").
 - Every amount needs its ISO 4217 `currency`. Every measure needs its period (`kind` plus `start` \
-and `end` dates, ISO YYYY-MM-DD) and its `scope` (all, long, shorts, live, other).
+and `end` dates, ISO YYYY-MM-DD) and its `scope` (all, long, shorts, live, other). If the image \
+does not show the dates of the period, do not emit that measure: add an `unresolved` entry with \
+reason `ambiguous_period`.
+- `raw_text` is at most 40 characters: only the number as shown, never a sentence. \
+`currency_visible` is a three-letter ISO 4217 code such as USD, or null if no currency is shown. \
+Audience countries use two-letter ISO 3166-1 codes such as US, never country names.
 - `images` has one entry per image, in the order received, with `index` starting at 0. Set \
 `captured_on` only if a date is visible in the image; otherwise use the end of the period it shows \
 and `captured_on_basis` `inferred_from_period_end`, or null and `unknown`.
@@ -210,7 +215,10 @@ def parse_response(payload: dict[str, Any], tariff: LLMTariff) -> EvidenceResult
         content = messages[0]["content"][0]
         if content["type"] != "output_text":
             return EvidenceResult(evidence=None, actual_usd=actual, reason="refused")
-        evidence = ModelEvidence.model_validate_json(content["text"])
+        document = json.loads(content["text"])
+        if not isinstance(document, dict):
+            raise ValueError("invalid response")
+        evidence = tolerant_evidence(document)
     except (KeyError, TypeError, ValueError) as error:
         return EvidenceResult(
             evidence=None,
