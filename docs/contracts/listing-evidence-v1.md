@@ -1,6 +1,6 @@
 # listing-evidence-v1
 
-Estado: **propuesto, sin implementar** (2026-10-28). Pendiente de aprobación del propietario.
+Estado: **aprobado por el propietario el 2026-10-28** (decisiones D1 a D7 con los valores propuestos de §14). Implementación por etapas: 1) modelo y validaciones (`src/nicheradar/market_intel/evidence/`), 2) API de YouTube, 3) prueba con 100 fichas, 4) todas las fichas.
 Dirección: **extractor (lectura de capturas con visión + API de YouTube + texto de la ficha) →
 NicheRadar**. Sustituye al borrador manual `schema_ficha.md` usado en la prueba de 15 fichas del
 2026-10-27.
@@ -527,7 +527,7 @@ así que el grado es C.
 }
 ```
 
-## 14. Decisiones que necesito del propietario (con valor propuesto)
+## 14. Decisiones D1 a D7 (aprobadas con el valor propuesto)
 
 | # | Decisión | Propuesta |
 |---|---|---|
