@@ -73,6 +73,9 @@ const classifyDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:d8ab25
 const enrichBackend = 'davidrodriguez2712/nicheradar-backend@sha256:9004772ee6e2e13febbb881771be3e87ad9822305130830afe4127fbd09261b7';
 const enrichWorker = 'davidrodriguez2712/nicheradar-worker@sha256:825d92086e70b2c5c6e3edba92de022e40d727c19d3f7d4d0ca8921728e05ebd';
 const enrichDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:dcfc794bab0d95fc46eae6971b3cfe3291d23de358f9864ad90ed37d2714a29d';
+const enrichFixBackend = 'davidrodriguez2712/nicheradar-backend@sha256:6bf0c40f1387e7193baa031f7ba31a668f77217d62cdb2c4399f5e994038fc6b';
+const enrichFixWorker = 'davidrodriguez2712/nicheradar-worker@sha256:ecb1c8beda9d1cd571054340440730f10e5071221ba77fc5544ab58ccc84c417';
+const enrichFixDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:971abbd663183d8ce51c6dca65130899b407ea12ab1b3c8fc84562ff7758d121';
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
 const resources = (cpu) => ({memoryLimit:512,memoryReservation:128,cpuLimit:cpu,cpuReservation:0.1});
@@ -730,6 +733,26 @@ try {
        env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
       throw new Error('Enrich release preconditions failed');
     const image=isDashboard?enrichDashboard:name==='nicheradar-worker'?enrichWorker:enrichBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='deploy-enrich-fix-code') {
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?enrichDashboard:name==='nicheradar-worker'?enrichWorker:enrichBackend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Enrich fix release preconditions failed');
+    const image=isDashboard?enrichFixDashboard:name==='nicheradar-worker'?enrichFixWorker:enrichFixBackend;
     cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
     const after=cli(['app','inspect',`${project}/${name}`]);
     for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
