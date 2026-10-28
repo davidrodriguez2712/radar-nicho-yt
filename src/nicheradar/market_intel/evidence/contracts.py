@@ -48,17 +48,6 @@ RiskCode = Literal[
     "manager_not_owner",
     "low_sample_period",
 ]
-# Only these may come from the model; the rest are computed by the code.
-MODEL_RISK_CODES = frozenset(
-    {
-        "niche_mismatch",
-        "text_contradiction",
-        "edited_or_inconsistent_numbers",
-        "limited_ads",
-        "reused_or_inauthentic_risk",
-        "copyright_risk",
-    }
-)
 
 
 class Money(Contract):
@@ -317,6 +306,23 @@ class RiskFlag(Contract):
     note: Note | None = None
 
 
+class ModelRiskFlag(Contract):
+    """A flag the vision model may raise; the code-computed ones live in `derived`."""
+
+    code: Literal[
+        "niche_mismatch",
+        "text_contradiction",
+        "edited_or_inconsistent_numbers",
+        "limited_ads",
+        "reused_or_inauthentic_risk",
+        "copyright_risk",
+    ]
+    severity: Literal["low", "medium", "high"]
+    origin: Literal["model"] = "model"
+    evidence: tuple[int | Literal["api", "listing_text"], ...] = ()
+    note: Note | None = None
+
+
 class ModelEvidence(Contract):
     """Everything the vision model is allowed to write."""
 
@@ -324,14 +330,14 @@ class ModelEvidence(Contract):
     images: tuple[Image, ...] = Field(max_length=MAX_IMAGES)
     identity_check: IdentityCheck
     monetization: Monetization
-    earnings: tuple[Earning, ...] = ()
-    views: tuple[ViewMetric, ...] = ()
-    rates: tuple[Rate, ...] = ()
+    earnings: tuple[Earning, ...] = Field(default=(), max_length=20)
+    views: tuple[ViewMetric, ...] = Field(default=(), max_length=24)
+    rates: tuple[Rate, ...] = Field(default=(), max_length=12)
     top_content: tuple[TopContent, ...] = Field(default=(), max_length=20)
     audience: Audience | None = None
-    traffic_sources: tuple[TrafficSource, ...] = ()
-    unresolved: tuple[Unresolved, ...] = ()
-    risk_flags: tuple[RiskFlag, ...] = ()
+    traffic_sources: tuple[TrafficSource, ...] = Field(default=(), max_length=12)
+    unresolved: tuple[Unresolved, ...] = Field(default=(), max_length=20)
+    risk_flags: tuple[ModelRiskFlag, ...] = Field(default=(), max_length=10)
 
     @model_validator(mode="after")
     def references_resolve(self) -> "ModelEvidence":
@@ -354,11 +360,6 @@ class ModelEvidence(Contract):
             used.extend(item for item in flag.evidence if isinstance(item, int))
         if any(index is not None and index not in known for index in used):
             raise ValueError("unknown_image_index")
-        for flag in self.risk_flags:
-            if flag.origin == "model" and flag.code not in MODEL_RISK_CODES:
-                raise ValueError("risk_code_reserved_for_code")
-            if flag.origin == "code":
-                raise ValueError("model_cannot_emit_code_flags")
         return self
 
 

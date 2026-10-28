@@ -282,6 +282,9 @@ class OpenAISelector:
         configuration: LLMConfiguration,
         *,
         parse_fn: Callable[[dict[str, Any], LLMTariff], ParsedResult],
+        max_body_bytes: int = 32000,
+        timeout_seconds: int | None = None,
+        max_response_bytes: int = 128000,
     ) -> ParsedResult: ...
 
     async def select(
@@ -290,13 +293,16 @@ class OpenAISelector:
         configuration: LLMConfiguration,
         *,
         parse_fn: Callable[[dict[str, Any], LLMTariff], Any] = parse_response,
+        max_body_bytes: int = 32000,
+        timeout_seconds: int | None = None,
+        max_response_bytes: int = 128000,
     ) -> Any:
         encoded = json.dumps(body).encode()
-        if len(encoded) > 32000:
+        if len(encoded) > max_body_bytes:
             raise ProviderError("llm_input_too_large")
         async with httpx.AsyncClient(
             transport=self.transport,
-            timeout=configuration.timeout_seconds,
+            timeout=timeout_seconds or configuration.timeout_seconds,
             follow_redirects=False,
             trust_env=False,
         ) as client:
@@ -314,7 +320,7 @@ class OpenAISelector:
                 raw = bytearray()
                 async for chunk in response.aiter_bytes():
                     raw.extend(chunk)
-                    if len(raw) > 128000:
+                    if len(raw) > max_response_bytes:
                         raise ProviderError("llm_response_too_large", may_have_charged=True)
         try:
             payload = json.loads(raw)

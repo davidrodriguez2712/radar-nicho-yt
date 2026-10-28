@@ -14,6 +14,7 @@ from nicheradar.repositories.schema import (
     flow_research_requests,
     listing_channel_snapshots,
     listing_classifications,
+    listing_evidence,
     listing_observations,
     listing_verifications,
     market_niche_snapshots,
@@ -94,6 +95,7 @@ def expire(
         listing_classifications,
         listing_verifications,
         listing_channel_snapshots,
+        listing_evidence,
     ):
         # Children carry their own deadline: a listing that stays up must not keep old rows.
         connection.execute(delete(child).where(child.c.retain_until <= now))

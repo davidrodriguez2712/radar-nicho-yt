@@ -45,6 +45,7 @@ class ObservationSet:
     currency: str
     days: int | None
     shorts_share: float | None = None
+    previous_views: float | None = None
 
     @property
     def rpm_usd(self) -> Decimal:
@@ -112,6 +113,7 @@ def observation_sets(
                 views=Decimal(str(match.value)),
                 currency=earning.amount.currency,
                 days=earning.period.days,
+                previous_views=match.previous_value,
             )
         )
     return tuple(sets)

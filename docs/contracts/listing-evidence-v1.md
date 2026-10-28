@@ -1,6 +1,6 @@
 # listing-evidence-v1
 
-Estado: **aprobado por el propietario el 2026-10-28** (decisiones D1 a D7 con los valores propuestos de §14). Implementación por etapas: 1) modelo y validaciones (`src/nicheradar/market_intel/evidence/`), 2) API de YouTube, 3) prueba con 100 fichas, 4) todas las fichas.
+Estado: **aprobado por el propietario el 2026-10-28** (decisiones D1 a D7 con los valores propuestos de §14). Implementación por etapas: 1) modelo y validaciones (`src/nicheradar/market_intel/evidence/`, hecho), 2) API de YouTube (etapa `enrich`, hecho), 3) lectura de capturas (etapa `evidence`, `market_intel/evidence_stage.py`, ver [`market-intel.md`](../market-intel.md)) y prueba con 100 fichas, 4) todas las fichas.
 Dirección: **extractor (lectura de capturas con visión + API de YouTube + texto de la ficha) →
 NicheRadar**. Sustituye al borrador manual `schema_ficha.md` usado en la prueba de 15 fichas del
 2026-10-27.

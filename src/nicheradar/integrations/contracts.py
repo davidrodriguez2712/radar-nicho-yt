@@ -22,6 +22,7 @@ class Operation(StrEnum):
     COMMENT_THREADS = "comment_threads"
     VIDEO_CATEGORIES = "video_categories"
     NICHE_MATCH = "niche_match"
+    LISTING_EVIDENCE = "listing_evidence"
 
 
 class Contract(BaseModel):

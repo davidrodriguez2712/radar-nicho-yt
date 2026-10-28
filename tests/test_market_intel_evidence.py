@@ -165,8 +165,11 @@ def test_country_shares_cannot_exceed_one_hundred() -> None:
 
 def test_the_model_cannot_emit_flags_the_code_computes() -> None:
     flag = {"code": "stale_capture", "severity": "low", "origin": "model"}
-    with pytest.raises(ValidationError, match="risk_code_reserved_for_code"):
+    with pytest.raises(ValidationError):
         parse(base(risk_flags=[flag]))
+    code_origin = {"code": "copyright_risk", "severity": "low", "origin": "code"}
+    with pytest.raises(ValidationError):
+        parse(base(risk_flags=[code_origin]))
     ok = {"code": "copyright_risk", "severity": "low", "origin": "model", "evidence": [0]}
     assert parse(base(risk_flags=[ok])).risk_flags[0].code == "copyright_risk"
 

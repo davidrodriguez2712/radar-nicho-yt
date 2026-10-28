@@ -25,6 +25,7 @@ recorrido completo de /youtube?created_at=0&page=N   (~169 páginas, ~5.400 fich
   → verificación de suscriptores contra YouTube (solo las de mayor ingreso, TTL de 30 días)
   → enriquecimiento con la API de YouTube (instantánea de canal: visitas totales, antigüedad, últimos
     10 videos; ficha con ingreso primero, TTL de 25 días, retención de 30; ver `listing-evidence-v1`)
+  → lectura de capturas (etapa `evidence`, `listing-evidence-v1`): ingresos y visitas observados, no declarados
   → snapshot diario de agregados por nicho
 ```
 
@@ -123,3 +124,30 @@ número de videos y los 10 últimos videos (id, título, fecha, duración, visit
   lectura», no «sin videos»), y se cuenta en `videos_failed`. Si falla un lote de canales, se reintenta
   de uno en uno. Cuota, autenticación o presupuesto siguen deteniendo la etapa.
 - **Sin ID de canal** (URL con `@handle`): se omiten en esta versión; `verify` sí las resuelve.
+
+## Lectura de capturas (`evidence`)
+
+Etapa entre `enrich` y `snapshot` (desactivada con `NR_MARKET_INTEL_EVIDENCE_CAP_PER_RUN=0`, el valor
+por defecto, y sin LLM). Implementa [`listing-evidence-v1`](contracts/listing-evidence-v1.md): por
+ficha abre la página, descarga en memoria hasta 12 adjuntos del host `media.dealbaron.com` (solo
+https, máximo 6 MB, sin seguir redirecciones) y hace **una** llamada de visión con `gpt-6-luna` y
+salida estructurada estricta. Las imágenes **no se guardan**: solo su SHA-256.
+
+- **Qué se guarda** (`listing_evidence`, una fila por ficha y versión de prompt): la salida validada
+  del modelo (`model_evidence`), el bloque `derived` calculado por el código (conjuntos de observación,
+  RPM calculado, grado A–E/X, banderas, elegibilidad para la muestra de RPM), el costo real y las
+  columnas `evidence_grade`, `income_level`, `observed_monthly_income_usd`, `rpm_usd`,
+  `rpm_sample_eligible`. Retención: la de la ficha (183 días). `derived` no usa datos de la API de
+  YouTube (así la fila no cae bajo la regla de 30 días).
+- **Estados:** `complete`, `no_images` (la ficha no trae capturas) y `failed` (`listing_gone`,
+  `download_failed`, `incomplete_response`, `invalid_response`, `refused`). Una ficha solo se vuelve a
+  revisar si cambia la versión del prompt o del esquema.
+- **Topes y fallos:** `NR_MARKET_INTEL_EVIDENCE_CAP_PER_RUN` (máx. 500). Antes de cada llamada se
+  comprueba la política (`openai`/`listing_evidence`/`market_listing_evidence`, sembrada con
+  `scripts/seed_market_evidence_policy.py`) y se reserva presupuesto como en la clasificación. Tres
+  fallos seguidos del modelo detienen la etapa sin guardar nada (se reintenta en la siguiente corrida);
+  una solicitud bloqueada para una sola ficha (`request_in_progress`) se salta; un `blocked` de la
+  fuente, una política ausente o el presupuesto agotado detienen la etapa con `stopped_reason`.
+- **Pendiente:** el tipo de cambio (D1, tasas del BCE) no está conectado; las medidas en moneda
+  distinta de USD quedan sin conjunto de observación (aparecen como `unresolved` o sin RPM) hasta que
+  se conecte.

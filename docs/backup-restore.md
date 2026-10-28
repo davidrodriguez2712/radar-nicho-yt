@@ -18,7 +18,7 @@ Alcance del snapshot (`scripts/backup_snapshot.py`, falla cerrado):
 | Evidencia de proveedores y estado del radar | `raw_observations`, `provider_requests`, `topics`, `videos`, `jobs`, rankings, costos… (`PROVIDER_EVIDENCE_TABLES`) | **esquema sí, filas no** (decisión 2026-10-26, opción A) |
 
 Una tabla nueva queda fuera de las listas revisadas y, si tiene filas, bloquea el respaldo hasta
-que alguien la clasifique en el código. Siguen exigiéndose: esquema exacto, revisión `0018`
+que alguien la clasifique en el código. Siguen exigiéndose: esquema exacto, revisión `0019`
 (al migrar hay que revisar el alcance y subir esa constante), radar y programación de mercado
 en pausa y ningún proveedor real habilitado.
 
@@ -251,7 +251,7 @@ El propietario aprobó programar el respaldo. Los archivos están en `scripts/la
 (`run_backup.sh` y `com.nicheradar.backup.plist.template`): diario 03:30, `backup` y luego
 `prune --apply`, con salida en `~/Library/Application Support/NicheRadar/backup.log`. **No se
 instala hasta que `backup` funcione contra producción** (hoy lo impide que producción sigue en la revisión 0016 y el
-respaldo espera la 0018). Para activarla:
+respaldo espera la 0019). Para activarla:
 
 ```sh
 sed -e "s#@REPO@/#$PWD/#" -e "s#@HOME@#$HOME#" scripts/launchd/com.nicheradar.backup.plist.template \
@@ -290,7 +290,7 @@ El propietario aprobó programar el respaldo. Los archivos están en `scripts/la
 (`run_backup.sh` y `com.nicheradar.backup.plist.template`): diario 03:30, `backup` y luego
 `prune --apply`, con salida en `~/Library/Application Support/NicheRadar/backup.log`. **No se
 instala hasta que `backup` funcione contra producción** (hoy lo impide que producción sigue en la revisión 0016 y el
-respaldo espera la 0018). Para activarla:
+respaldo espera la 0019). Para activarla:
 
 ```sh
 sed -e "s#@REPO@/#$PWD/#" -e "s#@HOME@#$HOME#" scripts/launchd/com.nicheradar.backup.plist.template \

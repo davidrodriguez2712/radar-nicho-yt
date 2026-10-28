@@ -19,6 +19,7 @@ def main() -> None:
     parser.add_argument("--classify-cap", type=int, default=10)
     parser.add_argument("--verify-cap", type=int, default=5)
     parser.add_argument("--enrich-cap", type=int, default=0)
+    parser.add_argument("--evidence-cap", type=int, default=0)
     args = parser.parse_args()
     config = Settings().model_copy(
         update={
@@ -27,6 +28,7 @@ def main() -> None:
             "market_intel_classify_cap_per_run": args.classify_cap,
             "market_intel_verify_cap_per_run": args.verify_cap,
             "market_intel_enrich_cap_per_run": args.enrich_cap,
+            "market_intel_evidence_cap_per_run": args.evidence_cap,
         }
     )
     print(json.dumps(run_once(config), default=str))

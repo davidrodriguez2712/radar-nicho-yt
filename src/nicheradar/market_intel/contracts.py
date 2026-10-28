@@ -42,6 +42,7 @@ class ListingDetail(Contract):
     monetization: Literal["yes", "no", "unknown"] = "unknown"
     content_type: str | None = None
     published_text: str | None = None
+    attachment_urls: tuple[str, ...] = ()
 
 
 class CrawlResult(Contract):
