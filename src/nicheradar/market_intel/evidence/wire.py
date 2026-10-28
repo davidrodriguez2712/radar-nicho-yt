@@ -17,8 +17,10 @@ from nicheradar.integrations.llm import LLMTariff, TokenUsage
 from nicheradar.market_intel.evidence.contracts import ModelEvidence
 from nicheradar.market_intel.evidence.reconcile import drop_unverifiable_entries
 
-PROMPT_VERSION = "listing-evidence-v1-p1"
-MAX_OUTPUT_TOKENS = 4096
+PROMPT_VERSION = "listing-evidence-v1-p2"
+# The strict schema makes the model write every field; the first real run (p1) ended near 4096
+# tokens on most listings. The reservation is dominated by the context window, so it stays covered.
+MAX_OUTPUT_TOKENS = 12000
 # Keywords strict mode rejects or that add nothing once pydantic validates the result.
 _DROPPED = frozenset(
     {
@@ -137,6 +139,7 @@ class EvidenceResult(Contract):
     evidence: ModelEvidence | None
     actual_usd: Decimal | None
     reason: str
+    diagnostic: dict[str, Any] | None = None
 
 
 def _billing(payload: dict[str, Any], tariff: LLMTariff) -> Decimal | None:
@@ -166,10 +169,38 @@ def _billing(payload: dict[str, Any], tariff: LLMTariff) -> Decimal | None:
         return None
 
 
+def _diagnostic(payload: dict[str, Any], error: Exception | None = None) -> dict[str, Any]:
+    """Why a call failed, without any model or listing content: codes, paths and counts only."""
+    usage = payload.get("usage")
+    out: dict[str, Any] = {"status": str(payload.get("status"))[:30]}
+    details = payload.get("incomplete_details")
+    if isinstance(details, dict):
+        out["incomplete_reason"] = str(details.get("reason"))[:60]
+    if isinstance(usage, dict):
+        out["output_tokens"] = usage.get("output_tokens")
+        reasoning = (usage.get("output_tokens_details") or {}).get("reasoning_tokens")
+        if reasoning is not None:
+            out["reasoning_tokens"] = reasoning
+    if isinstance(error, ValidationError):
+        out["errors"] = [
+            {"loc": ".".join(str(part) for part in item["loc"])[:120], "type": item["type"]}
+            for item in error.errors()[:12]
+        ]
+        out["error_count"] = error.error_count()
+    elif error is not None:
+        out["error_type"] = type(error).__name__
+    return out
+
+
 def parse_response(payload: dict[str, Any], tariff: LLMTariff) -> EvidenceResult:
     actual = _billing(payload, tariff)
     if payload.get("status") != "completed":
-        return EvidenceResult(evidence=None, actual_usd=actual, reason="incomplete_response")
+        return EvidenceResult(
+            evidence=None,
+            actual_usd=actual,
+            reason="incomplete_response",
+            diagnostic=_diagnostic(payload),
+        )
     try:
         messages = [item for item in payload["output"] if item["type"] == "message"]
         if len(messages) != 1 or len(messages[0]["content"]) != 1:
@@ -178,8 +209,13 @@ def parse_response(payload: dict[str, Any], tariff: LLMTariff) -> EvidenceResult
         if content["type"] != "output_text":
             return EvidenceResult(evidence=None, actual_usd=actual, reason="refused")
         evidence = ModelEvidence.model_validate_json(content["text"])
-    except (KeyError, TypeError, ValueError):
-        return EvidenceResult(evidence=None, actual_usd=actual, reason="invalid_response")
+    except (KeyError, TypeError, ValueError) as error:
+        return EvidenceResult(
+            evidence=None,
+            actual_usd=actual,
+            reason="invalid_response",
+            diagnostic=_diagnostic(payload, error),
+        )
     return EvidenceResult(
         evidence=drop_unverifiable_entries(evidence), actual_usd=actual, reason="response_received"
     )
