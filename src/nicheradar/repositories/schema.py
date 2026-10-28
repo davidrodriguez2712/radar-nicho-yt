@@ -387,6 +387,43 @@ listing_channel_snapshots = sa.Table(
     sa.CheckConstraint("status IN ('ok', 'not_found')", name="channel_snapshot_status"),
     sa.Index("ix_listing_channel_snapshots_listing_id", "listing_id"),
 )
+listing_evidence = sa.Table(
+    "listing_evidence",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid4),
+    sa.Column(
+        "listing_id",
+        UUID(as_uuid=True),
+        sa.ForeignKey("marketplace_listings.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    sa.Column("schema_version", sa.String(40), nullable=False),
+    sa.Column("prompt_version", sa.String(40), nullable=False),
+    sa.Column("extraction_state", sa.String(20), nullable=False),
+    sa.Column("failure_reason", sa.String(60)),
+    sa.Column("extracted_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("image_count_total", sa.Integer, nullable=False),
+    sa.Column("image_count_processed", sa.Integer, nullable=False),
+    sa.Column("image_hashes", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("model_evidence", JSONB),
+    sa.Column("derived", JSONB),
+    sa.Column("evidence_grade", sa.String(1)),
+    sa.Column("income_level", sa.String(2)),
+    sa.Column("observed_monthly_income_usd", sa.Numeric(14, 2)),
+    sa.Column("rpm_usd", sa.Numeric(10, 4)),
+    sa.Column("rpm_sample_eligible", sa.Boolean, nullable=False, server_default=sa.false()),
+    sa.Column("cost_usd", sa.Numeric(12, 6)),
+    sa.Column("retain_until", sa.DateTime(timezone=True), nullable=False),
+    sa.CheckConstraint(
+        "extraction_state IN ('complete', 'no_images', 'failed')", name="evidence_state"
+    ),
+    sa.CheckConstraint(
+        "evidence_grade IS NULL OR evidence_grade IN ('A', 'B', 'C', 'D', 'E', 'X')",
+        name="evidence_grade",
+    ),
+    sa.Index("ix_listing_evidence_listing_id", "listing_id"),
+    sa.Index("ix_listing_evidence_grade", "evidence_grade"),
+)
 niche_automation_priors = sa.Table(
     "niche_automation_priors",
     metadata,

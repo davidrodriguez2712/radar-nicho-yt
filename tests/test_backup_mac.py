@@ -47,7 +47,7 @@ def test_bootstrap_snapshot_guard_and_active_schedule(db: Connection) -> None:
     create_schedule(db, profile, NOW, {})
     report = inspect_snapshot(db)
     assert report["scope"] == "bootstrap-only"
-    assert report["revision"] == "0018"
+    assert report["revision"] == "0019"
     db.execute(update(s.radar_schedules).values(paused=False))
     with pytest.raises(ValueError, match="radar_not_paused"):
         inspect_snapshot(db)
@@ -127,7 +127,7 @@ def test_encrypted_archive_roundtrip_tamper_and_wrong_key(tmp_path: Path) -> Non
     payload = b"PGDMP synthetic private fixture; not a database"
     report: dict[str, object] = {
         "scope": "bootstrap-only",
-        "revision": "0018",
+        "revision": "0019",
         "created_at": NOW.isoformat(),
         "dump_sha256": hashlib.sha256(payload).hexdigest(),
     }
@@ -236,6 +236,7 @@ def test_reviewed_table_groups_are_exact_and_disjoint() -> None:
         "listing_observations",
         "listing_classifications",
         "listing_verifications",
+        "listing_evidence",
         "niche_automation_priors",
         "market_niche_snapshots",
         "market_niche_decisions",
@@ -286,7 +287,7 @@ def test_snapshot_keeps_research_and_excludes_provider_evidence_together(db: Con
 @pytest.mark.postgres
 def test_snapshot_still_pins_the_reviewed_schema_revision(db: Connection) -> None:
     add_request(db)
-    db.exec_driver_sql("UPDATE alembic_version SET version_num = '0019'")
+    db.exec_driver_sql("UPDATE alembic_version SET version_num = '0020'")
     with pytest.raises(ValueError, match="unreviewed_schema_revision"):
         inspect_snapshot(db)
 
@@ -305,7 +306,7 @@ def test_load_backup_accepts_every_reviewed_scope(tmp_path: Path) -> None:
     ):
         report: dict[str, object] = {
             "scope": scope,
-            "revision": "0018",
+            "revision": "0019",
             "created_at": NOW.isoformat(),
             "dump_sha256": hashlib.sha256(payload).hexdigest(),
         }
@@ -368,7 +369,7 @@ def test_prune_deletes_only_matching_local_archives_and_dry_run_deletes_nothing(
     def make(moment: datetime, delete_after: datetime | None = None) -> Path:
         report: dict[str, object] = {
             "scope": "bootstrap+research",
-            "revision": "0018",
+            "revision": "0019",
             "created_at": moment.isoformat(),
             "dump_sha256": hashlib.sha256(payload).hexdigest(),
             "delete_after": delete_after.isoformat() if delete_after else None,

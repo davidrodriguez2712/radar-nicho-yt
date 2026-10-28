@@ -117,7 +117,9 @@ class GatewayFetcher:
         return {channel.id: channel for channel in batch.channels}
 
     async def recent_videos(self, channel: Channel) -> tuple[Video, ...]:
-        if not channel.uploads_playlist:
+        # A channel with no videos has an uploads playlist YouTube answers with an error; asking
+        # leaves an unresolved charge in the ledger for nothing.
+        if not channel.uploads_playlist or channel.video_count == 0:
             return ()
         uploads, _, _ = await self.gateway.fetch(
             Operation.UPLOADS,

@@ -21,6 +21,7 @@ from nicheradar.market_intel.classify import (
 from nicheradar.market_intel.context import RunContext
 from nicheradar.market_intel.contracts import SourceError
 from nicheradar.market_intel.enrichment import stage_enrich
+from nicheradar.market_intel.evidence_stage import stage_evidence
 from nicheradar.market_intel.ingest import (
     apply_detail,
     mark_detail_failed,
@@ -189,6 +190,7 @@ STAGE_FUNCTIONS: dict[str, Callable[[RunContext], dict[str, Any]]] = {
     "classify": stage_classify,
     "verify": stage_verify,
     "enrich": stage_enrich,
+    "evidence": stage_evidence,
     "snapshot": stage_snapshot,
 }
 
@@ -205,6 +207,7 @@ def _summary(checkpoints: dict[str, Any]) -> dict[str, Any]:
         "classified": checkpoints.get("classify", {}).get("classified"),
         "verified": checkpoints.get("verify", {}).get("checked"),
         "enriched": checkpoints.get("enrich", {}).get("saved"),
+        "evidence": checkpoints.get("evidence", {}).get("complete"),
         "niches": checkpoints.get("snapshot", {}).get("niches"),
     }
 

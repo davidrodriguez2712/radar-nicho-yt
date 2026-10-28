@@ -21,6 +21,7 @@ CARD_MARKER = 'class="post__more"'
 LIST_CONTAINER = '<div class="posts group">'
 _TAGS = re.compile(r"<[^>]+>")
 _CARD_SPLIT = re.compile(r'<div class="post[ "]')
+_ATTACHMENT = re.compile(r"https://media\.dealbaron\.com/listing-attachments/[A-Za-z0-9_./-]+")
 
 
 def text(fragment: str) -> str:
@@ -125,6 +126,7 @@ def parse_detail(html: str, external_id: str) -> ListingDetail:
         monetization=_monetization(monetization.group(1) if monetization else None),
         content_type=(text(content.group(1)) or None) if content else None,
         published_text=(published.group(1).strip() or None) if published else None,
+        attachment_urls=tuple(dict.fromkeys(_ATTACHMENT.findall(html))),
     )
 
 

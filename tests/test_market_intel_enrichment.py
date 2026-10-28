@@ -316,3 +316,17 @@ def test_a_quota_error_on_uploads_still_stops_the_whole_stage(isolated_engine: E
     fetcher.bad_uploads = {channel_id("b"): "quota"}
     result = stage_enrich(context(isolated_engine, LIVE), fetcher)
     assert result["stopped_reason"] == "quota" and result["saved"] == 1
+
+
+def test_a_channel_with_no_videos_never_asks_youtube_for_its_uploads() -> None:
+    import asyncio
+
+    from nicheradar.market_intel.enrichment import GatewayFetcher
+
+    class ExplodingGateway:
+        async def fetch(self, *args: object) -> object:
+            raise AssertionError("no request may be placed for a channel without videos")
+
+    fetcher = GatewayFetcher(ExplodingGateway(), lambda: NOW)  # type: ignore[arg-type]
+    empty = channel(video_count=0, uploads_playlist="UUempty")
+    assert asyncio.run(fetcher.recent_videos(empty)) == ()

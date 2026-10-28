@@ -19,6 +19,7 @@ NEW_TABLES = (
     "listing_observations",
     "listing_classifications",
     "listing_verifications",
+    "listing_evidence",
     "niche_automation_priors",
     "market_niche_snapshots",
     "market_niche_decisions",

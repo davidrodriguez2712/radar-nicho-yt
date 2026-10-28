@@ -47,6 +47,7 @@ MARKET_TABLES = {
     "listing_observations",
     "listing_classifications",
     "listing_verifications",
+    "listing_evidence",
     "niche_automation_priors",
     "market_niche_snapshots",
     "market_niche_decisions",
@@ -157,7 +158,7 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
     ).scalar_one():
         raise ValueError("market_intel_not_paused")
     revision = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-    if revision != "0018":
+    if revision != "0019":
         raise ValueError("unreviewed_schema_revision")
     has_pilots = any(counts[name] for name in PILOT_TABLES)
     has_research = any(counts[name] for name in RESEARCH_TABLES)
