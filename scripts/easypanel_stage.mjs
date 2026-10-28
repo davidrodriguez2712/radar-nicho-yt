@@ -76,6 +76,9 @@ const enrichDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:dcfc794b
 const enrichFixBackend = 'davidrodriguez2712/nicheradar-backend@sha256:6bf0c40f1387e7193baa031f7ba31a668f77217d62cdb2c4399f5e994038fc6b';
 const enrichFixWorker = 'davidrodriguez2712/nicheradar-worker@sha256:ecb1c8beda9d1cd571054340440730f10e5071221ba77fc5544ab58ccc84c417';
 const enrichFixDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:971abbd663183d8ce51c6dca65130899b407ea12ab1b3c8fc84562ff7758d121';
+const evidenceBackend = 'davidrodriguez2712/nicheradar-backend@sha256:46622f22b78fc8c8b870dc24f91b9713c3dbbbb86f3d3aafc48950b6c4b4d4e0';
+const evidenceWorker = 'davidrodriguez2712/nicheradar-worker@sha256:e6e0ad8bdcf4dac45b01854094a7ed60ecd57283224dc03c6bd393affe4184d6';
+const evidenceDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:1a0c243752c45000c8f703dfe78abcc36243fda3898fa0be37074a2cc9394baa';
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
 const resources = (cpu) => ({memoryLimit:512,memoryReservation:128,cpuLimit:cpu,cpuReservation:0.1});
@@ -609,6 +612,22 @@ try {
     if(after.source?.image!==image) throw new Error('Image setting not persisted');
     cli(['app','deploy',`${project}/${name}`,'--yes']);
     console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='migrate-live-0019') {
+    const env=appEnv('nicheradar-api');
+    // NR_MARKET_INTEL_LIVE_ENABLED puede ser true (decisión del propietario tras 012): se exige
+    // que el radar esté pausado y se comprueba aparte que la programación de mercado también.
+    if(env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true' || env.NR_DATABASE_URL!==dbURL())
+      throw new Error('Live migration preconditions failed');
+    const code='import json,os,subprocess,sys; os.environ.update(json.load(sys.stdin)); sys.exit(subprocess.call(["alembic","upgrade","head"]))';
+    const args=['docker','run','--rm','-i','--name','nicheradar-migration-20261028-019',
+      '--network','easypanel-proy1-credito-riesgo','--memory','512m','--cpus','1',
+      '--read-only','--tmpfs','/tmp:rw,noexec,nosuid,size=64m','--cap-drop','ALL',
+      '--security-opt','no-new-privileges',evidenceBackend,'python','-c',code];
+    const result=spawnSync('ssh',[...sshArgs,args.map(quote).join(' ')],{
+      input:JSON.stringify({NR_DATABASE_URL:env.NR_DATABASE_URL}),
+      encoding:'utf8',timeout:180000,maxBuffer:1024*1024});
+    console.log(JSON.stringify({migrationExit:result.status,processError:result.error?.code ?? null}));
+    if(result.error || result.status!==0) throw new Error('Migration failed; raw response withheld. Inspect only this migration safely.');
   } else if(action==='migrate-live-0018') {
     const env=appEnv('nicheradar-api');
     // NR_MARKET_INTEL_LIVE_ENABLED puede ser true (decisión del propietario tras 012): se exige
@@ -761,6 +780,43 @@ try {
     if(after.source?.image!==image) throw new Error('Image setting not persisted');
     cli(['app','deploy',`${project}/${name}`,'--yes']);
     console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='deploy-evidence-code') {
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?enrichFixDashboard:name==='nicheradar-worker'?enrichFixWorker:enrichFixBackend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Evidence release preconditions failed');
+    const image=isDashboard?evidenceDashboard:name==='nicheradar-worker'?evidenceWorker:evidenceBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='set-evidence-cap') {
+    // Solo el worker corre el scraper. Fija cuántas fichas lee la etapa evidence por corrida
+    // (0 la apaga). Decisión del propietario: piloto de 100 y luego ampliar (2026-10-28).
+    const name='nicheradar-worker';
+    const cap=Number(process.argv[3]);
+    if(!Number.isInteger(cap) || cap<0 || cap>500) throw new Error('Cap must be an integer from 0 to 500');
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    if(env.NR_MODE!=='live' || before.source?.image!==evidenceWorker) throw new Error('Evidence cap preconditions failed');
+    const next={...env,NR_MARKET_INTEL_EVIDENCE_CAP_PER_RUN:String(cap)};
+    cli(['app','update-env',`${project}/${name}`,'--yes'],{env:Object.entries(next).map(([k,v])=>`${k}=${v}`).join('\n')});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['source','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected non-environment change');
+    }
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,evidenceCap:next.NR_MARKET_INTEL_EVIDENCE_CAP_PER_RUN,deployRequested:true}));
   } else if(action==='set-youtube-enrich-caps') {
     // Solo el worker corre el scraper. Sube (nunca baja) los topes de la etapa enrich y la cuota
     // de detalle de YouTube que comparte con verify (decisión del propietario, 2026-10-28).
