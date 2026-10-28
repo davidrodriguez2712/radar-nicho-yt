@@ -18,7 +18,7 @@ from nicheradar.market_intel.evidence.contracts import ModelEvidence
 from nicheradar.market_intel.evidence.reconcile import drop_unverifiable_entries
 from nicheradar.market_intel.evidence.tolerant import tolerant_evidence
 
-PROMPT_VERSION = "listing-evidence-v1-p4"
+PROMPT_VERSION = "listing-evidence-v1-p5"
 # Set from the 2026-10-28 experiment: 23 real calls, output including reasoning, median ~3.5k and
 # max 4937 tokens (p1's 4096 truncated listings). About 1.8x the maximum; revisit with derived.call.
 MAX_OUTPUT_TOKENS = 9000
