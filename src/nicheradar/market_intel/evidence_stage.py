@@ -364,7 +364,7 @@ def _stage(
                 total=len(urls),
                 hashes=hashes,
                 result=result,
-                derived=derived,
+                derived={**derived, "call": result.diagnostic},
             )
         counts["complete"] += 1
     outcome: dict[str, Any] = {"pending": len(pending), **counts, "cost_usd": str(cost)}
