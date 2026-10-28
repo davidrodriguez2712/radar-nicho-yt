@@ -249,3 +249,70 @@ def test_the_cap_limits_how_many_channels_are_fetched(isolated_engine: Engine) -
     config = LIVE.model_copy(update={"market_intel_enrich_cap_per_run": 2})
     result = stage_enrich(context(isolated_engine, config), FakeFetcher(known))
     assert result["saved"] == 2 and result["pending"] == 2
+
+
+class FlakyFetcher(FakeFetcher):
+    """Fails one channel's uploads (or a whole batch) with a code that blames a single request."""
+
+    def __init__(self, *args: object, bad_batch_code: str | None = None, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+        self.bad_batch_code = bad_batch_code
+        self.bad_uploads: dict[str, str] = {}
+
+    async def channels(self, channel_ids: list[str]) -> dict[str, Channel]:
+        if self.bad_batch_code and len(channel_ids) > 1:
+            self.batches.append(sorted(channel_ids))
+            raise ProviderError(self.bad_batch_code)
+        return await super().channels(channel_ids)
+
+    async def recent_videos(self, found: Channel) -> tuple[Video, ...]:
+        if found.id in self.bad_uploads:
+            raise ProviderError(self.bad_uploads[found.id])
+        return await super().recent_videos(found)
+
+
+def three_channels() -> dict[str, Channel]:
+    return {channel_id(x): channel(id=channel_id(x)) for x in "abc"}
+
+
+@pytest.mark.postgres
+@pytest.mark.parametrize("code", ["provider_response_failed", "unknown_charge"])
+def test_one_channel_whose_uploads_fail_does_not_stop_the_stage(
+    isolated_engine: Engine, code: str
+) -> None:
+    with isolated_engine.begin() as connection:
+        for index, letter in enumerate("abc"):
+            seed(connection, f"l{index}", income=900 - index, uc=letter)
+    fetcher = FlakyFetcher(three_channels())
+    fetcher.bad_uploads = {channel_id("b"): code}
+    result = stage_enrich(context(isolated_engine, LIVE), fetcher)
+    assert result == {"pending": 3, "saved": 3, "not_found": 0, "videos_failed": 1}
+    with isolated_engine.connect() as connection:
+        rows = list(connection.execute(sa.select(snapshots)).mappings())
+    by_channel = {r["youtube_channel_id"]: r for r in rows}
+    assert by_channel[channel_id("b")]["status"] == "ok"  # the channel facts are still real
+    assert by_channel[channel_id("b")]["recent_videos"] == []
+    assert by_channel[channel_id("b")]["video_count"] == 80  # tells "no videos" from "fetch failed"
+
+
+@pytest.mark.postgres
+def test_a_failing_batch_is_retried_one_channel_at_a_time(isolated_engine: Engine) -> None:
+    with isolated_engine.begin() as connection:
+        for index, letter in enumerate("abc"):
+            seed(connection, f"l{index}", income=900 - index, uc=letter)
+    fetcher = FlakyFetcher(three_channels(), bad_batch_code="provider_response_failed")
+    result = stage_enrich(context(isolated_engine, LIVE), fetcher)
+    assert result == {"pending": 3, "saved": 3, "not_found": 0}
+    assert fetcher.batches[0] == [channel_id(x) for x in "abc"]
+    assert [b for b in fetcher.batches[1:]] == [[channel_id(x)] for x in "abc"]
+
+
+@pytest.mark.postgres
+def test_a_quota_error_on_uploads_still_stops_the_whole_stage(isolated_engine: Engine) -> None:
+    with isolated_engine.begin() as connection:
+        for index, letter in enumerate("abc"):
+            seed(connection, f"l{index}", income=900 - index, uc=letter)
+    fetcher = FlakyFetcher(three_channels())
+    fetcher.bad_uploads = {channel_id("b"): "quota"}
+    result = stage_enrich(context(isolated_engine, LIVE), fetcher)
+    assert result["stopped_reason"] == "quota" and result["saved"] == 1

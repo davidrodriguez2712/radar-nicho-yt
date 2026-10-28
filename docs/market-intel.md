@@ -117,4 +117,9 @@ número de videos y los 10 últimos videos (id, título, fecha, duración, visit
 - **Fallos:** un error de cuota o de política detiene la etapa con `stopped_reason` y `partial`; lo ya
   guardado se conserva. Un canal que YouTube no devuelve se guarda como `not_found` para no
   volver a pedirlo hasta el siguiente TTL.
+- **Fallo de una sola llamada** (`provider_response_failed` o `unknown_charge`, p. ej. una lista de
+  subidas que YouTube rechaza): degrada solo a ese canal. Se guarda su instantánea con
+  `recent_videos = []` y el `video_count` real (un vacío con `video_count > 0` significa «falló la
+  lectura», no «sin videos»), y se cuenta en `videos_failed`. Si falla un lote de canales, se reintenta
+  de uno en uno. Cuota, autenticación o presupuesto siguen deteniendo la etapa.
 - **Sin ID de canal** (URL con `@handle`): se omiten en esta versión; `verify` sí las resuelve.
