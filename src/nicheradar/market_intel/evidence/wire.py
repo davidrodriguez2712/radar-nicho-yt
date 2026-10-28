@@ -18,7 +18,7 @@ from nicheradar.market_intel.evidence.contracts import ModelEvidence
 from nicheradar.market_intel.evidence.reconcile import drop_unverifiable_entries
 from nicheradar.market_intel.evidence.tolerant import tolerant_evidence
 
-PROMPT_VERSION = "listing-evidence-v1-p5"
+PROMPT_VERSION = "listing-evidence-v1-p6"
 # Set from the 2026-10-28 experiment: 23 real calls, output including reasoning, median ~3.5k and
 # max 4937 tokens (p1's 4096 truncated listings). About 1.8x the maximum; revisit with derived.call.
 MAX_OUTPUT_TOKENS = 9000
@@ -51,8 +51,11 @@ Rules:
 - Report only what you can read. If a value is not visible or not legible, do not emit it; add an \
 `unresolved` entry with the reason instead. Never estimate, convert or infer a number.
 - Every number needs `raw_text`: the exact text you read (for example "$295.18" or "69.7K").
-- Every amount needs its ISO 4217 `currency`. Every measure needs its period (`kind` plus `start` \
-and `end` dates, ISO YYYY-MM-DD) and its `scope` (all, long, shorts, live, other). A window such \
+- Every amount needs its ISO 4217 `currency`. If only a bare `$` is shown (no code, no `US$` or \
+`CA$` prefix), set `currency` to `$` exactly and never guess a country. Set `ui_language` on every \
+image to the interface language code (`en`, `es`, `pt`...). Every measure needs its period (`kind` \
+plus `start` and `end` dates, ISO YYYY-MM-DD) and its `scope` (all, long, shorts, live, other). A \
+window such \
 as "Last 28 days" with no dates shown is valid: use `last_7d`, `last_28d`, `last_90d` or \
 `last_365d` and set `start` and `end` to null; never invent dates. For `calendar_month` and \
 `custom` the dates are required: if they are not shown, do not emit the measure and add an \
@@ -98,8 +101,13 @@ def _strict(node: Any) -> Any:
     return out
 
 
+_CODE_OWNED = ("usd_symbol_images",)
+
+
 def evidence_schema() -> dict[str, Any]:
     schema = ModelEvidence.model_json_schema(mode="validation")
+    for name in _CODE_OWNED:
+        schema["properties"].pop(name, None)
     return _strict(schema)  # type: ignore[no-any-return]
 
 

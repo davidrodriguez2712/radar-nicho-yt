@@ -110,7 +110,7 @@ def test_the_schema_satisfies_openai_strict_mode_rules() -> None:
         if isinstance(branches, list):
             types = {b.get("type") for b in branches if isinstance(b, dict)}
             assert not {"number", "string"} <= types, path  # Decimal collapsed to number
-    assert set(schema["required"]) == set(ModelEvidence.model_fields)
+    assert set(schema["required"]) == set(ModelEvidence.model_fields) - {"usd_symbol_images"}
     assert len(json.dumps(schema)) < 60_000
 
 

@@ -68,6 +68,21 @@ def raw_text_matches(raw: str, value: Decimal | float) -> bool:
     return abs(number - Decimal(str(value))) <= tolerance
 
 
+_SCALES = (Decimal(1000), Decimal(1_000_000), Decimal(1_000_000_000))
+
+
+def _rescaled(raw: str, value: Decimal | float) -> Decimal | None:
+    """The text's value when the model only forgot its multiplier («100K» reported as 100)."""
+    parsed = parse_raw_number(raw)
+    if parsed is None:
+        return None
+    number, tolerance = parsed
+    reported = Decimal(str(value))
+    if reported > 0 and any(abs(number - reported * scale) <= tolerance for scale in _SCALES):
+        return number
+    return None
+
+
 def _mismatch(raw: str, value: Decimal | float) -> str:
     """What the text said against what the model reported (a short number, no personal data)."""
     return f"raw_text {raw!r} does not match value {value}"[:200]
@@ -81,9 +96,17 @@ def drop_unverifiable_entries(evidence: ModelEvidence) -> ModelEvidence:
     kept_earnings: list[Earning] = []
     kept_views: list[ViewMetric] = []
     dropped: list[Unresolved] = []
+    rescaled = False
     for earning in evidence.earnings:
         if raw_text_matches(earning.raw_text, earning.amount.value):
             kept_earnings.append(earning)
+        elif (fixed := _rescaled(earning.raw_text, earning.amount.value)) is not None:
+            kept_earnings.append(
+                earning.model_copy(
+                    update={"amount": earning.amount.model_copy(update={"value": fixed})}
+                )
+            )
+            rescaled = True
         else:
             dropped.append(
                 Unresolved(
@@ -96,6 +119,9 @@ def drop_unverifiable_entries(evidence: ModelEvidence) -> ModelEvidence:
     for metric in evidence.views:
         if raw_text_matches(metric.raw_text, metric.value):
             kept_views.append(metric)
+        elif (fixed := _rescaled(metric.raw_text, metric.value)) is not None:
+            kept_views.append(metric.model_copy(update={"value": float(fixed)}))
+            rescaled = True
         else:
             dropped.append(
                 Unresolved(
@@ -105,7 +131,7 @@ def drop_unverifiable_entries(evidence: ModelEvidence) -> ModelEvidence:
                     note=_mismatch(metric.raw_text, metric.value),
                 )
             )
-    if not dropped:
+    if not dropped and not rescaled:
         return evidence
     return evidence.model_copy(
         update={
