@@ -83,11 +83,11 @@ def test_the_database_refuses_incoherent_measurements(db: Connection, bad: dict[
         add_measurement(db, video_pk, **bad)
 
 
-def test_the_backup_guard_reviews_the_new_table_and_pins_revision_0017(db: Connection) -> None:
+def test_the_backup_guard_reviews_the_new_table_and_pins_revision_0018(db: Connection) -> None:
     video_pk = add_video(db, add_pilot(db))
     add_measurement(db, video_pk, early_retention_pct=80, early_retention_second=3)
     report = inspect_snapshot(db)
-    assert report["scope"] == "bootstrap+pilots" and report["revision"] == "0017"
+    assert report["scope"] == "bootstrap+pilots" and report["revision"] == "0018"
     assert report["counts"]["pilot_shorts_measurements"] == 1  # type: ignore[index]
 
 

@@ -254,3 +254,28 @@ def test_channels_normalize_published_at_and_video_count() -> None:
     channel = batch.channels[0]
     assert channel.published_at == datetime(2026, 5, 7, 8, 19, 19, 261163, tzinfo=UTC)
     assert channel.video_count == 184
+
+
+def test_channels_normalize_total_views_and_leave_it_empty_when_absent() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "id": "UC1",
+                        "snippet": {"title": "With views"},
+                        "statistics": {"subscriberCount": "5", "viewCount": "53123456"},
+                    },
+                    {
+                        "id": "UC2",
+                        "snippet": {"title": "No views"},
+                        "statistics": {"subscriberCount": "5"},
+                    },
+                ]
+            },
+        )
+
+    provider = _provider(httpx.MockTransport(handler))
+    batch = asyncio.run(provider.fetch(Operation.CHANNELS, {"id": "UC1,UC2"}, datetime.now(UTC)))
+    assert [c.total_views for c in batch.channels] == [53_123_456, None]

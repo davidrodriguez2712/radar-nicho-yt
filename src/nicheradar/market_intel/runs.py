@@ -21,7 +21,7 @@ from nicheradar.repositories.schema import market_scrape_runs as runs
 
 SCHEDULE_KEY = "market_intel_scrape"
 INTERVAL_SECONDS = 86_400
-STAGES = ("list", "detail", "reconcile", "classify", "verify", "snapshot")
+STAGES = ("list", "detail", "reconcile", "classify", "verify", "enrich", "snapshot")
 FINISHED = ("succeeded", "partial", "failed", "blocked")
 LEASE_SECONDS = 3_600
 MAXIMUM_ATTEMPTS = 3

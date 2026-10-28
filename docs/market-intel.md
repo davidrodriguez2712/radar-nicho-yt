@@ -23,6 +23,8 @@ recorrido completo de /youtube?created_at=0&page=N   (~169 páginas, ~5.400 fich
   → reconcile: tras 2 recorridos completos sin ver una ficha pasa a `disappeared`
   → clasificación con LLM acotado: nicho (lista cerrada de 218), formato, idioma, rasgos de automatización
   → verificación de suscriptores contra YouTube (solo las de mayor ingreso, TTL de 30 días)
+  → enriquecimiento con la API de YouTube (instantánea de canal: visitas totales, antigüedad, últimos
+    10 videos; ficha con ingreso primero, TTL de 25 días, retención de 30; ver `listing-evidence-v1`)
   → snapshot diario de agregados por nicho
 ```
 
@@ -96,3 +98,23 @@ al vencer su dato más próximo; ver [backup-restore.md](backup-restore.md).
 - La construcción real del `Gateway` de YouTube solo se ejerce en el piloto live.
 - El tick del scraper corre en el mismo proceso que el worker del radar: un recorrido largo
   retrasa el siguiente tick del radar (hoy en pausa).
+
+## Enriquecimiento con la API de YouTube (`enrich`)
+
+Etapa entre `verify` y `snapshot` (desactivada con `NR_MARKET_INTEL_ENRICH_CAP_PER_RUN=0`, el valor
+por defecto). Por cada ficha activa con ID de canal (`/channel/UC…`, sin duplicados) guarda una fila
+en `listing_channel_snapshots`: título, país, fecha de creación, suscriptores, **visitas totales**,
+número de videos y los 10 últimos videos (id, título, fecha, duración, visitas). Es el bloque `api` de
+[`listing-evidence-v1`](contracts/listing-evidence-v1.md).
+
+- **Cuota:** `channels.list` va en lotes de 50 ids (1 unidad por lote); cada canal añade 2 unidades
+  (subidas y detalle de videos). 4.800 canales ≈ 9.700 unidades, repartidas en varias corridas. Los
+  topes son `NR_YOUTUBE_DETAIL_QUOTA_PER_RUN/WEEK/MONTH` (cuota compartida con `verify`).
+- **Retención:** los datos de la API de YouTube no se conservan más de 30 días sin refrescar:
+  `retain_until = fetched_at + 30 días`, y se refrescan a los 25. `expire()` los purga.
+- **Respaldo:** la tabla se clasifica como evidencia de proveedor: su esquema se respalda, sus filas no
+  (se regeneran con el scraper). El guard de respaldo exige ahora la revisión `0018`.
+- **Fallos:** un error de cuota o de política detiene la etapa con `stopped_reason` y `partial`; lo ya
+  guardado se conserva. Un canal que YouTube no devuelve se guarda como `not_found` para no
+  volver a pedirlo hasta el siguiente TTL.
+- **Sin ID de canal** (URL con `@handle`): se omiten en esta versión; `verify` sí las resuelve.

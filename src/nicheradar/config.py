@@ -74,6 +74,8 @@ class Settings(BaseSettings):
     market_intel_detail_cap_per_run: int = Field(default=300, ge=0, le=2000)
     market_intel_classify_cap_per_run: int = Field(default=100, ge=0, le=1000)
     market_intel_verify_cap_per_run: int = Field(default=20, ge=0, le=200)
+    # Canales a enriquecer con la API de YouTube por corrida (0 = etapa desactivada).
+    market_intel_enrich_cap_per_run: int = Field(default=0, ge=0, le=2000)
     # Compuerta del spec: en modo live el scraper no corre hasta que el propietario revise los
     # Términos de Servicio de la fuente y active este indicador de forma explícita.
     market_intel_live_enabled: bool = False
