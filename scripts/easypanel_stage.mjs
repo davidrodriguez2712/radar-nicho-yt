@@ -91,6 +91,9 @@ const evidenceRelDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:fb6
 const evidenceNotesBackend = 'davidrodriguez2712/nicheradar-backend@sha256:7de141b2df4cc26debc83cfaa562f55b40360a16a939f12a84b50650a2bf6682';
 const evidenceNotesWorker = 'davidrodriguez2712/nicheradar-worker@sha256:0eadf8f9925fd466a73ac4c3f5e0db33e3d0b9ed65d7ed6f5f94c989de3753d6';
 const evidenceNotesDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:3a4012c2bbbf52ed5b5f7c0949d19166bde9bd9fb3dae49b5ec6cb104f1a3635';
+const evidenceDollarBackend = 'davidrodriguez2712/nicheradar-backend@sha256:369df9cd5796587a7384fe85cec61878f3c368bec86db4ed4db596872233f2c7';
+const evidenceDollarWorker = 'davidrodriguez2712/nicheradar-worker@sha256:d243b991603c66c362dea4480dda50d2b62bfe5f5cb90ccf4e0551fd49fbf563';
+const evidenceDollarDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:f3361dbbadfd8f3d8325de6db7449187e3e408480baf5afcec653a2dd0796484';
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
 const resources = (cpu) => ({memoryLimit:512,memoryReservation:128,cpuLimit:cpu,cpuReservation:0.1});
@@ -892,6 +895,26 @@ try {
     if(after.source?.image!==image) throw new Error('Image setting not persisted');
     cli(['app','deploy',`${project}/${name}`,'--yes']);
     console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='deploy-evidence-dollar-code') {
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?evidenceNotesDashboard:name==='nicheradar-worker'?evidenceNotesWorker:evidenceNotesBackend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Evidence dollar release preconditions failed');
+    const image=isDashboard?evidenceDollarDashboard:name==='nicheradar-worker'?evidenceDollarWorker:evidenceDollarBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
   } else if(action==='set-evidence-cap') {
     // Solo el worker corre el scraper. Fija cuántas fichas lee la etapa evidence por corrida
     // (0 la apaga). Decisión del propietario: piloto de 100 y luego ampliar (2026-10-28).
@@ -900,7 +923,7 @@ try {
     if(!Number.isInteger(cap) || cap<0 || cap>500) throw new Error('Cap must be an integer from 0 to 500');
     const before=cli(['app','inspect',`${project}/${name}`]);
     const env=appEnv(name);
-    if(env.NR_MODE!=='live' || before.source?.image!==evidenceNotesWorker) throw new Error('Evidence cap preconditions failed');
+    if(env.NR_MODE!=='live' || before.source?.image!==evidenceDollarWorker) throw new Error('Evidence cap preconditions failed');
     const next={...env,NR_MARKET_INTEL_EVIDENCE_CAP_PER_RUN:String(cap)};
     cli(['app','update-env',`${project}/${name}`,'--yes'],{env:Object.entries(next).map(([k,v])=>`${k}=${v}`).join('\n')});
     const after=cli(['app','inspect',`${project}/${name}`]);
