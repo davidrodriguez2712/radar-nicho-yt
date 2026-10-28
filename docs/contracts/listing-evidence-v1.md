@@ -1,6 +1,6 @@
 # listing-evidence-v1
 
-Estado: **aprobado por el propietario el 2026-10-28** (decisiones D1 a D7 con los valores propuestos de §14; D8 aprobada el 2026-10-28). Implementación por etapas: 1) modelo y validaciones (`src/nicheradar/market_intel/evidence/`, hecho), 2) API de YouTube (etapa `enrich`, hecho), 3) lectura de capturas (etapa `evidence`, `market_intel/evidence_stage.py`, ver [`market-intel.md`](../market-intel.md)) y prueba con 100 fichas, 4) todas las fichas.
+Estado: **aprobado por el propietario el 2026-10-28** (decisiones D1 a D7 con los valores propuestos de §14; D8 y D9 aprobadas el 2026-10-28). Implementación por etapas: 1) modelo y validaciones (`src/nicheradar/market_intel/evidence/`, hecho), 2) API de YouTube (etapa `enrich`, hecho), 3) lectura de capturas (etapa `evidence`, `market_intel/evidence_stage.py`, ver [`market-intel.md`](../market-intel.md)) y prueba con 100 fichas, 4) todas las fichas.
 Dirección: **extractor (lectura de capturas con visión + API de YouTube + texto de la ficha) →
 NicheRadar**. Sustituye al borrador manual `schema_ficha.md` usado en la prueba de 15 fichas del
 2026-10-27.
@@ -562,3 +562,24 @@ Cada entrada descartada deja en `unresolved[].note` su motivo, sin datos persona
 frente al valor informado (`raw_text '…' does not match value …`), el tipo de periodo y las fechas que
 faltan (`period calendar_month: no dates`) o el primer campo inválido (`invalid raw_text:
 string_too_long`). `PROMPT_VERSION` pasa a `listing-evidence-v1-p5` (el lector de números cambió).
+
+### D9. `$` sin código de moneda y corrección de escala (aprobada el 2026-10-28)
+
+Experimento p5 (25 fichas): 11 entradas de ingreso se descartaban porque la captura muestra un `$` sin
+código ISO, y 4 vistas porque el modelo informaba el valor sin el multiplicador del texto (`100K` como
+`100`).
+
+- El modelo escribe `currency = "$"` literal cuando solo ve el símbolo (nunca adivina un país) y
+  `ui_language` con el idioma de la interfaz de cada imagen.
+- El código lee ese `$` como **USD solo si `ui_language` es inglés** (`en*` o `english`); con otro
+  idioma o sin idioma, la entrada se descarta como `ambiguous_currency` (en español un `$` puede ser
+  peso mexicano, argentino o colombiano). `US$` equivale a USD sin suposición.
+- Lo asumido queda en `usd_symbol_images` (campo **del código**: no está en el esquema que ve el modelo
+  y se recalcula siempre). Un conjunto cuya moneda fue asumida: grado máximo **B**, **no** entra a la
+  muestra de RPM y lleva el riesgo bajo `currency_assumed_usd`.
+- Tarifas (`rates`) y contenido principal con moneda inutilizable se conservan sin moneda.
+- **Escala:** si `raw_text` no reproduce el valor pero el valor informado multiplicado por 10³, 10⁶
+  o 10⁹ sí lo reproduce, se toma el valor del texto (`100K` informado como `100` pasa a 100000). Un
+  número mal copiado (`5 050 504,8` frente a `5058504.8`) o un sufijo desconocido (`3.3L`) se siguen
+  descartando.
+- `PROMPT_VERSION` pasa a `listing-evidence-v1-p6`.

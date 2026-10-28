@@ -47,6 +47,7 @@ RiskCode = Literal[
     "copyright_risk",
     "manager_not_owner",
     "low_sample_period",
+    "currency_assumed_usd",
 ]
 
 
@@ -351,6 +352,9 @@ class ModelEvidence(Contract):
     traffic_sources: tuple[TrafficSource, ...] = Field(default=(), max_length=12)
     unresolved: tuple[Unresolved, ...] = Field(default=(), max_length=20)
     risk_flags: tuple[ModelRiskFlag, ...] = Field(default=(), max_length=10)
+    # Code-owned (decision D9): images whose bare `$` was read as USD. Never part of the model's
+    # schema and always recomputed by `tolerant_evidence`.
+    usd_symbol_images: tuple[int, ...] = ()
 
     @model_validator(mode="after")
     def references_resolve(self) -> "ModelEvidence":

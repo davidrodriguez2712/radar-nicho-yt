@@ -64,9 +64,83 @@ def _why(entry: Any, error: ValidationError) -> str:
     return f"invalid {'.'.join(str(part) for part in first['loc'])}: {first['type']}"[:200]
 
 
+def _language(images: Any, index: Any) -> str | None:
+    for image in images if isinstance(images, list) else []:
+        if isinstance(image, dict) and image.get("index") == index:
+            language = image.get("ui_language")
+            return language.strip().lower() if isinstance(language, str) else None
+    return None
+
+
+def _currency(code: Any, language: str | None) -> tuple[str | None, str]:
+    """(currency, status): `ok`, `assumed` (bare `$` on an English interface) or `unresolved`."""
+    if code is None:
+        return None, "ok"
+    text = str(code).strip()
+    if _CURRENCY.match(text):
+        return text, "ok"
+    if text == "US$":
+        return "USD", "ok"
+    if (
+        text == "$"
+        and language is not None
+        and (language == "english" or language.startswith("en"))
+    ):
+        return "USD", "assumed"
+    return None, "unresolved"
+
+
+def _resolve_currencies(doc: dict[str, Any], gaps: list[Unresolved]) -> tuple[int, ...]:
+    """Decision D9: read a bare `$` as USD only when the capture's interface is in English."""
+    images, assumed = doc.get("images"), set()
+    kept = []
+    for entry in doc.get("earnings") or []:
+        money = entry.get("amount") if isinstance(entry, dict) else None
+        if not isinstance(money, dict):
+            kept.append(entry)
+            continue
+        language = _language(images, entry.get("image_index"))
+        currency, status = _currency(money.get("currency"), language)
+        if status == "unresolved" and money.get("currency") is not None:
+            note = f"currency {str(money['currency'])[:10]!r} with ui_language {language!r}"
+            gaps.append(_gap("revenue", "ambiguous_currency", entry, note))
+            continue
+        if status == "assumed":
+            assumed.add(entry.get("image_index"))
+        kept.append({**entry, "amount": {**money, "currency": currency}})
+    if isinstance(doc.get("earnings"), list):
+        doc["earnings"] = kept
+    for name, key in (("rates", None), ("top_content", "revenue")):
+        entries = doc.get(name)
+        if not isinstance(entries, list):
+            continue
+        fixed = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                fixed.append(entry)
+                continue
+            language = _language(images, entry.get("image_index"))
+            target = entry.get(key) if key else entry
+            if isinstance(target, dict) and target.get("currency") is not None:
+                currency, status = _currency(target.get("currency"), language)
+                if status == "assumed":
+                    assumed.add(entry.get("image_index"))
+                if key is None:
+                    entry = {**entry, "currency": currency}
+                elif currency is None:
+                    entry = {**entry, "revenue": None}
+                else:
+                    entry = {**entry, "revenue": {**target, "currency": currency}}
+            fixed.append(entry)
+        doc[name] = fixed
+    return tuple(sorted(i for i in assumed if isinstance(i, int)))
+
+
 def tolerant_evidence(data: dict[str, Any]) -> ModelEvidence:
     doc = dict(data)
+    doc.pop("usd_symbol_images", None)  # code-owned: whatever the model sent is ignored
     gaps: list[Unresolved] = []
+    usd_symbol_images = _resolve_currencies(doc, gaps)
     images = doc.get("images")
     if isinstance(images, list):
         doc["images"] = [
@@ -94,7 +168,7 @@ def tolerant_evidence(data: dict[str, Any]) -> ModelEvidence:
     if isinstance(audience, dict):
         doc["audience"], more = _audience(audience)
         gaps.extend(more)
-    evidence = ModelEvidence.model_validate(doc)
+    evidence = ModelEvidence.model_validate({**doc, "usd_symbol_images": usd_symbol_images})
     if not gaps:
         return evidence
     room = max(0, _UNRESOLVED_CAP - len(evidence.unresolved))

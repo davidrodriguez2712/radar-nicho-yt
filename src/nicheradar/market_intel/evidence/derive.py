@@ -187,7 +187,8 @@ def grade(
     misses += 1 if (primary.days or 0) < 28 else 0
     if primary.views < 1_000 or (primary.days or 0) < 7 or misses > 1:
         return "C"
-    return "A" if misses == 0 else "B"
+    assumed = primary.image_index in evidence.usd_symbol_images
+    return "A" if misses == 0 and not assumed else "B"
 
 
 def rpm_sample_eligible(
@@ -196,6 +197,8 @@ def rpm_sample_eligible(
     """R1-R9 of contract §6.4 (R9, one sample per listing, holds by construction)."""
     if primary is None or grade_value not in {"A", "B"}:
         return False
+    if primary.image_index in evidence.usd_symbol_images:
+        return False  # the currency was assumed, not read (D9)
     if primary.scope == "shorts" or (primary.scope == "all" and (primary.shorts_share or 0) >= 0.1):
         return False
     if primary.days is None or not 28 <= primary.days <= 365:
@@ -241,6 +244,8 @@ def code_risk_flags(
         add("third_party_watermark", "low")
     if primary is not None and primary.currency != "USD":
         add("foreign_currency", "low", (primary.image_index,))
+    if primary is not None and primary.image_index in evidence.usd_symbol_images:
+        add("currency_assumed_usd", "low", (primary.image_index,))
     if primary is not None and (primary.capture_age_days or 0) > 120:
         add("stale_capture", "medium", (primary.image_index,))
     monetization = evidence.monetization
