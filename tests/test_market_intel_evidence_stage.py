@@ -170,6 +170,19 @@ def test_unusable_responses_carry_a_stable_reason(text: str, status: str, reason
     assert result.evidence is None and result.reason == reason
 
 
+def test_a_failed_call_carries_codes_and_paths_but_never_content() -> None:
+    secret = "SECRETO-DEL-VENDEDOR"
+    incomplete = response(json.dumps(base()), status="incomplete")
+    incomplete["incomplete_details"] = {"reason": "max_output_tokens"}
+    result = parse_response(incomplete, TARIFF)
+    assert result.diagnostic is not None
+    assert result.diagnostic["incomplete_reason"] == "max_output_tokens"
+    invalid = parse_response(response(json.dumps({**base(), "surprise": secret})), TARIFF)
+    assert invalid.diagnostic is not None and invalid.diagnostic["error_count"] >= 1
+    assert invalid.diagnostic["errors"][0]["loc"] == "surprise"
+    assert secret not in json.dumps(invalid.diagnostic)
+
+
 def test_billing_is_verified_against_the_pinned_model_and_output_allowance() -> None:
     good = response(json.dumps(base()), output_tokens=MAX_OUTPUT_TOKENS)
     assert parse_response(good, TARIFF).actual_usd is not None
@@ -526,6 +539,33 @@ def test_a_blocked_source_stops_the_stage(isolated_engine: Engine) -> None:
         selector_answering(json.dumps(base())),
     )
     assert result["stopped_reason"] == "blocked" and rows(isolated_engine) == []
+
+
+@pytest.mark.postgres
+def test_one_unavailable_detail_page_skips_that_listing_and_the_rest_continue(
+    isolated_engine: Engine,
+) -> None:
+    run = make_run(isolated_engine)
+    with isolated_engine.begin() as connection:
+        seed(connection, "bad", income=900)
+        seed(connection, "good", income=100)
+    source = FakeSource({"bad": SourceError("source_unavailable"), "good": (URL,)})
+    result = run_stage(
+        context(isolated_engine, run, source), selector_answering(json.dumps(base()))
+    )
+    assert result["complete"] == 1 and result["skipped"] == 1
+    assert "stopped_reason" not in result
+
+
+@pytest.mark.postgres
+def test_three_unavailable_detail_pages_in_a_row_stop_the_stage(isolated_engine: Engine) -> None:
+    run = make_run(isolated_engine)
+    with isolated_engine.begin() as connection:
+        for index in range(5):
+            seed(connection, f"l{index}", income=500 - index)
+    source = FakeSource({f"l{i}": SourceError("source_unavailable") for i in range(5)})
+    result = run_stage(context(isolated_engine, run, source), selector_answering(None))
+    assert result["stopped_reason"] == "source_unavailable" and result["skipped"] == 3
 
 
 @pytest.mark.postgres

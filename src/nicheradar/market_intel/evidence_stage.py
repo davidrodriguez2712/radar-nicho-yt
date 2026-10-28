@@ -141,7 +141,7 @@ def save_evidence(
             image_count_processed=len(hashes),
             image_hashes=hashes,
             model_evidence=evidence.model_dump(mode="json") if evidence else None,
-            derived=derived,
+            derived=derived if derived else (result.diagnostic if result else None),
             evidence_grade=derived["evidence_grade"] if derived else None,
             income_level=derived["income_level"] if derived else None,
             observed_monthly_income_usd=(
@@ -276,8 +276,16 @@ def _stage(
         try:
             detail = ctx.source.fetch_detail(item["external_id"])
         except SourceError as error:
-            stopped = error.code
-            break
+            if error.code != "source_unavailable":
+                stopped = error.code
+                break
+            # One bad page degrades that listing only; a run of them means the source is down.
+            consecutive += 1
+            counts["skipped"] += 1
+            if consecutive >= CONSECUTIVE_FAILURES_STOP:
+                stopped = error.code
+                break
+            continue
         urls = tuple(detail.attachment_urls) if detail else ()
         if not urls:
             with ctx.engine.begin() as connection:
