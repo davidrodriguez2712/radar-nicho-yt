@@ -15,7 +15,7 @@ from tests.test_market_intel_evidence_stage import TARIFF, response
 
 def undated(entry: dict[str, Any]) -> dict[str, Any]:
     entry = deepcopy(entry)
-    entry["period"] = {"kind": "last_28d", "start": None, "end": None}
+    entry["period"] = {"kind": "calendar_month", "start": None, "end": None}
     return entry
 
 
@@ -66,7 +66,7 @@ def test_an_audience_without_period_dates_is_kept_without_period() -> None:
     doc = base()
     doc["audience"] = {
         "scope": "channel",
-        "period": {"kind": "last_28d", "start": None, "end": None},
+        "period": {"kind": "calendar_month", "start": None, "end": None},
         "countries": [{"code": "US", "pct": 60}],
         "image_index": 0,
     }

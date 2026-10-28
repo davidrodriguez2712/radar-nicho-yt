@@ -12,11 +12,11 @@ from nicheradar.market_intel.evidence.contracts import ModelEvidence, RiskFlag
 from nicheradar.market_intel.evidence.derive import (
     Fx,
     ObservationSet,
-    _same_period,
     code_risk_flags,
     grade,
     observation_sets,
     rpm_sample_eligible,
+    same_window,
     select_primary,
     tier1_share,
     to_usd,
@@ -40,6 +40,7 @@ def _set_row(found: ObservationSet) -> dict[str, Any]:
             "start": found.period.start.isoformat() if found.period.start else None,
             "end": found.period.end.isoformat() if found.period.end else None,
         },
+        "dates_visible": found.period.dated,
         "days": found.days,
         "capture_age_days": found.capture_age_days,
         "currency": found.currency,
@@ -56,7 +57,11 @@ def _concentration(
 ) -> tuple[float | None, float | None]:
     if primary is None:
         return None, None
-    rows = [t for t in evidence.top_content if _same_period(t.period, primary.period)]
+    rows = [
+        t
+        for t in evidence.top_content
+        if same_window(t.period, t.image_index, primary.period, primary.image_index)
+    ]
     if not rows:
         return None, None
     revenues = [
@@ -81,7 +86,7 @@ def _rpm_check(evidence: ModelEvidence, primary: ObservationSet | None) -> float
             rate.metric == "rpm"
             and rate.scope == primary.scope
             and (rate.currency in (None, "USD"))
-            and _same_period(rate.period, primary.period)
+            and same_window(rate.period, rate.image_index, primary.period, primary.image_index)
             and rate.value > 0
         ):
             return float((primary.rpm_usd - Decimal(str(rate.value))) / Decimal(str(rate.value)))

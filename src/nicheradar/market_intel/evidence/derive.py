@@ -72,6 +72,13 @@ def _same_period(a: Period, b: Period) -> bool:
     )
 
 
+def same_window(a: Period, a_image: int, b: Period, b_image: int) -> bool:
+    """Same period; two undated windows only match when they come from the same capture (D8)."""
+    if a.dated or b.dated:
+        return _same_period(a, b)
+    return a.kind == b.kind and a_image == b_image
+
+
 def _capture_date(evidence: ModelEvidence, image_index: int, period: Period) -> date | None:
     image = next((i for i in evidence.images if i.index == image_index), None)
     if image is not None and image.captured_on is not None:
@@ -95,7 +102,8 @@ def observation_sets(
             (
                 v
                 for v in views
-                if v.scope == earning.scope and _same_period(v.period, earning.period)
+                if v.scope == earning.scope
+                and same_window(v.period, v.image_index, earning.period, earning.image_index)
             ),
             None,
         )

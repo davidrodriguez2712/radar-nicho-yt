@@ -18,7 +18,7 @@ from nicheradar.market_intel.evidence.contracts import ModelEvidence
 from nicheradar.market_intel.evidence.reconcile import drop_unverifiable_entries
 from nicheradar.market_intel.evidence.tolerant import tolerant_evidence
 
-PROMPT_VERSION = "listing-evidence-v1-p3"
+PROMPT_VERSION = "listing-evidence-v1-p4"
 # Set from the 2026-10-28 experiment: 23 real calls, output including reasoning, median ~3.5k and
 # max 4937 tokens (p1's 4096 truncated listings). About 1.8x the maximum; revisit with derived.call.
 MAX_OUTPUT_TOKENS = 9000
@@ -52,9 +52,11 @@ Rules:
 `unresolved` entry with the reason instead. Never estimate, convert or infer a number.
 - Every number needs `raw_text`: the exact text you read (for example "$295.18" or "69.7K").
 - Every amount needs its ISO 4217 `currency`. Every measure needs its period (`kind` plus `start` \
-and `end` dates, ISO YYYY-MM-DD) and its `scope` (all, long, shorts, live, other). If the image \
-does not show the dates of the period, do not emit that measure: add an `unresolved` entry with \
-reason `ambiguous_period`.
+and `end` dates, ISO YYYY-MM-DD) and its `scope` (all, long, shorts, live, other). A window such \
+as "Last 28 days" with no dates shown is valid: use `last_7d`, `last_28d`, `last_90d` or \
+`last_365d` and set `start` and `end` to null; never invent dates. For `calendar_month` and \
+`custom` the dates are required: if they are not shown, do not emit the measure and add an \
+`unresolved` entry with reason `ambiguous_period`.
 - `raw_text` is at most 40 characters: only the number as shown, never a sentence. \
 `currency_visible` is a three-letter ISO 4217 code such as USD, or null if no currency is shown. \
 Audience countries use two-letter ISO 3166-1 codes such as US, never country names.

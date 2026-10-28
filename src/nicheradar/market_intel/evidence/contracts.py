@@ -55,6 +55,11 @@ class Money(Contract):
     currency: Currency
 
 
+# Windows measured back from the capture («Last 28 days»). Studio's mobile dashboard shows no dates
+# for them, so their dates may be absent (decision D8); calendar months and custom ranges cannot.
+RELATIVE_DAYS: dict[str, int] = {"last_7d": 7, "last_28d": 28, "last_90d": 90, "last_365d": 365}
+
+
 class Period(Contract):
     kind: PeriodKind
     start: date | None = None
@@ -62,17 +67,25 @@ class Period(Contract):
 
     @model_validator(mode="after")
     def coherent(self) -> "Period":
-        if self.kind != "lifetime" and (self.start is None or self.end is None):
+        if (self.start is None) != (self.end is None):
+            raise ValueError("period_dates_incomplete")
+        if self.start is None and self.kind != "lifetime" and self.kind not in RELATIVE_DAYS:
             raise ValueError("period_dates_required")
         if self.start and self.end and self.start > self.end:
             raise ValueError("period_start_after_end")
         return self
 
     @property
+    def dated(self) -> bool:
+        return self.start is not None
+
+    @property
     def days(self) -> int | None:
-        if self.start is None or self.end is None or self.kind == "lifetime":
+        if self.kind == "lifetime":
             return None
-        return (self.end - self.start).days + 1
+        if self.start is not None and self.end is not None:
+            return (self.end - self.start).days + 1
+        return RELATIVE_DAYS.get(self.kind)
 
 
 class Claim(Contract):

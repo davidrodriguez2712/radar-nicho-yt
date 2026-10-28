@@ -1,6 +1,6 @@
 # listing-evidence-v1
 
-Estado: **aprobado por el propietario el 2026-10-28** (decisiones D1 a D7 con los valores propuestos de §14). Implementación por etapas: 1) modelo y validaciones (`src/nicheradar/market_intel/evidence/`, hecho), 2) API de YouTube (etapa `enrich`, hecho), 3) lectura de capturas (etapa `evidence`, `market_intel/evidence_stage.py`, ver [`market-intel.md`](../market-intel.md)) y prueba con 100 fichas, 4) todas las fichas.
+Estado: **aprobado por el propietario el 2026-10-28** (decisiones D1 a D7 con los valores propuestos de §14; D8 aprobada el 2026-10-28). Implementación por etapas: 1) modelo y validaciones (`src/nicheradar/market_intel/evidence/`, hecho), 2) API de YouTube (etapa `enrich`, hecho), 3) lectura de capturas (etapa `evidence`, `market_intel/evidence_stage.py`, ver [`market-intel.md`](../market-intel.md)) y prueba con 100 fichas, 4) todas las fichas.
 Dirección: **extractor (lectura de capturas con visión + API de YouTube + texto de la ficha) →
 NicheRadar**. Sustituye al borrador manual `schema_ficha.md` usado en la prueba de 15 fichas del
 2026-10-27.
@@ -154,7 +154,7 @@ Si `matches_api_channel = "no"` o `matches_listing_title = "no"` con `matches_ap
 | `scope` | texto | `all`, `long`, `shorts`, `live`, `other` |
 | `metric` | texto | `estimated_revenue`, `ad_revenue`, `premium_revenue`, `membership_revenue`, `supers_revenue`, `shopping_revenue`, `adsense_payment_received`, `other` |
 | `period.kind` | texto | `last_7d`, `last_28d`, `last_90d`, `last_365d`, `calendar_month`, `lifetime`, `custom` |
-| `period.start` / `period.end` | fecha o `null` | `start ≤ end`. Obligatorias salvo `lifetime` sin fechas visibles |
+| `period.start` / `period.end` | fecha o `null` | `start ≤ end`; van las dos o ninguna. Obligatorias salvo `lifetime` y las ventanas relativas `last_7d/28d/90d/365d` cuando la captura no muestra fechas (D8) |
 | `amount.value` | decimal ≥ 0 | |
 | `amount.currency` | ISO 4217 | Obligatoria. Si no se ve, la medida va a `unresolved` (`ambiguous_currency`) |
 | `raw_text` | texto ≤ 40 | El valor literal visto, p. ej. `"$295.18"`, `"£0.04"` |
@@ -308,7 +308,7 @@ Un **conjunto** (`observation_set`) une un ingreso y unas visitas que cumplen to
 
 1. Mismo `image_index` o imágenes del mismo `studio_*` con la misma `captured_on`.
 2. Mismo `scope`.
-3. Mismo `period` (`start` y `end` idénticos, o `kind` igual con fechas que difieren ≤ 1 día).
+3. Mismo `period` (`start` y `end` idénticos, o `kind` igual con fechas que difieren ≤ 1 día). Dos ventanas relativas **sin fechas** solo se unen si tienen el mismo `kind` y el mismo `image_index` (D8).
 4. Ingreso con `metric ∈ {estimated_revenue, ad_revenue}`; visitas con `metric = views`.
 5. Ambos con `legibility = clear` o `partial`.
 
@@ -538,3 +538,20 @@ así que el grado es C.
 | D5 | Lista de países nivel 1 para `tier1_share` | La de §6.5 |
 | D6 | ¿Guardar imágenes? | **No**: solo `sha256` y el JSON extraído |
 | D7 | Orden de despliegue | 1) API de YouTube (`api`), 2) prueba con 100 fichas para medir costo real, 3) lanzamiento a todas |
+
+### D8. Ventanas relativas sin fechas (aprobada el 2026-10-28, opción A)
+
+Tras el experimento de 25 fichas (prompt p2/p3), 11 de 23 quedaron en grado E porque el dashboard
+móvil de YouTube Studio muestra «Last 28 days», visitas e ingreso **sin fechas**, y el contrato exigía
+fechas. Cambia:
+
+- `last_7d`, `last_28d`, `last_90d` y `last_365d` pueden llevar `start` y `end` en `null` (las dos o
+  ninguna). `calendar_month` y `custom` siguen exigiendo fechas; sin ellas la medida va a
+  `unresolved` (`ambiguous_period`). El modelo no inventa fechas.
+- `days` de una ventana sin fechas es el valor nominal (7, 28, 90, 365).
+- Dos medidas sin fechas se unen en un conjunto solo con el mismo `kind` **y** el mismo
+  `image_index` (misma captura). Una medida con fechas y otra sin ellas no se unen.
+- La antigüedad sale de `captured_on` si es visible. Sin ella, `capture_age_days` es `null`: el grado
+  queda limitado a **C** y la ficha no entra a la muestra de RPM (R-reglas de §6.4 sin cambios).
+- `derived.primary` y `observation_sets[]` llevan `dates_visible` (booleano).
+- `PROMPT_VERSION` pasa a `listing-evidence-v1-p4`.
