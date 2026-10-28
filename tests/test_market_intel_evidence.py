@@ -114,6 +114,9 @@ def test_a_period_must_be_ordered_and_dated() -> None:
     with pytest.raises(ValidationError, match="period_start_after_end"):
         parse(doc)
     doc["earnings"][0]["period"] = {"kind": "last_28d", "start": "2026-09-29"}
+    with pytest.raises(ValidationError, match="period_dates_incomplete"):
+        parse(doc)
+    doc["earnings"][0]["period"] = {"kind": "calendar_month"}
     with pytest.raises(ValidationError, match="period_dates_required"):
         parse(doc)
 
