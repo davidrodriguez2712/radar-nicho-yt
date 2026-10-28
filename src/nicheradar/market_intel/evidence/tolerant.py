@@ -43,13 +43,25 @@ def _concerns_period(error: ValidationError) -> bool:
     return any("period" in item["loc"] for item in error.errors())
 
 
-def _gap(topic: str, reason: str, entry: Any) -> Unresolved:
+def _gap(topic: str, reason: str, entry: Any, note: str | None = None) -> Unresolved:
     index = entry.get("image_index") if isinstance(entry, dict) else None
     return Unresolved(
         topic=topic,  # type: ignore[arg-type]
         reason=reason,  # type: ignore[arg-type]
         image_index=index if isinstance(index, int) and index >= 0 else None,
+        note=note,
     )
+
+
+def _why(entry: Any, error: ValidationError) -> str:
+    """Short, content-free reason: the period kind and missing dates, or the first failing field."""
+    period = entry.get("period") if isinstance(entry, dict) else None
+    if _concerns_period(error) and isinstance(period, dict):
+        dates = [name for name in ("start", "end") if not period.get(name)]
+        missing = "no dates" if len(dates) == 2 else f"missing {dates[0]}" if dates else "bad dates"
+        return f"period {period.get('kind')}: {missing}"[:200]
+    first = error.errors()[0]
+    return f"invalid {'.'.join(str(part) for part in first['loc'])}: {first['type']}"[:200]
 
 
 def tolerant_evidence(data: dict[str, Any]) -> ModelEvidence:
@@ -76,7 +88,7 @@ def tolerant_evidence(data: dict[str, Any]) -> ModelEvidence:
             except ValidationError as error:
                 if topic is not None:
                     reason = "ambiguous_period" if _concerns_period(error) else "unreadable"
-                    gaps.append(_gap(topic, reason, entry))
+                    gaps.append(_gap(topic, reason, entry, _why(entry, error)))
         doc[name] = kept
     audience = doc.get("audience")
     if isinstance(audience, dict):

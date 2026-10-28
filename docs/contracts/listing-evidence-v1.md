@@ -455,7 +455,7 @@ a depender del grado de sus fichas, no del número de fichas con ingreso declara
 | V9 | Más de un `scope`/`period` por entrada, o `period.kind = lifetime` con fechas incoherentes |
 | V10 | Un número sin `raw_text` |
 | V11 | Más de 12 imágenes procesadas o más de 50 problemas |
-| V12 | **`raw_text` no reproduce el valor**: se analiza `raw_text` (símbolos de moneda, separadores, sufijos `K`/`M`/`B`) y debe coincidir con `value` dentro del redondeo del propio texto |
+| V12 | **`raw_text` no reproduce el valor**: se analiza `raw_text` (símbolos de moneda, separadores, sufijos `K`/`M`/`B` y, en interfaces en español o portugués, `mil`, `mill.`, `millones`, `milhões`) y debe coincidir con `value` dentro del redondeo del propio texto |
 
 V12 no rechaza el documento entero: descarta **esa entrada**, la pasa a `unresolved`
 (`unreadable`) y marca `edited_or_inconsistent_numbers` si pasa en más de una.
@@ -555,3 +555,10 @@ fechas. Cambia:
   queda limitado a **C** y la ficha no entra a la muestra de RPM (R-reglas de §6.4 sin cambios).
 - `derived.primary` y `observation_sets[]` llevan `dates_visible` (booleano).
 - `PROMPT_VERSION` pasa a `listing-evidence-v1-p4`.
+
+### Diagnóstico de descartes (2026-10-28)
+
+Cada entrada descartada deja en `unresolved[].note` su motivo, sin datos personales: el texto leído
+frente al valor informado (`raw_text '…' does not match value …`), el tipo de periodo y las fechas que
+faltan (`period calendar_month: no dates`) o el primer campo inválido (`invalid raw_text:
+string_too_long`). `PROMPT_VERSION` pasa a `listing-evidence-v1-p5` (el lector de números cambió).

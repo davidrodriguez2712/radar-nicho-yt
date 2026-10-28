@@ -10,8 +10,19 @@ from nicheradar.market_intel.evidence.contracts import (
     ViewMetric,
 )
 
-_SUFFIX = {"K": Decimal(1_000), "M": Decimal(1_000_000), "B": Decimal(1_000_000_000)}
-_NUMBER = re.compile(r"(\d[\d.,\s]*)\s*([KMB])?\b", re.IGNORECASE)
+_SUFFIX = {
+    "K": Decimal(1_000),
+    "MIL": Decimal(1_000),
+    "M": Decimal(1_000_000),
+    "MILL": Decimal(1_000_000),
+    "MILLONES": Decimal(1_000_000),
+    "MILHÕES": Decimal(1_000_000),
+    "B": Decimal(1_000_000_000),
+}
+# Spanish/Portuguese UIs write «69,7 mil» or «1,2 mill.»; a suffix counts only if no letter follows.
+_NUMBER = re.compile(
+    r"(\d[\d.,\s]*)\s*(millones|milhões|mill|mil|[KMB])?(?![A-Za-zÀ-ÿ])", re.IGNORECASE
+)
 
 
 def parse_raw_number(raw: str) -> tuple[Decimal, Decimal] | None:
@@ -57,6 +68,11 @@ def raw_text_matches(raw: str, value: Decimal | float) -> bool:
     return abs(number - Decimal(str(value))) <= tolerance
 
 
+def _mismatch(raw: str, value: Decimal | float) -> str:
+    """What the text said against what the model reported (a short number, no personal data)."""
+    return f"raw_text {raw!r} does not match value {value}"[:200]
+
+
 def drop_unverifiable_entries(evidence: ModelEvidence) -> ModelEvidence:
     """Keep only earnings and view metrics whose `raw_text` reproduces their value.
 
@@ -70,14 +86,24 @@ def drop_unverifiable_entries(evidence: ModelEvidence) -> ModelEvidence:
             kept_earnings.append(earning)
         else:
             dropped.append(
-                Unresolved(topic="revenue", reason="unreadable", image_index=earning.image_index)
+                Unresolved(
+                    topic="revenue",
+                    reason="unreadable",
+                    image_index=earning.image_index,
+                    note=_mismatch(earning.raw_text, earning.amount.value),
+                )
             )
     for metric in evidence.views:
         if raw_text_matches(metric.raw_text, metric.value):
             kept_views.append(metric)
         else:
             dropped.append(
-                Unresolved(topic="views", reason="unreadable", image_index=metric.image_index)
+                Unresolved(
+                    topic="views",
+                    reason="unreadable",
+                    image_index=metric.image_index,
+                    note=_mismatch(metric.raw_text, metric.value),
+                )
             )
     if not dropped:
         return evidence
