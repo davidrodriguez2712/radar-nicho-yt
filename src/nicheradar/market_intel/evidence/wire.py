@@ -18,9 +18,10 @@ from nicheradar.market_intel.evidence.contracts import ModelEvidence
 from nicheradar.market_intel.evidence.reconcile import drop_unverifiable_entries
 
 PROMPT_VERSION = "listing-evidence-v1-p2"
-# The strict schema makes the model write every field; the first real run (p1) ended near 4096
-# tokens on most listings. The reservation is dominated by the context window, so it stays covered.
-MAX_OUTPUT_TOKENS = 12000
+# Technical ceiling, not a tuned cap: the first real run (p1, 4096) ended near that limit on most
+# listings, so p2 records the real output of every call (`derived.call`) to fix the cap from data.
+# Worst case stays inside the reservation, which the context window dominates.
+MAX_OUTPUT_TOKENS = 16000
 # Keywords strict mode rejects or that add nothing once pydantic validates the result.
 _DROPPED = frozenset(
     {
@@ -177,6 +178,7 @@ def _diagnostic(payload: dict[str, Any], error: Exception | None = None) -> dict
     if isinstance(details, dict):
         out["incomplete_reason"] = str(details.get("reason"))[:60]
     if isinstance(usage, dict):
+        out["input_tokens"] = usage.get("input_tokens")
         out["output_tokens"] = usage.get("output_tokens")
         reasoning = (usage.get("output_tokens_details") or {}).get("reasoning_tokens")
         if reasoning is not None:
@@ -217,5 +219,8 @@ def parse_response(payload: dict[str, Any], tariff: LLMTariff) -> EvidenceResult
             diagnostic=_diagnostic(payload, error),
         )
     return EvidenceResult(
-        evidence=drop_unverifiable_entries(evidence), actual_usd=actual, reason="response_received"
+        evidence=drop_unverifiable_entries(evidence),
+        actual_usd=actual,
+        reason="response_received",
+        diagnostic=_diagnostic(payload),
     )

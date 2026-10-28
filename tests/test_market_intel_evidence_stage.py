@@ -542,6 +542,21 @@ def test_a_blocked_source_stops_the_stage(isolated_engine: Engine) -> None:
 
 
 @pytest.mark.postgres
+def test_a_successful_call_stores_its_real_token_usage(isolated_engine: Engine) -> None:
+    run = make_run(isolated_engine)
+    with isolated_engine.begin() as connection:
+        seed(connection, "one")
+    run_stage(
+        context(isolated_engine, run, FakeSource({"one": (URL,)})),
+        selector_answering(json.dumps(base())),
+    )
+    [row] = rows(isolated_engine)
+    call = row["derived"]["call"]
+    assert call["status"] == "completed" and call["output_tokens"] > 0
+    assert call["input_tokens"] > 0
+
+
+@pytest.mark.postgres
 def test_one_unavailable_detail_page_skips_that_listing_and_the_rest_continue(
     isolated_engine: Engine,
 ) -> None:
