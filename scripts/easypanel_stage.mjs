@@ -70,6 +70,9 @@ const batchDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:53e92317c
 const classifyBackend = 'davidrodriguez2712/nicheradar-backend@sha256:5b0b2d30f464644d9ae816bb0f2565e9fde049be01af033db30f7a91c32cc733';
 const classifyWorker = 'davidrodriguez2712/nicheradar-worker@sha256:766f98011e8bdce7a3f9406508806d34b05a24fbc388cd2b33f5d41986c4909e';
 const classifyDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:d8ab255db72b512f591c87342ddc12b4359d5f805458a8f240550646ba3beabc';
+const enrichBackend = 'davidrodriguez2712/nicheradar-backend@sha256:9004772ee6e2e13febbb881771be3e87ad9822305130830afe4127fbd09261b7';
+const enrichWorker = 'davidrodriguez2712/nicheradar-worker@sha256:825d92086e70b2c5c6e3edba92de022e40d727c19d3f7d4d0ca8921728e05ebd';
+const enrichDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:dcfc794bab0d95fc46eae6971b3cfe3291d23de358f9864ad90ed37d2714a29d';
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
 const resources = (cpu) => ({memoryLimit:512,memoryReservation:128,cpuLimit:cpu,cpuReservation:0.1});
@@ -603,6 +606,22 @@ try {
     if(after.source?.image!==image) throw new Error('Image setting not persisted');
     cli(['app','deploy',`${project}/${name}`,'--yes']);
     console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='migrate-live-0018') {
+    const env=appEnv('nicheradar-api');
+    // NR_MARKET_INTEL_LIVE_ENABLED puede ser true (decisión del propietario tras 012): se exige
+    // que el radar esté pausado y se comprueba aparte que la programación de mercado también.
+    if(env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true' || env.NR_DATABASE_URL!==dbURL())
+      throw new Error('Live migration preconditions failed');
+    const code='import json,os,subprocess,sys; os.environ.update(json.load(sys.stdin)); sys.exit(subprocess.call(["alembic","upgrade","head"]))';
+    const args=['docker','run','--rm','-i','--name','nicheradar-migration-20261028-018',
+      '--network','easypanel-proy1-credito-riesgo','--memory','512m','--cpus','1',
+      '--read-only','--tmpfs','/tmp:rw,noexec,nosuid,size=64m','--cap-drop','ALL',
+      '--security-opt','no-new-privileges',enrichBackend,'python','-c',code];
+    const result=spawnSync('ssh',[...sshArgs,args.map(quote).join(' ')],{
+      input:JSON.stringify({NR_DATABASE_URL:env.NR_DATABASE_URL}),
+      encoding:'utf8',timeout:180000,maxBuffer:1024*1024});
+    console.log(JSON.stringify({migrationExit:result.status,processError:result.error?.code ?? null}));
+    if(result.error || result.status!==0) throw new Error('Migration failed; raw response withheld. Inspect only this migration safely.');
   } else if(action==='migrate-live-0017') {
     const env=appEnv('nicheradar-api');
     // NR_MARKET_INTEL_LIVE_ENABLED puede ser true (decisión del propietario tras 012): se exige
@@ -699,6 +718,44 @@ try {
     if(after.source?.image!==image) throw new Error('Image setting not persisted');
     cli(['app','deploy',`${project}/${name}`,'--yes']);
     console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='deploy-enrich-code') {
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?classifyDashboard:name==='nicheradar-worker'?classifyWorker:classifyBackend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Enrich release preconditions failed');
+    const image=isDashboard?enrichDashboard:name==='nicheradar-worker'?enrichWorker:enrichBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='set-youtube-enrich-caps') {
+    // Solo el worker corre el scraper. Sube (nunca baja) los topes de la etapa enrich y la cuota
+    // de detalle de YouTube que comparte con verify (decisión del propietario, 2026-10-28).
+    const name='nicheradar-worker';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    if(env.NR_MODE!=='live' || before.source?.image!==enrichWorker) throw new Error('Enrich caps preconditions failed');
+    const want={NR_MARKET_INTEL_ENRICH_CAP_PER_RUN:500,NR_YOUTUBE_DETAIL_QUOTA_PER_RUN:1500,
+      NR_YOUTUBE_DETAIL_QUOTA_PER_WEEK:12000,NR_YOUTUBE_DETAIL_QUOTA_PER_MONTH:30000};
+    const next={...env};
+    for(const [key,value] of Object.entries(want)) next[key]=String(Math.max(Number(env[key]??0),value));
+    cli(['app','update-env',`${project}/${name}`,'--yes'],{env:Object.entries(next).map(([k,v])=>`${k}=${v}`).join('\n')});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['source','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected non-environment change');
+    }
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,enrichCap:next.NR_MARKET_INTEL_ENRICH_CAP_PER_RUN,quotaRun:next.NR_YOUTUBE_DETAIL_QUOTA_PER_RUN,quotaWeek:next.NR_YOUTUBE_DETAIL_QUOTA_PER_WEEK,quotaMonth:next.NR_YOUTUBE_DETAIL_QUOTA_PER_MONTH,deployRequested:true}));
   } else if(action==='deploy-channel-analysis-insights-code') {
     const name=process.argv[3];
     if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
