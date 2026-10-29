@@ -575,11 +575,12 @@ código ISO, y 4 vistas porque el modelo informaba el valor sin el multiplicador
   idioma o sin idioma, la entrada se descarta como `ambiguous_currency` (en español un `$` puede ser
   peso mexicano, argentino o colombiano). `US$` equivale a USD sin suposición.
 - Lo asumido queda en `usd_symbol_images` (campo **del código**: no está en el esquema que ve el modelo
-  y se recalcula siempre). Un conjunto cuya moneda fue asumida: grado máximo **B**, **no** entra a la
-  muestra de RPM y lleva el riesgo bajo `currency_assumed_usd`.
+  y se recalcula siempre). Un conjunto cuya moneda fue asumida: grado máximo **B**, lleva el riesgo bajo
+  `currency_assumed_usd` y **sí entra a la muestra de RPM** (decisión del propietario el 2026-10-28,
+  tras ver que solo 1 de 22 fichas era elegible; el riesgo permite filtrarlo después).
 - Tarifas (`rates`) y contenido principal con moneda inutilizable se conservan sin moneda.
 - **Escala:** si `raw_text` no reproduce el valor pero el valor informado multiplicado por 10³, 10⁶
   o 10⁹ sí lo reproduce, se toma el valor del texto (`100K` informado como `100` pasa a 100000). Un
   número mal copiado (`5 050 504,8` frente a `5058504.8`) o un sufijo desconocido (`3.3L`) se siguen
   descartando.
-- `PROMPT_VERSION` pasa a `listing-evidence-v1-p6`.
+- `PROMPT_VERSION` pasa a `listing-evidence-v1-p6` y luego a `p7` (la regla de elegibilidad cambió).
