@@ -938,6 +938,39 @@ try {
     if(after.source?.image!==image) throw new Error('Image setting not persisted');
     cli(['app','deploy',`${project}/${name}`,'--yes']);
     console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='set-llm-limits') {
+    // Tope del proveedor de LLM (semanal y mensual) en NR_LLM_CONFIGURATION del worker. Es el límite que
+    // `reserve` aplica junto con el del perfil del radar (se usa el menor). Uso: set-llm-limits <semanal>
+    // <mensual> [dry]. Con `dry` solo muestra los valores actuales. Nunca imprime la configuración.
+    const name='nicheradar-worker';
+    const week=Number(process.argv[3]), month=Number(process.argv[4]);
+    if(!Number.isFinite(week) || !Number.isFinite(month) || week<5 || week>20 || month<week || month>30)
+      throw new Error('Usage: set-llm-limits <weekly 5..20> <monthly weekly..30> [dry]');
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    if(env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true') throw new Error('LLM limits preconditions failed');
+    let configuration;
+    try { configuration=JSON.parse(env.NR_LLM_CONFIGURATION); }
+    catch { throw new Error('NR_LLM_CONFIGURATION is not valid JSON'); }
+    const limits=configuration.limits;
+    if(!limits || limits.week===undefined || limits.period===undefined) throw new Error('LLM limits are missing');
+    const was={week:limits.week,period:limits.period};
+    const set=(current,next)=>typeof current==='string'?String(next):next;
+    configuration.limits={...limits,week:set(limits.week,week),period:set(limits.period,month)};
+    const result={name,week:{before:was.week,after:configuration.limits.week},
+      period:{before:was.period,after:configuration.limits.period},dryRun:process.argv[5]==='dry'};
+    if(result.dryRun) {
+      console.log(JSON.stringify(result));
+    } else {
+      const next={...env,NR_LLM_CONFIGURATION:JSON.stringify(configuration)};
+      cli(['app','update-env',`${project}/${name}`,'--yes'],{env:Object.entries(next).map(([k,v])=>`${k}=${v}`).join('\n')});
+      const after=cli(['app','inspect',`${project}/${name}`]);
+      for(const field of ['source','resources','deploy','ports','mounts','basicAuth']) {
+        if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected non-environment change');
+      }
+      cli(['app','deploy',`${project}/${name}`,'--yes']);
+      console.log(JSON.stringify({...result,deployRequested:true}));
+    }
   } else if(action==='set-evidence-cap') {
     // Solo el worker corre el scraper. Fija cuántas fichas lee la etapa evidence por corrida
     // (0 la apaga). Decisión del propietario: piloto de 100 y luego ampliar (2026-10-28).
