@@ -197,8 +197,6 @@ def rpm_sample_eligible(
     """R1-R9 of contract §6.4 (R9, one sample per listing, holds by construction)."""
     if primary is None or grade_value not in {"A", "B"}:
         return False
-    if primary.image_index in evidence.usd_symbol_images:
-        return False  # the currency was assumed, not read (D9)
     if primary.scope == "shorts" or (primary.scope == "all" and (primary.shorts_share or 0) >= 0.1):
         return False
     if primary.days is None or not 28 <= primary.days <= 365:

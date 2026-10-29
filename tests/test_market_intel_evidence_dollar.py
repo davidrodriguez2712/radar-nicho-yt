@@ -61,13 +61,13 @@ def test_the_assumption_field_is_code_owned_and_never_asked_of_the_model() -> No
     assert "usd_symbol_images" not in evidence_schema()["required"]
 
 
-def test_an_assumed_usd_set_caps_the_grade_at_b_and_is_not_an_rpm_sample() -> None:
+def test_an_assumed_usd_set_caps_the_grade_at_b_but_still_enters_the_rpm_sample() -> None:
     evidence = tolerant_evidence(with_symbol("en"))
     sets = observation_sets(evidence, {}, TODAY)
     primary = select_primary(sets)
     verdict = grade(evidence, primary, sets, has_api_views=False)
     assert verdict == "B"
-    assert rpm_sample_eligible(primary, evidence, verdict) is False
+    assert rpm_sample_eligible(primary, evidence, verdict) is True
     clean = ModelEvidence.model_validate(base())
     clean_sets = observation_sets(clean, {}, TODAY)
     assert grade(clean, select_primary(clean_sets), clean_sets, has_api_views=False) == "A"
@@ -79,7 +79,7 @@ def test_the_derived_block_carries_a_low_currency_assumed_usd_flag() -> None:
     )
     flags = [(f["code"], f["severity"]) for f in derived["risk_flags"]]
     assert ("currency_assumed_usd", "low") in flags
-    assert derived["rpm_sample_eligible"] is False
+    assert derived["rpm_sample_eligible"] is True
 
 
 def test_a_rate_with_an_unusable_currency_is_kept_without_it() -> None:
