@@ -584,3 +584,17 @@ código ISO, y 4 vistas porque el modelo informaba el valor sin el multiplicador
   número mal copiado (`5 050 504,8` frente a `5058504.8`) o un sufijo desconocido (`3.3L`) se siguen
   descartando.
 - `PROMPT_VERSION` pasa a `listing-evidence-v1-p6` y luego a `p7` (la regla de elegibilidad cambió).
+
+### Regla de Shorts de la muestra de RPM (R2) y datos de la API (2026-10-29)
+
+`derived` no guarda datos de la API de YouTube (sobrevive a la retención de 30 días de esos datos), así
+que la regla R2 («`scope = all` con Shorts < 10 % de las visitas») **no se aplica al guardar**, sino al
+leer la muestra, con la instantánea más reciente de `listing_channel_snapshots`:
+`evidence/sample.py` (`shorts_share_of_views`: visitas de videos de hasta 180 s sobre las visitas de
+`recent_videos`; `sample_decision`: `ok`, `shorts_heavy`, `shorts_unknown`, `scope_shorts` o
+`not_eligible`). `scope = long` entra sin más; `scope = all` sin instantánea queda fuera
+(`shorts_unknown`). Solo el agregado resultante (el RPM) puede conservarse pasados esos 30 días.
+`scripts/rpm_sample_report.py [min_n]` imprime el RPM observado por nicho con esta regla.
+Limitación: la proporción de Shorts sale de los videos recientes (acumulado de visitas hasta hoy),
+no del periodo de la captura.
+
