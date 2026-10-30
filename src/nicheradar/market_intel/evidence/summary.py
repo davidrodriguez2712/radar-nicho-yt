@@ -14,6 +14,7 @@ from nicheradar.market_intel.evidence.derive import (
     ObservationSet,
     code_risk_flags,
     grade,
+    isolated_monthly_revenue,
     observation_sets,
     rpm_sample_eligible,
     same_window,
@@ -108,7 +109,7 @@ def build_derived(
         income_level = "L1"
     elif has_revenue and evidence.earnings:
         income_level = "L2"
-        observed_monthly = None
+        observed_monthly = isolated_monthly_revenue(evidence, fx, extracted_at.date())
     else:
         income_level = "L4" if declared_income else "L5"
     rpm_check = _rpm_check(evidence, primary)

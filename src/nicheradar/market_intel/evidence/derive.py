@@ -142,6 +142,29 @@ def select_primary(sets: tuple[ObservationSet, ...]) -> ObservationSet | None:
     )
 
 
+def isolated_monthly_revenue(evidence: ModelEvidence, fx: Fx, extracted_on: date) -> Decimal | None:
+    """Revenue with no matching views, normalized to a month (contract §6.5, no primary set).
+
+    Same preference as the primary set (shortest window first), channel-wide or long-form scope
+    only, and only a window with a known length: a lifetime figure or a foreign currency without a
+    rate cannot be normalized.
+    """
+    candidates: list[tuple[int, Decimal]] = []
+    for earning in evidence.earnings:
+        days = earning.period.days
+        if (
+            earning.metric not in REVENUE_METRICS
+            or earning.scope not in {"all", "long"}
+            or earning.period.kind not in PERIOD_ORDER
+            or not days
+        ):
+            continue
+        usd = to_usd(earning.amount, earning.period.end or extracted_on, fx)
+        if usd is not None:
+            candidates.append((PERIOD_ORDER[earning.period.kind], usd * DAYS_PER_MONTH / days))
+    return min(candidates, key=lambda item: item[0])[1] if candidates else None
+
+
 def monthly_views_lower_bound(api: ApiEvidence | None, now: datetime) -> Decimal | None:
     """Views of videos published in the last 90 days, divided by 3 (contract §6.5)."""
     if api is None:

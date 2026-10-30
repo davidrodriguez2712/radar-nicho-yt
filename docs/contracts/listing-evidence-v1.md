@@ -623,3 +623,17 @@ decimal (`US$0.001` es una décima de centavo, no 1); antes se leía como 1 y la
 lo dejaba en 1,00. `scripts/rederive_evidence.py [--apply]` revalida y rederiva lo ya guardado sin llamar
 al modelo (por defecto es una simulación): descarta los valores que el parser anterior leyó mal.
 
+### Ingreso aislado normalizado (§6.5, aplicado el 2026-10-30)
+
+Hasta ahora, sin pareja ingreso-visitas (`income_level = L2`) el código dejaba `observed_monthly_income_usd`
+en `null`, en contra de §6.5. Ahora es el **ingreso aislado normalizado**: `isolated_monthly_revenue`
+elige el ingreso de la ventana más corta (misma preferencia que el conjunto primario: 28, 90, mes natural,
+365 días), solo con alcance `all` o `long`, métrica de ingreso y duración conocida (nominal si no hay
+fechas), y lo lleva a mes (`usd × 30,4375 / días`). Un `lifetime`, un alcance `shorts`, `live` u `other` o
+una divisa sin tasa no se normalizan y dejan `null`. Sigue sin haber RPM ni muestra (no hay visitas), el
+nivel sigue siendo L2 y `declared_vs_observed_ratio` se calcula con esa cifra.
+
+Motivo: de 223 filas L2 de la lectura completa, 118 eran normalizables y se perdían, entre ellas canales de más
+de un millón de suscriptores. Con ellas, el cociente observado/declarado (n = 69) tiene mediana 0,01
+(p25 0,00, p75 0,10), frente a 0,07 con solo L1, que estaba sesgado hacia las fichas con analítica completa.
+
