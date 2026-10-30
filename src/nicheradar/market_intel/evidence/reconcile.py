@@ -40,8 +40,14 @@ def parse_raw_number(raw: str) -> tuple[Decimal, Decimal] | None:
     elif last_dot >= 0 or last_comma >= 0:
         mark = "." if last_dot >= 0 else ","
         mark_tail = digits[digits.rfind(mark) + 1 :]
-        # "1,276" is thousands; "1,27" or "69.7" is a decimal mark.
-        decimal_mark = mark if (len(mark_tail) != 3 or suffix) and digits.count(mark) == 1 else None
+        # "1,276" is thousands; "1,27" or "69.7" is a decimal mark. A group never starts with a
+        # zero ("0.001" is a tenth of a cent, never 1), so a leading "0" always means decimals.
+        leading_zero = digits.split(mark)[0] == "0"
+        decimal_mark = (
+            mark
+            if (len(mark_tail) != 3 or suffix or leading_zero) and digits.count(mark) == 1
+            else None
+        )
     else:
         decimal_mark = None
     if decimal_mark:

@@ -1,6 +1,6 @@
 # listing-evidence-v1
 
-Estado: **aprobado por el propietario el 2026-10-28** (decisiones D1 a D7 con los valores propuestos de §14; D8 y D9 aprobadas el 2026-10-28). Implementación por etapas: 1) modelo y validaciones (`src/nicheradar/market_intel/evidence/`, hecho), 2) API de YouTube (etapa `enrich`, hecho), 3) lectura de capturas (etapa `evidence`, `market_intel/evidence_stage.py`, ver [`market-intel.md`](../market-intel.md)) y prueba con 100 fichas, 4) todas las fichas.
+Estado: **aprobado por el propietario el 2026-10-28** (decisiones D1 a D7 con los valores propuestos de §14; D8 y D9 aprobadas el 2026-10-28; D10 el 2026-10-29). Implementación por etapas: 1) modelo y validaciones (`src/nicheradar/market_intel/evidence/`, hecho), 2) API de YouTube (etapa `enrich`, hecho), 3) lectura de capturas (etapa `evidence`, `market_intel/evidence_stage.py`, ver [`market-intel.md`](../market-intel.md)) y prueba con 100 fichas, 4) todas las fichas.
 Dirección: **extractor (lectura de capturas con visión + API de YouTube + texto de la ficha) →
 NicheRadar**. Sustituye al borrador manual `schema_ficha.md` usado en la prueba de 15 fichas del
 2026-10-27.
@@ -597,4 +597,29 @@ leer la muestra, con la instantánea más reciente de `listing_channel_snapshots
 `scripts/rpm_sample_report.py [min_n]` imprime el RPM observado por nicho con esta regla.
 Limitación: la proporción de Shorts sale de los videos recientes (acumulado de visitas hasta hoy),
 no del periodo de la captura.
+
+### D10. La muestra de RPM describe canales que de verdad monetizan en un mercado de pago (2026-10-29)
+
+Auditoría de las 90 muestras elegibles con sus capturas: el modelo lee bien las cifras, pero el RPM bajo
+(mediana 0,05) viene de canales nuevos o recién monetizados, con audiencia de bajo RPM (Bangladesh,
+Camboya, Indonesia), música y remix limitados por derechos, e ingresos prácticamente nulos. Esos canales
+no describen a su nicho. Además de R2 (Shorts), `sample_decision` exige, al leer (los datos de la API no
+se guardan en `derived`):
+
+| Regla | Razón de exclusión | Valor |
+|---|---|---|
+| Edad del canal (API `created_at`) al día de la captura | `channel_too_new` | ≥ 180 días |
+| Monetizado desde (`monetization.monetized_since`) al día de la captura | `recently_monetized` | ≥ 90 días |
+| Ingreso mensual observado | `low_income` | ≥ US$10 |
+| Mercado: `tier1_share` si se conoce; si no, el país del canal (API) | `market_not_tier1` | ≥ 30 % o país de nivel 1 |
+
+Un dato desconocido (edad, fecha de monetización, audiencia, país) **nunca** excluye por sí solo: las
+reglas solo excluyen lo que la evidencia muestra. Los valores son constantes de `evidence/sample.py`, que
+el propietario puede ajustar. Efecto buscado y sesgo reconocido: el RPM resultante es el de canales que
+cobran de verdad, no el medio del marketplace.
+
+**Corrección del lector de números:** un número que empieza por `0` seguido de separador es siempre
+decimal (`US$0.001` es una décima de centavo, no 1); antes se leía como 1 y la corrección de escala de D9
+lo dejaba en 1,00. `scripts/rederive_evidence.py [--apply]` revalida y rederiva lo ya guardado sin llamar
+al modelo (por defecto es una simulación): descarta los valores que el parser anterior leyó mal.
 
