@@ -8,26 +8,58 @@ import json
 import statistics
 import sys
 from collections import Counter, defaultdict
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import Engine, text
 
 from nicheradar.config import Settings
-from nicheradar.market_intel.evidence.sample import sample_decision, shorts_share_of_views
+from nicheradar.market_intel.evidence.sample import (
+    SampleContext,
+    sample_decision,
+    shorts_share_of_views,
+)
 from nicheradar.repositories.database import database_engine
 
 CATALOG = Path(__file__).parent.parent / "src/nicheradar/data/youtube_niches_rpm_longform_2026.json"
 QUERY = """
-select e.derived, l.income_monthly_usd,
+select e.derived, e.extracted_at,
+  e.model_evidence -> 'monetization' ->> 'monetized_since' as monetized_since,
   (select niche_label from listing_classifications c where c.listing_id = l.id
      order by c.created_at desc limit 1) as niche,
-  (select s.recent_videos from listing_channel_snapshots s where s.listing_id = l.id
-     and s.status = 'ok' order by s.fetched_at desc limit 1) as videos
+  snap.recent_videos, snap.channel_created_at, snap.country
 from listing_evidence e join marketplace_listings l on l.id = e.listing_id
+left join lateral (
+  select s.recent_videos, s.channel_created_at, s.country from listing_channel_snapshots s
+  where s.listing_id = l.id and s.status = 'ok' order by s.fetched_at desc limit 1
+) snap on true
 where e.prompt_version like '%p7' and e.extraction_state = 'complete'
   and e.derived ->> 'rpm_sample_eligible' = 'true'
 """
+
+
+def context_of(
+    derived: dict[str, Any],
+    extracted_at: datetime,
+    monetized_since: str | None,
+    videos: list[dict[str, Any]] | None,
+    created_at: datetime | None,
+    country: str | None,
+) -> SampleContext:
+    """The reference day is the capture's (extraction minus its age), not today's."""
+    age = (derived.get("primary") or {}).get("capture_age_days")
+    reference = (extracted_at - timedelta(days=int(age or 0))).date()
+    return SampleContext(
+        shorts_share=shorts_share_of_views(videos) if videos else None,
+        channel_age_days=(reference - created_at.date()).days if created_at else None,
+        country=country,
+        monetized_days=(reference - date.fromisoformat(monetized_since)).days
+        if monetized_since
+        else None,
+        tier1_share=derived.get("tier1_share"),
+    )
 
 
 def quantile(values: list[float], q: float) -> float:
@@ -45,9 +77,10 @@ def build_report(engine: Engine, minimum: int = 1) -> list[str]:
     with engine.connect() as connection:
         connection.exec_driver_sql("SET TRANSACTION READ ONLY")
         rows = list(connection.execute(text(QUERY)))
-    for derived, _income, niche, videos in rows:
-        share = shorts_share_of_views(videos) if videos else None
-        reason = sample_decision(derived, share)
+    for derived, extracted_at, since, niche, videos, created_at, country in rows:
+        reason = sample_decision(
+            derived, context_of(derived, extracted_at, since, videos, created_at, country)
+        )
         reasons[reason] += 1
         if reason == "ok":
             rpm_by_niche[niche or "(sin clasificar)"].append(float(Decimal(derived["rpm_usd"])))

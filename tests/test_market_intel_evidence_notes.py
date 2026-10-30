@@ -64,3 +64,36 @@ def test_a_dropped_entry_records_the_first_failing_field() -> None:
     doc["earnings"][0]["raw_text"] = "x" * 200
     [gap] = tolerant_evidence(doc).unresolved
     assert gap.note is not None and "raw_text" in gap.note
+
+
+@pytest.mark.parametrize(
+    ("raw", "value"),
+    [
+        ("US$0.001", Decimal("0.001")),
+        ("$0.005", Decimal("0.005")),
+        ("0,001", Decimal("0.001")),
+        ("US$0.83", Decimal("0.83")),
+    ],
+)
+def test_a_number_starting_with_zero_and_a_separator_is_a_decimal_never_thousands(
+    raw: str, value: Decimal
+) -> None:
+    assert raw_text_matches(raw, value)
+
+
+@pytest.mark.parametrize(("raw", "value"), [("US$0.001", 1), ("$0.005", 5)])
+def test_a_sub_unit_amount_is_not_read_as_a_whole_number(raw: str, value: int) -> None:
+    assert not raw_text_matches(raw, value)
+
+
+def test_thousands_separators_still_work() -> None:
+    for raw, value in [("1,276", 1276), ("1.001", 1001), ("US$1.276,14", Decimal("1276.14"))]:
+        assert raw_text_matches(raw, value)
+
+
+def test_the_scale_correction_does_not_inflate_a_correct_sub_cent_amount() -> None:
+    doc = base()
+    doc["earnings"][0]["raw_text"] = "US$0.001"
+    doc["earnings"][0]["amount"]["value"] = "0.001"
+    evidence = drop_unverifiable_entries(ModelEvidence.model_validate(doc))
+    assert evidence.earnings[0].amount.value == Decimal("0.001")
