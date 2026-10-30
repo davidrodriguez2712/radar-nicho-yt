@@ -100,6 +100,9 @@ const evidenceRpmDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:9b9
 const qualityRpmBackend = 'davidrodriguez2712/nicheradar-backend@sha256:5af1f9386cd6ef39a3c94cd6c77317958234e724b75c6ec64e8a39b22342e215';
 const qualityRpmWorker = 'davidrodriguez2712/nicheradar-worker@sha256:d4f0b6052115f82ac0e071e6b352810a22b270b295d38e98c2db5ed2f61d99c5';
 const qualityRpmDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:d2337db8b8415af3f9747896b71083bac19cb03bb3d876b780483eb4fc43f349';
+const isolatedIncomeBackend = 'davidrodriguez2712/nicheradar-backend@sha256:04e83051892ad199318a8012862dc0197f0b14e1e073363fcc79f21ca4091e11';
+const isolatedIncomeWorker = 'davidrodriguez2712/nicheradar-worker@sha256:3703bf469efcf01bc088d4db9e8a49fce896658d4c65d8633f7a44ba046ec42a';
+const isolatedIncomeDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:e12841ebb4a68b8c0dade29725c6c8d5076b35150d269455e355128025e3b035';
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
 const resources = (cpu) => ({memoryLimit:512,memoryReservation:128,cpuLimit:cpu,cpuReservation:0.1});
@@ -1027,6 +1030,59 @@ try {
       cli(['app','deploy',`${project}/${name}`,'--yes']);
       console.log(JSON.stringify({...result,deployRequested:true}));
     }
+  } else if(action==='deploy-isolated-income-code') {
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?qualityRpmDashboard:name==='nicheradar-worker'?qualityRpmWorker:qualityRpmBackend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Isolated income release preconditions failed');
+    const image=isDashboard?isolatedIncomeDashboard:name==='nicheradar-worker'?isolatedIncomeWorker:isolatedIncomeBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='set-llm-limits') {
+    // Tope del proveedor de LLM (semanal y mensual) en NR_LLM_CONFIGURATION del worker. Es el límite que
+    // `reserve` aplica junto con el del perfil del radar (se usa el menor). Uso: set-llm-limits <semanal>
+    // <mensual> [dry]. Con `dry` solo muestra los valores actuales. Nunca imprime la configuración.
+    const name='nicheradar-worker';
+    const week=Number(process.argv[3]), month=Number(process.argv[4]);
+    if(!Number.isFinite(week) || !Number.isFinite(month) || week<5 || week>20 || month<week || month>30)
+      throw new Error('Usage: set-llm-limits <weekly 5..20> <monthly weekly..30> [dry]');
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    if(env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true') throw new Error('LLM limits preconditions failed');
+    let configuration;
+    try { configuration=JSON.parse(env.NR_LLM_CONFIGURATION); }
+    catch { throw new Error('NR_LLM_CONFIGURATION is not valid JSON'); }
+    const limits=configuration.limits;
+    if(!limits || limits.week===undefined || limits.period===undefined) throw new Error('LLM limits are missing');
+    const was={week:limits.week,period:limits.period};
+    const set=(current,next)=>typeof current==='string'?String(next):next;
+    configuration.limits={...limits,week:set(limits.week,week),period:set(limits.period,month)};
+    const result={name,week:{before:was.week,after:configuration.limits.week},
+      period:{before:was.period,after:configuration.limits.period},dryRun:process.argv[5]==='dry'};
+    if(result.dryRun) {
+      console.log(JSON.stringify(result));
+    } else {
+      const next={...env,NR_LLM_CONFIGURATION:JSON.stringify(configuration)};
+      cli(['app','update-env',`${project}/${name}`,'--yes'],{env:Object.entries(next).map(([k,v])=>`${k}=${v}`).join('\n')});
+      const after=cli(['app','inspect',`${project}/${name}`]);
+      for(const field of ['source','resources','deploy','ports','mounts','basicAuth']) {
+        if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected non-environment change');
+      }
+      cli(['app','deploy',`${project}/${name}`,'--yes']);
+      console.log(JSON.stringify({...result,deployRequested:true}));
+    }
   } else if(action==='set-evidence-cap') {
     // Solo el worker corre el scraper. Fija cuántas fichas lee la etapa evidence por corrida
     // (0 la apaga). Decisión del propietario: piloto de 100 y luego ampliar (2026-10-28).
@@ -1035,7 +1091,7 @@ try {
     if(!Number.isInteger(cap) || cap<0 || cap>500) throw new Error('Cap must be an integer from 0 to 500');
     const before=cli(['app','inspect',`${project}/${name}`]);
     const env=appEnv(name);
-    if(env.NR_MODE!=='live' || before.source?.image!==qualityRpmWorker) throw new Error('Evidence cap preconditions failed');
+    if(env.NR_MODE!=='live' || before.source?.image!==isolatedIncomeWorker) throw new Error('Evidence cap preconditions failed');
     const next={...env,NR_MARKET_INTEL_EVIDENCE_CAP_PER_RUN:String(cap)};
     cli(['app','update-env',`${project}/${name}`,'--yes'],{env:Object.entries(next).map(([k,v])=>`${k}=${v}`).join('\n')});
     const after=cli(['app','inspect',`${project}/${name}`]);
