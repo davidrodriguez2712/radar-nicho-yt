@@ -394,15 +394,6 @@
   status: "proposed"
   finalist: false
   seed_channels: []
-- slug: "black_history_untold_stories"
-  label: "Black History Untold Stories"
-  family: "black_audience"
-  parent_niche: "historical_stories"
-  queries: ["black history untold stories", "hidden black history documentary"]
-  origin: "manual"
-  status: "proposed"
-  finalist: false
-  seed_channels: []
 - slug: "african_kingdoms_history"
   label: "African Kingdoms and Empires"
   family: "black_audience"
@@ -412,29 +403,11 @@
   status: "proposed"
   finalist: false
   seed_channels: []
-- slug: "black_inventors_innovators"
-  label: "Black Inventors and Innovators"
-  family: "black_audience"
-  parent_niche: "historical_stories"
-  queries: ["black inventors who changed the world", "forgotten black innovators history"]
-  origin: "manual"
-  status: "proposed"
-  finalist: false
-  seed_channels: []
 - slug: "black_entrepreneurs_stories"
   label: "Black Entrepreneurs Success Stories"
   family: "black_audience"
   parent_niche: "wealth_stories"
   queries: ["black entrepreneurs success stories", "black owned business history"]
-  origin: "manual"
-  status: "proposed"
-  finalist: false
-  seed_channels: []
-- slug: "civil_rights_history_documentary"
-  label: "Civil Rights History"
-  family: "black_audience"
-  parent_niche: "history_documentaries"
-  queries: ["civil rights movement documentary", "civil rights history untold stories"]
   origin: "manual"
   status: "proposed"
   finalist: false
