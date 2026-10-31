@@ -14,9 +14,11 @@ from nicheradar.subniche_discovery.contracts import HypothesisDraft
 NOW = datetime(2026, 10, 31, 12, tzinfo=UTC)
 
 
-def make_run(db: Connection, now: datetime = NOW) -> tuple[UUID, UUID, UUID]:
+def make_run(
+    db: Connection, now: datetime = NOW, profile: CreatorProfile | None = None
+) -> tuple[UUID, UUID, UUID]:
     """(discovery_run_id, analysis_run_id, profile_id)."""
-    profile_id = seed_profile(db, CreatorProfile(), initial_catalog())
+    profile_id = seed_profile(db, profile or CreatorProfile(), initial_catalog())
     analysis_id = insert_record(
         db,
         "analysis_runs",
