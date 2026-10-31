@@ -8,6 +8,7 @@ from sqlalchemy import Connection
 from nicheradar.domain.profile import CreatorProfile, initial_catalog
 from nicheradar.repositories import schema
 from nicheradar.repositories.core import insert_record, seed_profile
+from nicheradar.subniche_discovery.contracts import HypothesisDraft
 
 NOW = datetime(2026, 10, 31, 12, tzinfo=UTC)
 
@@ -33,3 +34,22 @@ def make_run(db: Connection, now: datetime = NOW) -> tuple[UUID, UUID, UUID]:
         )
     )
     return run_id, analysis_id, profile_id
+
+
+def draft(
+    slug: str = "history_revenge",
+    queries: tuple[str, ...] = ("history revenge",),
+    origin: str = "manual",
+    seeds: tuple[str, ...] = (),
+    parent: str | None = None,
+) -> HypothesisDraft:
+    return HypothesisDraft(
+        slug=slug,
+        label=slug.replace("_", " ").title(),
+        family="history",
+        parent_niche_slug=parent,
+        queries=queries,
+        origin=origin,
+        source_input=None,
+        seed_channel_ids=seeds,
+    )
