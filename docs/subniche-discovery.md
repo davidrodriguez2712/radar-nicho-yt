@@ -21,10 +21,13 @@ estima visitas e ingreso y guarda un perfil agregado. No crea canales ni elige o
 ## Cómo se usa
 
 Todos los comandos corren donde la base de producción es alcanzable y con las variables del worker
-(`NR_DATABASE_URL`, etc.). Cada uno imprime una línea JSON y sale con código 1 si hay un error declarado.
+(`NR_DATABASE_URL`, etc.). Cada uno imprime una línea JSON y sale con código 1 si hay un error declarado,
+salvo `export` sin `--out`, que imprime el YAML en crudo (con `--out` escribe el archivo y sí imprime una línea JSON).
 
 ```sh
-# Alta: consulta, video o canal (el LLM propone; la hipótesis queda `proposed`)
+# Alta: consulta, video o canal (el LLM propone; la hipótesis queda `proposed`).
+# Con un video o un canal como entrada `add` construye el lector de YouTube: exige
+# NR_YOUTUBE_LIVE_ENABLED=true y la clave de YouTube del worker.
 uv run python scripts/subniche.py add "faceless history documentary"
 uv run python scripts/subniche.py add "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 uv run python scripts/subniche.py add "@nombredelcanal"          # o la URL / el id UC… del canal
@@ -38,7 +41,7 @@ uv run python scripts/subniche.py pause <slug>
 uv run python scripts/subniche.py resume <slug>
 uv run python scripts/subniche.py archive <slug>
 uv run python scripts/subniche.py finalist <slug> [--off]   # finalista: se refresca a los 7 días
-uv run python scripts/subniche.py measure <slug>     # pide re-medir en la próxima corrida (no mide al instante)
+uv run python scripts/subniche.py measure <slug>     # exige `active` (si no: invalid_transition); agenda re-medir en la próxima corrida (no mide al instante)
 uv run python scripts/subniche.py export [--out hipotesis.yaml]
 ```
 
@@ -62,6 +65,19 @@ máximo; las nuevas se miden primero, ordenadas por fecha de aprobación) → `s
 - Una corrida `running` con más de 6 h se considera muerta y se reanuda al día local siguiente.
 - Puertas: `NR_SUBNICHE_ENABLED=true` (defecto `false`), `NR_MODE=live` y `NR_YOUTUBE_LIVE_ENABLED=true`.
   Si falta cualquiera, el tick informa `disabled`, `synthetic_mode` o `youtube_not_enabled` y no hace nada.
+  Sin `NR_YOUTUBE_API_KEY` o `NR_YOUTUBE_AUTH_SCOPE` informa `youtube_not_configured`, también sin crear corrida.
+
+### Regla de cuota de búsqueda
+
+Una hipótesis cuesta `consultas × páginas × 100` unidades de búsqueda (una consulta × una página = 100).
+Debe cumplirse `NR_SUBNICHE_SEARCH_UNITS_PER_DAY >= consultas × páginas × 100` y lo mismo con
+`NR_SUBNICHE_SEARCH_QUOTA_PER_RUN`. **Con los defectos (100 / 100) solo completan hipótesis de 1 consulta × 1 página**
+(con `NR_SUBNICHE_SEARCH_PAGES=2` ya son 200); las propuestas por el LLM llevan 2 o 3 consultas (hasta 600 con 2 páginas).
+
+- Si ninguna hipótesis pendiente cabe nunca en el tope, el tick responde `insufficient_search_cap` (con `needed` y `cap`)
+  **sin crear corrida ni reservar nada**; las que no caben se omiten con la razón en `stats.skipped` y se miden las demás.
+- Si cabe en el tope pero hoy ya se gastó parte del cupo diario, la corrida queda `partial` **antes** de la primera
+  búsqueda de esa hipótesis (no se gasta nada) y continúa al día local siguiente. `stats.stopped_slug` dice dónde paró.
 
 ## Variables de entorno del worker
 
@@ -121,6 +137,10 @@ Ejemplo **validado** con `LLMConfiguration.model_validate_json` (reserva por pro
 - Cabecera `anthropic-version: 2023-06-01` (versión estable documentada; el SDK más nuevo envía
   2026-10-21). **Si la primera llamada real devuelve un error HTTP, revisar primero la constante
   `ANTHROPIC_VERSION` en `src/nicheradar/integrations/anthropic.py`.**
+- **Cada `llm_http_error` / `llm_invalid_response` deja una reserva `unknown_charge` por el máximo de la propuesta**
+  (US$0,04 con la tarifa documentada), que cuenta como pasivo sin límite de período hasta conciliarse. Por eso
+  intentos repetidos de `add` que fallan (p. ej. depurando la cabecera de versión) consumen el tope semanal en
+  dólares del perfil (US$5/semana) hasta que alguien concilie. Es el mismo comportamiento que el adaptador de OpenAI.
 
 ## Verificación de cuota pendiente (bloquea solo la corrida inicial, no el código)
 
@@ -131,13 +151,13 @@ modela cada búsqueda como 100 unidades y los topes semanal/mensual actuales (70
 
 El propietario debe leer el límite y el uso actuales en **Google Cloud Console → YouTube Data API v3 →
 Cuotas ("Search queries per day")** antes de subir `NR_SUBNICHE_SEARCH_UNITS_PER_DAY`. Hasta entonces el
-defecto es 100 (1 búsqueda por día).
+defecto es 100 (1 búsqueda por día: ver la regla de cuota de búsqueda, solo caben hipótesis de 1 consulta × 1 página).
 
 | Resultado de la verificación | Valores recomendados |
 |---|---|
-| **100 búsquedas por día** (o el pool general de 10.000 unidades) | `NR_SUBNICHE_SEARCH_UNITS_PER_DAY=10000`; `NR_SUBNICHE_SEARCH_QUOTA_PER_RUN=10000`; `_PER_WEEK=70000`; `_PER_MONTH=300000` (los topes del ledger deben acompañar o seguirán frenando antes). Una hipótesis cuesta `consultas × páginas` búsquedas (hasta 3 × 2 = 6 con los defectos) |
+| **100 búsquedas por día** (o el pool general de 10.000 unidades) | `NR_SUBNICHE_SEARCH_UNITS_PER_DAY=10000`; `NR_SUBNICHE_SEARCH_QUOTA_PER_RUN=10000`; `_PER_WEEK=70000`; `_PER_MONTH=300000` (los topes del ledger deben acompañar o seguirán frenando antes). Una hipótesis cuesta `consultas × páginas` búsquedas (hasta 3 × 2 = 6 con los defectos), es decir hasta 600 unidades: el tope diario y el de `_PER_RUN` deben ser al menos `consultas × páginas × 100` |
 | **Otro valor N de búsquedas por día** | `NR_SUBNICHE_SEARCH_UNITS_PER_DAY = N × 100`, con `_PER_RUN` igual y `_PER_WEEK`/`_PER_MONTH` = 7× y 30× ese valor. Bajar `NR_SUBNICHE_SEARCH_PAGES` a 1 para medir el doble de hipótesis por día |
-| **1 búsqueda por día** (se queda en 100 unidades) | La corrida inicial (≈ 240 búsquedas, unas 40 hipótesis) es **inviable** en plazos razonables y hay que rediseñarla (menos consultas por hipótesis, 1 página, lista inicial más corta o pedir ampliación de cuota a Google). No subir el tope |
+| **1 búsqueda por día** (se queda en 100 unidades) | Solo caben hipótesis de 1 consulta × 1 página (`NR_SUBNICHE_SEARCH_PAGES=1`); las del LLM (2 o 3 consultas) se omiten con `insufficient_search_cap`. La corrida inicial (≈ 240 búsquedas, unas 40 hipótesis) es **inviable** en plazos razonables y hay que rediseñarla (menos consultas por hipótesis, 1 página, lista inicial más corta o pedir ampliación de cuota a Google). No subir el tope |
 
 No subir los topes antes de leer el valor real: un tope por encima del cupo de Google solo produce
 errores `quotaExceeded` a mitad de corrida (la corrida queda `partial` y no pierde datos, pero gasta el día).
@@ -165,8 +185,8 @@ solicitudes, no como dólares.
 - El ingreso es un rango con error de factor 2 a 10; la clasificación entre hipótesis es más fiable que el nivel absoluto.
 - RPM heredado del nicho padre; sin padre, sin ingreso.
 - Tweets reconocidos pero no soportados (subproyecto C).
-- Un canal sin videos recientes se guarda con ingreso 0 y **entra en las medianas estables**; está identificado y
-  se revisará.
+- Un canal sin videos recientes o cuya lectura de videos falló se guarda con `excluded_reason`
+  `no_recent_videos` / `harvest_failed`: cuenta en `profile.excluded` y no entra en las medianas ni en los estables.
 - La regla de subcadenas `www`/`http` en consultas rechaza algunas consultas legítimas (p. ej. una que contenga "www" dentro de otra palabra).
 - La página del dashboard queda fuera (fase 4 del spec, condicionada a que el informe sea útil).
 
