@@ -46,9 +46,26 @@ class Settings(BaseSettings):
     youtube_detail_quota_per_run: int = Field(default=100, ge=0, le=10_000)
     youtube_detail_quota_per_week: int = Field(default=500, ge=0, le=100_000)
     youtube_detail_quota_per_month: int = Field(default=2000, ge=0, le=1_000_000)
+
+    # Descubrimiento de subnichos (spec 2026-10-31-subniche-discovery-youtube-design).
+    # El defecto de búsqueda diaria es 1 búsqueda (100 unidades) hasta que el propietario verifique
+    # el cupo real de search.list en Google Cloud Console.
+    subniche_enabled: bool = False
+    subniche_search_units_per_day: int = Field(default=100, ge=0, le=100_000)
+    subniche_search_pages: int = Field(default=2, ge=1, le=3)
+    subniche_channels_per_hypothesis: int = Field(default=30, ge=1, le=100)
+    subniche_search_quota_per_run: int = Field(default=100, ge=0, le=100_000)
+    subniche_search_quota_per_week: int = Field(default=700, ge=0, le=1_000_000)
+    subniche_search_quota_per_month: int = Field(default=3000, ge=0, le=10_000_000)
+    subniche_detail_quota_per_run: int = Field(default=5000, ge=0, le=100_000)
+    subniche_detail_quota_per_week: int = Field(default=10_000, ge=0, le=1_000_000)
+    subniche_detail_quota_per_month: int = Field(default=30_000, ge=0, le=10_000_000)
     llm_enabled: bool = False
     llm_api_key: SecretStr | None = None
     llm_configuration: LLMConfiguration | None = None
+    anthropic_enabled: bool = False
+    anthropic_api_key: SecretStr | None = None
+    anthropic_configuration: LLMConfiguration | None = None
     api_url: str = "http://127.0.0.1:8000"
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8000, ge=1024, le=65535)
@@ -152,6 +169,11 @@ class Settings(BaseSettings):
                 "enabled": self.llm_enabled,
                 "credentials_configured": self.llm_api_key is not None,
                 "tariff_configured": self.llm_configuration is not None,
+            },
+            "hypothesis_proposals": {
+                "enabled": self.anthropic_enabled,
+                "credentials_configured": self.anthropic_api_key is not None,
+                "tariff_configured": self.anthropic_configuration is not None,
             },
             "providers": {
                 "synthetic": {"credentials_configured": True, "policy": "enabled"},

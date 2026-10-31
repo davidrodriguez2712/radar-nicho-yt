@@ -28,6 +28,7 @@ from scripts.backup_mac import (
 )
 from scripts.backup_snapshot import (
     BOOTSTRAP_TABLES,
+    DISCOVERY_TABLES,
     FLOW_TABLES,
     MARKET_TABLES,
     PILOT_TABLES,
@@ -47,7 +48,7 @@ def test_bootstrap_snapshot_guard_and_active_schedule(db: Connection) -> None:
     create_schedule(db, profile, NOW, {})
     report = inspect_snapshot(db)
     assert report["scope"] == "bootstrap-only"
-    assert report["revision"] == "0019"
+    assert report["revision"] == "0020"
     db.execute(update(s.radar_schedules).values(paused=False))
     with pytest.raises(ValueError, match="radar_not_paused"):
         inspect_snapshot(db)
@@ -127,7 +128,7 @@ def test_encrypted_archive_roundtrip_tamper_and_wrong_key(tmp_path: Path) -> Non
     payload = b"PGDMP synthetic private fixture; not a database"
     report: dict[str, object] = {
         "scope": "bootstrap-only",
-        "revision": "0019",
+        "revision": "0020",
         "created_at": NOW.isoformat(),
         "dump_sha256": hashlib.sha256(payload).hexdigest(),
     }
@@ -243,7 +244,14 @@ def test_reviewed_table_groups_are_exact_and_disjoint() -> None:
     }
     assert FLOW_TABLES == {"flow_research_requests", "flow_research_dossiers"}
     assert RESEARCH_TABLES == MARKET_TABLES | FLOW_TABLES
-    groups = [BOOTSTRAP_TABLES, PILOT_TABLES, MARKET_TABLES, FLOW_TABLES, RUN_TABLES]
+    groups = [
+        BOOTSTRAP_TABLES,
+        PILOT_TABLES,
+        MARKET_TABLES,
+        FLOW_TABLES,
+        RUN_TABLES,
+        DISCOVERY_TABLES,
+    ]
     assert sum(len(group) for group in groups) == len(set().union(*groups))
     reviewed = set().union(*groups)
     assert reviewed <= set(schema.metadata.tables) | {"alembic_version"}
@@ -287,7 +295,7 @@ def test_snapshot_keeps_research_and_excludes_provider_evidence_together(db: Con
 @pytest.mark.postgres
 def test_snapshot_still_pins_the_reviewed_schema_revision(db: Connection) -> None:
     add_request(db)
-    db.exec_driver_sql("UPDATE alembic_version SET version_num = '0020'")
+    db.exec_driver_sql("UPDATE alembic_version SET version_num = '0021'")
     with pytest.raises(ValueError, match="unreviewed_schema_revision"):
         inspect_snapshot(db)
 
@@ -306,7 +314,7 @@ def test_load_backup_accepts_every_reviewed_scope(tmp_path: Path) -> None:
     ):
         report: dict[str, object] = {
             "scope": scope,
-            "revision": "0019",
+            "revision": "0020",
             "created_at": NOW.isoformat(),
             "dump_sha256": hashlib.sha256(payload).hexdigest(),
         }
@@ -369,7 +377,7 @@ def test_prune_deletes_only_matching_local_archives_and_dry_run_deletes_nothing(
     def make(moment: datetime, delete_after: datetime | None = None) -> Path:
         report: dict[str, object] = {
             "scope": "bootstrap+research",
-            "revision": "0019",
+            "revision": "0020",
             "created_at": moment.isoformat(),
             "dump_sha256": hashlib.sha256(payload).hexdigest(),
             "delete_after": delete_after.isoformat() if delete_after else None,

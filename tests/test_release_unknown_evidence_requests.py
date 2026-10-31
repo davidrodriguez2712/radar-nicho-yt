@@ -35,7 +35,7 @@ def requests_by_state(engine: Engine) -> dict[str, int]:
                 s.provider_requests.c.state
             )
         )
-        return dict(found.all())
+        return {str(row[0]): int(row[1]) for row in found.all()}
 
 
 def fail_one(engine: Engine) -> dict[str, Any]:

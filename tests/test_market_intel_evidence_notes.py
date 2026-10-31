@@ -87,7 +87,12 @@ def test_a_sub_unit_amount_is_not_read_as_a_whole_number(raw: str, value: int) -
 
 
 def test_thousands_separators_still_work() -> None:
-    for raw, value in [("1,276", 1276), ("1.001", 1001), ("US$1.276,14", Decimal("1276.14"))]:
+    cases: list[tuple[str, int | Decimal]] = [
+        ("1,276", 1276),
+        ("1.001", 1001),
+        ("US$1.276,14", Decimal("1276.14")),
+    ]
+    for raw, value in cases:
         assert raw_text_matches(raw, value)
 
 

@@ -143,6 +143,9 @@ class YouTubeProvider:
                 "order",
                 "videoId",
                 "regionCode",
+                "publishedAfter",
+                "relevanceLanguage",
+                "videoDuration",
             }
         }
         if operation == Operation.UPLOADS:

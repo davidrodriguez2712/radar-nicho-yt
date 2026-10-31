@@ -117,8 +117,8 @@ queda descartado por ahora: exigiría quitar el Basic Auth del proxy, que chocar
 Decidido el 2026-10-25: las tablas de pilotos se respaldan. `scripts/backup_snapshot.py` las
 admite con filas (`PILOT_TABLES`) y reporta `scope = "bootstrap+pilots"`; `channel_tokens` solo
 guarda hashes. Los datos de investigación de mercado y de flujo siguen bloqueando el respaldo.
-La revisión esperada es `0019` (la migración `0017` añadió `pilot_shorts_measurements`; la `0018`, `listing_channel_snapshots`, evidencia de proveedor sin filas en el respaldo; la primera se
-respalda con el resto de las tablas de pilotos).
+La revisión esperada es `0020` (la migración `0017` añadió `pilot_shorts_measurements`; la `0018`, `listing_channel_snapshots`, evidencia de proveedor sin filas en el respaldo; la primera se
+respalda con el resto de las tablas de pilotos; la `0020` añade las tablas del descubrimiento de subnichos y la guarda del respaldo se fijó en esa revisión).
 
 ## Diferencias con el contrato
 

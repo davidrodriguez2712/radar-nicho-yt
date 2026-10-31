@@ -1,5 +1,7 @@
 # Estado de implementación — 2026-10-01
 
+Descubrimiento de subnichos (subproyecto B): implementado, sin desplegar; ver [subniche-discovery.md](subniche-discovery.md).
+
 Release `v1-candidate-20261001-011` desplegada: el Home del dashboard resume el panorama
 de oportunidades (conteos por estado, candidatos ordenados por score final → Market Score
 → volumen de evidencia → Creator Fit) con una tarjeta "Hacia dónde ir ahora" que traduce
