@@ -27,7 +27,7 @@ salvo `export` sin `--out`, que imprime el YAML en crudo (con `--out` escribe el
 ```sh
 # Alta: consulta, video o canal (el LLM propone; la hipótesis queda `proposed`).
 # Con un video o un canal como entrada `add` construye el lector de YouTube: exige
-# NR_YOUTUBE_LIVE_ENABLED=true y la clave de YouTube del worker.
+# NR_YOUTUBE_API_KEY y NR_YOUTUBE_AUTH_SCOPE (no comprueba NR_YOUTUBE_LIVE_ENABLED).
 uv run python scripts/subniche.py add "faceless history documentary"
 uv run python scripts/subniche.py add "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 uv run python scripts/subniche.py add "@nombredelcanal"          # o la URL / el id UC… del canal
@@ -142,7 +142,22 @@ Ejemplo **validado** con `LLMConfiguration.model_validate_json` (reserva por pro
   intentos repetidos de `add` que fallan (p. ej. depurando la cabecera de versión) consumen el tope semanal en
   dólares del perfil (US$5/semana) hasta que alguien concilie. Es el mismo comportamiento que el adaptador de OpenAI.
 
-## Verificación de cuota pendiente (bloquea solo la corrida inicial, no el código)
+## Cupo de búsqueda de YouTube (verificado el 2026-10-31)
+
+**Verificado por el propietario en Google Cloud Console → YouTube Data API v3 → Cuotas:**
+"Search Queries per day" = **100** y "Search Queries per minute" = 100 (ajustables), con uso actual 0;
+"Queries per day" (pool general) = 10.000. Es decir, **100 búsquedas por día**, no una. El ledger modela cada
+búsqueda como 100 unidades, así que el tope diario equivale a `NR_SUBNICHE_SEARCH_UNITS_PER_DAY=10000`.
+Los topes de 1 búsqueda por día del análisis de canales (`youtube_search_quota_*`, 100/700/3000) son solo conservadores.
+
+**Recomendación para el primer día:** empezar con `NR_SUBNICHE_SEARCH_UNITS_PER_DAY=5000` (50 búsquedas) y mirar
+en la consola el "Uso actual" de las dos filas ("Search Queries per day" y "Queries per day"). La consola no
+aclara si cada búsqueda también descuenta unidades del pool general de 10.000; si lo hace, 100 búsquedas lo agotarían
+por completo y dejarían sin cupo a las lecturas de detalle (1 unidad cada una). Si tras el primer día solo sube
+"Search Queries per day", se puede subir a 10000. Con 50 búsquedas por día, la corrida inicial (≈ 240 búsquedas)
+tarda unos 5 días.
+
+### Historial: la verificación que estaba pendiente
 
 `docs/channel-analysis.md` y el plan del 2026-10-01 dicen que `search.list` tiene un cupo propio
 ("Search queries per day = 100" en Google Cloud Console), distinto del pool de 10.000/día. El ledger
@@ -206,7 +221,7 @@ Pasos del propietario tras el despliegue:
 1. `migrate-live` de la 0020 (producción hoy está en una revisión anterior: aplicar también las intermedias
    que falten). Confirmar `alembic heads` = `0020`.
 2. Variables del worker de la sección anterior (la clave ya está cargada). `NR_SUBNICHE_ENABLED` se queda en `false`
-   hasta resolver la verificación de cuota.
+   hasta tener las variables de cuota (ver "Cupo de búsqueda de YouTube": empezar con 5000 unidades por día).
 3. `uv run python scripts/seed_subniche_policy.py` (una vez, idempotente): habilita las políticas de Anthropic
    `hypothesis_proposal`. Exige `NR_ANTHROPIC_ENABLED=true`, `NR_MODE=live` y `NR_RADAR_PAUSED=true`; no toca presupuestos ni programaciones.
 4. Revisar con el propietario la lista inicial de hipótesis **antes de gastar cuota**, aprobar y, solo entonces, activar
