@@ -8,11 +8,14 @@ from nicheradar.subniche_discovery.contracts import normalize_query
 from nicheradar.subniche_discovery.reader import YouTubeReader
 
 _VIDEO = re.compile(
-    r"(?:youtube\.com/watch\?(?:[^#\s]*&)?v=|youtu\.be/|youtube\.com/shorts/)([A-Za-z0-9_-]{11})"
+    r"(?i:youtube\.com/watch\?(?:[^#\s]*&)?v=|youtu\.be/|youtube\.com/shorts/)"
+    r"([A-Za-z0-9_-]{11})"
 )
-_CHANNEL_ID = re.compile(r"(?:youtube\.com/channel/)?(UC[A-Za-z0-9_-]{22})(?:[/?#]|$)")
-_HANDLE = re.compile(r"(?:youtube\.com/)?(@[A-Za-z0-9._-]{3,30})(?:[/?#]|$)")
-_TWEET = re.compile(r"(?:x|twitter)\.com/[^/\s]+/status/(\d+)")
+_CHANNEL_ID = re.compile(r"(?i:youtube\.com/channel/)?(UC[A-Za-z0-9_-]{22})(?:[/?#]|$)")
+_HANDLE = re.compile(r"(?:^|(?i:youtube\.com/))(@[A-Za-z0-9._-]{3,30})(?:[/?#]|$)")
+_TWEET = re.compile(r"(?i:(?:x|twitter)\.com)/[^/\s]+/status/(\d+)")
+_YOUTUBE_HOST = re.compile(r"youtube\.com|youtu\.be", re.IGNORECASE)
+MIN_QUERY, MAX_QUERY = 3, 80  # same limits as clean_queries in contracts.py
 RECENT_TITLES = 10
 
 
@@ -28,15 +31,19 @@ def parse_input(raw: str) -> ParsedInput:
         return ParsedInput("tweet", match.group(1))
     if match := _VIDEO.search(text):
         return ParsedInput("video", match.group(1))
-    if "youtube.com/channel/" in text or re.fullmatch(r"UC[A-Za-z0-9_-]{22}", text):
+    if "youtube.com/channel/" in text.lower() or re.fullmatch(r"UC[A-Za-z0-9_-]{22}", text):
         found = _CHANNEL_ID.search(text)
         if found:
             return ParsedInput("channel", found.group(1))
     if match := _HANDLE.search(text):
         return ParsedInput("channel", match.group(1))
+    if _YOUTUBE_HOST.search(text):
+        raise ValueError("unsupported YouTube URL form")
     query = normalize_query(text)
-    if len(query) < 3:
-        raise ValueError("a query needs at least 3 characters")
+    if not MIN_QUERY <= len(query) <= MAX_QUERY:
+        raise ValueError(f"a query needs {MIN_QUERY} to {MAX_QUERY} characters")
+    if "http" in query or "www" in query:
+        raise ValueError("a query must not be a URL")
     return ParsedInput("query", query)
 
 

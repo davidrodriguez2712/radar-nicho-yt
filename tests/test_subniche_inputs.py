@@ -62,3 +62,40 @@ def test_channel_by_handle_and_missing_resources() -> None:
         asyncio.run(resolve_source(parse_input("@missing_channel"), FakeReader()))
     with pytest.raises(LookupError):
         asyncio.run(resolve_source(parse_input("https://youtu.be/dQw4w9WgXcQ"), FakeReader()))
+
+
+@pytest.mark.parametrize(
+    "raw,kind,value",
+    [
+        ("HTTPS://WWW.YOUTUBE.COM/watch?v=dQw4w9WgXcQ", "video", "dQw4w9WgXcQ"),
+        ("Youtu.be/dQw4w9WgXcQ", "video", "dQw4w9WgXcQ"),
+        ("https://WWW.YOUTUBE.COM/@oceanversefrance", "channel", "@oceanversefrance"),
+        ("email@domain.com", "query", "email domain com"),
+        ("best of @2020", "query", "best of 2020"),
+    ],
+)
+def test_case_insensitive_hosts_and_no_false_handles(raw: str, kind: str, value: str) -> None:
+    parsed = parse_input(raw)
+    assert (parsed.kind, parsed.value) == (kind, value)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "https://www.youtube.com/live/dQw4w9WgXcQ",
+        "https://www.youtube.com/embed/dQw4w9WgXcQ",
+        "https://www.youtube.com/c/SomeName",
+        "https://www.youtube.com/user/SomeName",
+    ],
+)
+def test_unsupported_youtube_urls_are_rejected(raw: str) -> None:
+    with pytest.raises(ValueError, match="unsupported"):
+        parse_input(raw)
+
+
+def test_query_length_is_capped_at_80_and_urls_are_rejected() -> None:
+    assert parse_input("a" * 80).value == "a" * 80
+    with pytest.raises(ValueError):
+        parse_input("a" * 81)
+    with pytest.raises(ValueError):
+        parse_input("see https://example.com/some/page")
