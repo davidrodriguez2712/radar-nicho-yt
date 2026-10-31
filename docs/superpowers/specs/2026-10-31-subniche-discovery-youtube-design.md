@@ -260,6 +260,12 @@ Acciones necesarias (las ejecuta el propietario, como el resto de los despliegue
   cuota; el RPM heredado queda marcado como tal.
 - **Segundo proveedor de LLM:** durante la fase 1 conviven OpenAI y Anthropic, con
   credenciales, tarifas y topes por separado. Se documenta en el informe de gasto.
+- **Cupo real de `search.list` por verificar:** `docs/channel-analysis.md` registra que
+  `search.list` tiene un cupo propio ("Search Queries per day = 100" en Google Cloud Console),
+  distinto del pool de 10.000/día. Este spec asumió 100 unidades por búsqueda contra ese pool
+  (≈100 búsquedas al día). Si el cupo real es 1 búsqueda al día, la corrida inicial es inviable
+  y hay que rediseñarla. El propietario verifica el límite y el uso en la consola antes de
+  subir `subniche_search_units_per_day` (defecto conservador: 100). Ver el plan.
 - **Cuota compartida:** una corrida grande puede dejar sin cuota al análisis de canales;
   se mitiga con el tope diario y ejecutando de noche.
 - **Términos de la API:** retención de 30 días de datos de API; se cumple con la poda.
