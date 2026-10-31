@@ -7,12 +7,13 @@ from typing import Any
 import httpx
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import Engine
+from sqlalchemy import Engine, select
 
 from nicheradar.config import Settings
 from nicheradar.domain.profile import CreatorProfile, initial_catalog
 from nicheradar.integrations.anthropic import AnthropicClient
 from nicheradar.integrations.policies import Usage
+from nicheradar.repositories import schema_v1 as s
 from nicheradar.repositories.core import insert_record, seed_profile
 from nicheradar.subniche_discovery.propose import (
     POLICY_DATA_TYPE,
@@ -79,7 +80,7 @@ def test_parse_valid_proposal_prices_the_call() -> None:
     [
         {**GOOD, "parent_niche": "not_in_catalog"},
         {**GOOD, "queries": ["only one query"]},
-        {**GOOD, "queries": ["a", "b", "c", "d"]},
+        {**GOOD, "queries": ["alpha one", "beta two", "gamma three", "delta four"]},
         {**GOOD, "queries": ["see https://evil.example now", "history revenge"]},
         {**GOOD, "family": "Not Snake"},
         {**GOOD, "extra": "key"},
@@ -98,6 +99,13 @@ def test_hostile_text_cannot_widen_the_contract() -> None:
     assert result.proposal.parent_niche == "historical_stories"
     refusal = tool_payload(GOOD, content=[{"type": "text", "text": "I will do something else"}])
     assert parse_proposal_response(refusal, TARIFF, LABELS).proposal is None
+    block = {"type": "tool_use", "name": PROPOSAL_TOOL, "input": GOOD}
+    wrong_tool = tool_payload(GOOD, content=[{**block, "name": "delete_everything"}])
+    result = parse_proposal_response(wrong_tool, TARIFF, LABELS)
+    assert result.proposal is None and result.reason == "invalid_response"
+    two_blocks = tool_payload(GOOD, content=[block, block])
+    result = parse_proposal_response(two_blocks, TARIFF, LABELS)
+    assert result.proposal is None and result.reason == "invalid_response"
 
 
 def test_truncated_response_is_incomplete() -> None:
@@ -165,6 +173,13 @@ def seed_run(connection: Any) -> dict[str, Any]:
     return {"id": run_id, "profile_id": profile_id, "mode": "live"}
 
 
+def ledger(engine: Engine) -> tuple[list[str], list[str]]:
+    with engine.connect() as connection:
+        requests = connection.execute(select(s.provider_requests.c.state)).scalars().all()
+        reservations = connection.execute(select(s.cost_reservations.c.status)).scalars().all()
+    return list(requests), list(reservations)
+
+
 @pytest.mark.postgres
 def test_propose_hypothesis_success_settles_the_ledger(isolated_engine: Engine) -> None:
     with isolated_engine.begin() as connection:
@@ -183,6 +198,7 @@ def test_propose_hypothesis_success_settles_the_ledger(isolated_engine: Engine) 
     )
     assert result["reason"] == "response_received"
     assert result["proposal"].proposal.label == "History Revenge Stories"
+    assert ledger(isolated_engine) == (["completed"], ["confirmed"])
 
 
 @pytest.mark.postgres
@@ -200,6 +216,7 @@ def test_propose_hypothesis_declines_without_policy_or_config(isolated_engine: E
         )
     )
     assert no_policy == {"proposal": None, "reason": "policy_not_enabled"}
+    assert ledger(isolated_engine) == ([], [])
     disabled = asyncio.run(
         propose_hypothesis(
             isolated_engine, run, Settings(mode="live"), SOURCE, LABELS, NOW, client=client
@@ -213,6 +230,7 @@ def test_propose_hypothesis_declines_without_policy_or_config(isolated_engine: E
         )
     )
     assert out == {"proposal": None, "reason": "synthetic_mode"}
+    assert ledger(isolated_engine) == ([], [])
 
 
 @pytest.mark.postgres
@@ -229,3 +247,4 @@ def test_http_failure_settles_without_a_proposal(isolated_engine: Engine) -> Non
         )
     )
     assert result == {"proposal": None, "reason": "llm_failed"}
+    assert ledger(isolated_engine) == (["unknown_charge"], ["unknown_charge"])
