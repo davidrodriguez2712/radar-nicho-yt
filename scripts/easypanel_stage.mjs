@@ -160,6 +160,15 @@ function localVidIQToken() {
   return token;
 }
 
+function localAnthropicKey() {
+  const lines=readFileSync(new URL('../.env',import.meta.url),'utf8').split(/\r?\n/);
+  const matches=lines.filter(line=>line.startsWith('NR_ANTHROPIC_API_KEY='));
+  if(matches.length!==1) throw new Error('Exactly one local NR_ANTHROPIC_API_KEY is required');
+  const key=matches[0].slice('NR_ANTHROPIC_API_KEY='.length);
+  if(!key || /\s/.test(key)) throw new Error('Invalid local Anthropic key');
+  return key;
+}
+
 function localYouTubeConfig() {
   const lines=readFileSync(new URL('../.env',import.meta.url),'utf8').split(/\r?\n/);
   const values=Object.fromEntries(lines.filter(line=>line.startsWith('NR_YOUTUBE_')).map(line=>{
@@ -682,7 +691,9 @@ try {
     const before=cli(['app','inspect',`${project}/${name}`]);
     const env=appEnv(name);
     if(env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true') throw new Error('Subniche env preconditions failed');
-    if(!env.NR_ANTHROPIC_API_KEY || /\s/.test(env.NR_ANTHROPIC_API_KEY)) throw new Error('NR_ANTHROPIC_API_KEY is not set in the worker');
+    // La clave se toma del entorno del worker si ya está guardada; si no, del .env local privado (nunca se imprime).
+    const anthropicKey=env.NR_ANTHROPIC_API_KEY || localAnthropicKey();
+    if(/\s/.test(anthropicKey)) throw new Error('Invalid Anthropic key');
     if(env.NR_SUBNICHE_ENABLED==='true') throw new Error('NR_SUBNICHE_ENABLED is already true; refusing to touch it');
     const configuration={auth_scope:'anthropic-owner',
       tariff:{version:'anthropic-sonnet-5-5-2026-10-31',model:'claude-sonnet-5-5',
@@ -699,7 +710,7 @@ try {
     if(dryRun) {
       console.log(JSON.stringify(result));
     } else {
-      const next={...env,...settings,NR_ANTHROPIC_CONFIGURATION:JSON.stringify(configuration)};
+      const next={...env,...settings,NR_ANTHROPIC_API_KEY:anthropicKey,NR_ANTHROPIC_CONFIGURATION:JSON.stringify(configuration)};
       cli(['app','update-env',`${project}/${name}`,'--yes'],{env:Object.entries(next).map(([k,v])=>`${k}=${v}`).join('\n')});
       const after=cli(['app','inspect',`${project}/${name}`]);
       for(const field of ['source','resources','deploy','ports','mounts','basicAuth']) {
