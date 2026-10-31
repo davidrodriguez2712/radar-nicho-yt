@@ -1,0 +1,540 @@
+- slug: "history_revenge"
+  label: "History Revenge Stories"
+  family: "history"
+  parent_niche: "historical_stories"
+  queries: ["history revenge", "revenge that changed history"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "forgotten_history_events"
+  label: "Forgotten History Events"
+  family: "history"
+  parent_niche: "history_documentaries"
+  queries: ["forgotten history documentary", "history they never taught you"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "ancient_civilizations_mysteries"
+  label: "Ancient Civilizations Mysteries"
+  family: "history"
+  parent_niche: "history_documentaries"
+  queries: ["ancient civilizations documentary", "lost ancient civilization mystery"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "medieval_life_explained"
+  label: "Medieval Life Explained"
+  family: "history"
+  parent_niche: "history_documentaries"
+  queries: ["daily life in the middle ages", "medieval history explained"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "roman_empire_stories"
+  label: "Roman Empire Stories"
+  family: "history"
+  parent_niche: "historical_stories"
+  queries: ["roman empire history documentary", "fall of the roman empire explained"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "ww2_untold_stories"
+  label: "WW2 Untold Stories"
+  family: "history"
+  parent_niche: "military_history_stories"
+  queries: ["ww2 untold stories", "world war 2 documentary hidden history"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "military_blunders_history"
+  label: "Military Blunders in History"
+  family: "history"
+  parent_niche: "military_history_stories"
+  queries: ["biggest military blunders in history", "worst battle defeats in history"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "empires_collapse_explained"
+  label: "Why Empires Collapsed"
+  family: "history"
+  parent_niche: "historical_stories"
+  queries: ["why empires collapsed", "rise and fall of empires documentary"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "ancient_egypt_secrets"
+  label: "Ancient Egypt Secrets"
+  family: "history"
+  parent_niche: "history_documentaries"
+  queries: ["ancient egypt documentary", "secrets of the pharaohs"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "dark_history_of_rulers"
+  label: "Dark History of Rulers"
+  family: "history"
+  parent_niche: "historical_stories"
+  queries: ["dark history of famous rulers", "most ruthless kings in history"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "historical_disasters_explained"
+  label: "Historical Disasters Explained"
+  family: "history"
+  parent_niche: "history_documentaries"
+  queries: ["worst disasters in history documentary", "how a historical disaster happened"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "viking_history_documentary"
+  label: "Viking History Documentary"
+  family: "history"
+  parent_niche: "history_documentaries"
+  queries: ["viking history documentary", "real history of the vikings"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "unsolved_cold_cases"
+  label: "Unsolved Cold Cases"
+  family: "mysteries"
+  parent_niche: "unsolved_mysteries"
+  queries: ["unsolved cold case documentary", "cold cases that still baffle investigators"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "mysterious_disappearances"
+  label: "Mysterious Disappearances"
+  family: "mysteries"
+  parent_niche: "unsolved_mysteries"
+  queries: ["mysterious disappearances documentary", "people who vanished without a trace"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "internet_mysteries_deep_dive"
+  label: "Internet Mysteries Deep Dive"
+  family: "mysteries"
+  parent_niche: "internet_mysteries"
+  queries: ["internet mysteries explained", "unsolved internet mystery deep dive"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "greatest_scams_documentary"
+  label: "Greatest Scams Documentary"
+  family: "mysteries"
+  parent_niche: "scam_stories"
+  queries: ["greatest scams in history", "con artist documentary"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "cult_documentaries"
+  label: "Cult Documentaries"
+  family: "mysteries"
+  parent_niche: "cult_stories"
+  queries: ["cult documentary full", "how cults control people"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "true_survival_stories"
+  label: "True Survival Stories"
+  family: "mysteries"
+  parent_niche: "survival_stories"
+  queries: ["true survival story documentary", "stranded survival story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "deep_sea_mysteries"
+  label: "Deep Sea Mysteries"
+  family: "nature_science"
+  parent_niche: "nature_documentaries"
+  queries: ["deep sea creatures documentary", "mysteries of the deep ocean"]
+  origin: "lead"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "space_mysteries_explained"
+  label: "Space Mysteries Explained"
+  family: "nature_science"
+  parent_niche: "space_astronomy"
+  queries: ["space mysteries explained", "universe documentary what we dont know"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "black_holes_cosmos_documentary"
+  label: "Black Holes and the Cosmos"
+  family: "nature_science"
+  parent_niche: "space_astronomy"
+  queries: ["black holes explained documentary", "how the universe will end"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "prehistoric_creatures_documentary"
+  label: "Prehistoric Creatures"
+  family: "nature_science"
+  parent_niche: "wildlife_documentaries"
+  queries: ["prehistoric creatures documentary", "extinct animals that once ruled earth"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "dark_psychology_explained"
+  label: "Dark Psychology Explained"
+  family: "nature_science"
+  parent_niche: "psychology_education"
+  queries: ["dark psychology explained", "psychology facts about human behavior"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "stoicism_philosophy_explained"
+  label: "Stoicism Explained"
+  family: "nature_science"
+  parent_niche: "philosophy"
+  queries: ["stoicism explained", "philosophy of marcus aurelius"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "business_failures_collapse"
+  label: "Business Failures and Collapses"
+  family: "business"
+  parent_niche: "business_failure_stories"
+  queries: ["why companies collapsed", "biggest corporate failures documentary"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "brand_origin_stories"
+  label: "Brand Origin Stories"
+  family: "business"
+  parent_niche: "startup_stories"
+  queries: ["how a famous brand started", "origin story of billion dollar company"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "billionaire_rise_stories"
+  label: "Billionaire Rise Stories"
+  family: "business"
+  parent_niche: "wealth_stories"
+  queries: ["how billionaires made their fortune", "rags to riches business story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "luxury_brand_history"
+  label: "Luxury Brand History"
+  family: "business"
+  parent_niche: "luxury_brand_stories"
+  queries: ["luxury brand history documentary", "story behind luxury brands"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "economics_explained_simply"
+  label: "Economics Explained Simply"
+  family: "business"
+  parent_niche: "economics_explained"
+  queries: ["economics explained simply", "how the economy really works"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "financial_crashes_history"
+  label: "Financial Crashes in History"
+  family: "business"
+  parent_niche: "economics_explained"
+  queries: ["history of financial crashes", "stock market crash explained"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "retirement_money_mistakes"
+  label: "Retirement Money Mistakes"
+  family: "business"
+  parent_niche: "retirement_planning"
+  queries: ["retirement mistakes to avoid", "how much money to retire"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "personal_finance_beginners"
+  label: "Personal Finance for Beginners"
+  family: "business"
+  parent_niche: "personal_finance"
+  queries: ["personal finance for beginners", "money habits of the wealthy"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "geopolitics_maps_explained"
+  label: "Geopolitics and Maps Explained"
+  family: "business"
+  parent_niche: "geopolitics_explained"
+  queries: ["geopolitics explained", "how geography shapes nations"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "engineering_marvels_documentary"
+  label: "Engineering Marvels"
+  family: "tech_engineering"
+  parent_niche: "engineering_explained"
+  queries: ["engineering marvels documentary", "how the worlds biggest structures were built"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "history_of_artificial_intelligence"
+  label: "History of Artificial Intelligence"
+  family: "tech_engineering"
+  parent_niche: "generative_ai_tools"
+  queries: ["how artificial intelligence works documentary", "history of artificial intelligence"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "greatest_hacks_stories"
+  label: "Greatest Hacks Stories"
+  family: "tech_engineering"
+  parent_niche: "cybersecurity"
+  queries: ["greatest hacks in history", "hacker documentary true story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "revenge_stories_narrated"
+  label: "Narrated Revenge Stories"
+  family: "stories"
+  parent_niche: "revenge_stories"
+  queries: ["reddit revenge stories", "pro revenge stories narrated"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "malicious_compliance_stories"
+  label: "Malicious Compliance Stories"
+  family: "stories"
+  parent_niche: "malicious_compliance_stories"
+  queries: ["malicious compliance stories", "petty revenge at work"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "workplace_drama_stories"
+  label: "Workplace Drama Stories"
+  family: "stories"
+  parent_niche: "workplace_drama_stories"
+  queries: ["workplace drama stories", "toxic boss stories narrated"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "horror_stories_narrated"
+  label: "Narrated Horror Stories"
+  family: "stories"
+  parent_niche: "horror_stories"
+  queries: ["scary stories narrated", "true horror stories"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "gaming_lore_explained"
+  label: "Gaming Lore Explained"
+  family: "stories"
+  parent_niche: "gaming_lore"
+  queries: ["gaming lore explained", "video game story explained"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "sci_fi_stories_narrated"
+  label: "Sci-Fi Stories Narrated"
+  family: "scifi"
+  parent_niche: "horror_stories"
+  queries: ["sci fi short stories narrated", "sci fi audiobook full story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "futurism_what_if_explained"
+  label: "Futurism and What-If Explained"
+  family: "scifi"
+  parent_niche: "space_astronomy"
+  queries: ["what if the future documentary", "future of humanity explained"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "sci_fi_lore_explained"
+  label: "Sci-Fi Universe Lore Explained"
+  family: "scifi"
+  parent_niche: "gaming_lore"
+  queries: ["sci fi universe lore explained", "space opera lore documentary"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "african_kingdoms_history"
+  label: "African Kingdoms and Empires"
+  family: "black_audience"
+  parent_niche: "history_documentaries"
+  queries: ["african empires history documentary", "ancient african kingdoms explained"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "black_entrepreneurs_stories"
+  label: "Black Entrepreneurs Success Stories"
+  family: "black_audience"
+  parent_niche: "wealth_stories"
+  queries: ["black entrepreneurs success stories", "black owned business history"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "alien_romance_stories"
+  label: "Alien and Sci-Fi Romance Stories"
+  family: "scifi"
+  parent_niche: "reddit_relationship_stories"
+  queries: ["alien romance story audiobook", "sci fi romance stories narrated"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "space_horror_stories"
+  label: "Space Horror Stories"
+  family: "scifi"
+  parent_niche: "horror_stories"
+  queries: ["space horror stories narrated", "scary sci fi stories"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "humans_vs_aliens_hfy_stories"
+  label: "Humans vs Aliens HFY Stories"
+  family: "scifi"
+  parent_niche: "horror_stories"
+  queries: ["hfy stories narrated", "humans vs aliens story narrated"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "ai_robot_dystopia_stories"
+  label: "AI and Robot Dystopia Stories"
+  family: "scifi"
+  parent_niche: "horror_stories"
+  queries: ["ai takeover story narrated", "robot uprising short story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "post_apocalyptic_sci_fi_stories"
+  label: "Post-Apocalyptic Sci-Fi Stories"
+  family: "scifi"
+  parent_niche: "survival_stories"
+  queries: ["post apocalyptic story narrated", "last survivors sci fi story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "sci_fi_sleep_stories"
+  label: "Sci-Fi Sleep Stories"
+  family: "scifi"
+  parent_niche: "sleep_education"
+  queries: ["sci fi bedtime story for sleep", "space story to fall asleep"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "time_travel_stories_narrated"
+  label: "Time Travel Stories Narrated"
+  family: "scifi"
+  parent_niche: "horror_stories"
+  queries: ["time travel story narrated", "time loop sci fi story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "fermi_paradox_aliens_explained"
+  label: "Fermi Paradox and Aliens Explained"
+  family: "scifi"
+  parent_niche: "space_astronomy"
+  queries: ["fermi paradox explained", "alien civilizations documentary"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "discrimination_karma_stories"
+  label: "Discrimination Karma Stories"
+  family: "black_audience"
+  parent_niche: "entitled_people_stories"
+  queries: ["racist karen karma stories", "racist neighbor gets karma story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "workplace_racism_justice_stories"
+  label: "Workplace Racism Justice Stories"
+  family: "black_audience"
+  parent_niche: "workplace_drama_stories"
+  queries: ["racism at work revenge story", "black employee wins against racist boss"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "overcoming_racism_first_person_stories"
+  label: "Overcoming Racism First-Person Stories"
+  family: "black_audience"
+  parent_niche: "revenge_stories"
+  queries: ["overcoming racism true story narrated", "black man facing discrimination story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "african_tribe_first_person_stories"
+  label: "African Tribe First-Person Stories"
+  family: "black_audience"
+  parent_niche: "survival_stories"
+  queries: ["growing up in an african tribe story", "i lived with an african tribe story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "tribal_warrior_hunter_stories"
+  label: "Tribal Warrior and Hunter Stories"
+  family: "black_audience"
+  parent_niche: "survival_stories"
+  queries: ["tribal warrior story first person", "african hunter story narrated"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "african_village_family_drama_stories"
+  label: "African Village Family Drama Stories"
+  family: "black_audience"
+  parent_niche: "survival_stories"
+  queries: ["african village girl story narrated", "tribal family drama story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []

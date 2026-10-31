@@ -2,6 +2,8 @@
 
 import argparse
 import asyncio
+import base64
+import binascii
 import json
 from collections.abc import Callable
 from datetime import datetime
@@ -11,10 +13,16 @@ from sqlalchemy import Engine
 
 from nicheradar.config import Settings
 from nicheradar.integrations.anthropic import AnthropicClient
+from nicheradar.market_intel.classify import niche_labels
 from nicheradar.market_intel.context import utcnow
 from nicheradar.repositories.database import database_engine
 from nicheradar.subniche_discovery import store
 from nicheradar.subniche_discovery.contracts import STATUSES
+from nicheradar.subniche_discovery.importer import (
+    ImportFormatError,
+    import_hypotheses,
+    parse_export,
+)
 from nicheradar.subniche_discovery.intake import ManualFields, add_hypothesis
 from nicheradar.subniche_discovery.reader import YouTubeReader
 
@@ -40,6 +48,11 @@ def _parser() -> argparse.ArgumentParser:
     listing.add_argument("--status", choices=list(STATUSES))
     export = sub.add_parser("export")
     export.add_argument("--out")
+    load = sub.add_parser("import")
+    source = load.add_mutually_exclusive_group(required=True)
+    source.add_argument("path", nargs="?")
+    source.add_argument("--b64")
+    load.add_argument("--dry-run", action="store_true")
     return parser
 
 
@@ -62,6 +75,36 @@ def _transition(engine: Engine, args: argparse.Namespace, now: datetime) -> dict
         elif args.command == "measure":
             store.request_remeasure(connection, args.slug)
         return {"ok": True, "slug": args.slug, "command": args.command}
+
+
+def _read_import_text(args: argparse.Namespace) -> str | dict[str, Any]:
+    """The file content, or the JSON error to print. Never echoes the content."""
+    try:
+        if args.b64 is not None:
+            return base64.b64decode(args.b64, validate=True).decode("utf-8")
+        with open(args.path, encoding="utf-8") as handle:
+            return handle.read()
+    except (binascii.Error, UnicodeDecodeError) as error:
+        return {"error": "invalid_format", "detail": f"unreadable input: {type(error).__name__}"}
+    except OSError:
+        return {"error": "file_not_found"}
+
+
+def _import(engine: Engine, args: argparse.Namespace, now: datetime) -> dict[str, Any]:
+    text = _read_import_text(args)
+    if isinstance(text, dict):
+        return text
+    try:
+        items = parse_export(text)
+    except ImportFormatError as error:
+        return {"error": "invalid_format", "detail": str(error)}
+    with engine.begin() as connection:
+        result = import_hypotheses(
+            connection, items, niche_labels(connection), now, dry_run=args.dry_run
+        )
+    if not result["ok"]:
+        return {"error": "invalid_import", "invalid": result["invalid"]}
+    return result
 
 
 def main(
@@ -115,6 +158,8 @@ def main(
             else:
                 print(text, end="")
                 return 0
+        elif args.command == "import":
+            result = _import(database, args, clock())
         else:
             result = _transition(database, args, clock())
     except store.UnknownHypothesis:
