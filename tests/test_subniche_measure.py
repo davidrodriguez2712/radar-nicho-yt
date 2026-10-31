@@ -8,6 +8,7 @@ import sqlalchemy as sa
 from sqlalchemy import Engine
 
 from nicheradar.config import Settings
+from nicheradar.integrations.contracts import Channel, ProviderError, Video
 from nicheradar.repositories import schema
 from nicheradar.repositories.core import insert_record
 from nicheradar.subniche_discovery.measure import measure_hypothesis
@@ -185,3 +186,133 @@ def test_parent_niche_rpm_produces_an_income_range_marked_inherited(
     assert income["UC" + A * 22] == (Decimal("280.00"), Decimal("640.00"))
     # B: 8 x 3_000 = 24_000 -> 8_000/month -> 8 x 3.5 / 8 x 8
     assert income["UC" + B * 22] == (Decimal("28.00"), Decimal("64.00"))
+
+
+def measured_channel_ids(engine: Engine) -> set[str]:
+    with engine.connect() as connection:
+        rows = connection.execute(sa.select(schema.hypothesis_channel_hits.c.channel_id)).all()
+    return {row.channel_id for row in rows}
+
+
+def run_with_pages(engine: Engine, pages: list[list[Video]]) -> set[str]:
+    run_id, hypothesis = prepare(engine)
+    reader = scripted_reader()
+    reader.pages = {"history revenge": pages}
+    asyncio.run(measure_hypothesis(engine, reader, hypothesis, run_id, settings(), NOW))
+    return measured_channel_ids(engine)
+
+
+@pytest.mark.postgres
+def test_channels_are_ranked_by_appearances_before_first_rank(isolated_engine: Engine) -> None:
+    # A: 2 hits (rank 1), B: 1 hit (rank 2), C: 2 hits (ranks 4-5) -> C beats B on appearances
+    chosen = run_with_pages(
+        isolated_engine,
+        [
+            [video(1, channel_letter=A), video(2, channel_letter=B), video(3, channel_letter=A)],
+            [video(4, channel_letter=C), video(5, channel_letter=C)],
+        ],
+    )
+    assert chosen == {"UC" + A * 22, "UC" + C * 22}
+
+
+@pytest.mark.postgres
+def test_equal_appearances_are_decided_by_the_earlier_first_rank(isolated_engine: Engine) -> None:
+    # A: 2 hits; B and C tie with 1 hit each, B appeared first -> B takes the last slot
+    chosen = run_with_pages(
+        isolated_engine,
+        [
+            [video(1, channel_letter=B), video(2, channel_letter=A), video(3, channel_letter=A)],
+            [video(4, channel_letter=C)],
+        ],
+    )
+    assert chosen == {"UC" + A * 22, "UC" + B * 22}
+
+
+class FailingReader(FakeReader):
+    """FakeReader that raises on the Nth call of `recent_videos` / `channels` (1-based)."""
+
+    def __init__(
+        self,
+        base: FakeReader,
+        *,
+        code: str,
+        recent_videos_on: int | None = None,
+        channels_on: int | None = None,
+        channels_when_batch: bool = False,
+    ) -> None:
+        super().__init__(base.pages, base._channels, base.uploads)
+        self.code = code
+        self.recent_videos_on = recent_videos_on
+        self.channels_on = channels_on
+        self.channels_when_batch = channels_when_batch
+        self.recent_videos_calls = 0
+        self.channels_calls = 0
+
+    async def recent_videos(self, channel: Channel, limit: int) -> tuple[Video, ...]:
+        self.recent_videos_calls += 1
+        if self.recent_videos_calls == self.recent_videos_on:
+            raise ProviderError(self.code, not_sent=True)
+        return await super().recent_videos(channel, limit)
+
+    async def channels(self, ids: list[str]) -> dict[str, Channel]:
+        self.channels_calls += 1
+        if self.channels_calls == self.channels_on or (self.channels_when_batch and len(ids) > 1):
+            raise ProviderError(self.code, not_sent=True)
+        return await super().channels(ids)
+
+
+def assert_nothing_written(engine: Engine) -> None:
+    with engine.connect() as connection:
+        for table in (
+            schema.discovery_channel_snapshots,
+            schema.hypothesis_channel_hits,
+            schema.hypothesis_snapshots,
+        ):
+            count = sa.select(sa.func.count()).select_from(table)
+            assert connection.execute(count).scalar_one() == 0
+        assert get_hypothesis(connection, "history_revenge")["last_measured_at"] is None
+
+
+@pytest.mark.postgres
+def test_a_stop_while_reading_the_second_channel_writes_nothing(isolated_engine: Engine) -> None:
+    run_id, hypothesis = prepare(isolated_engine)
+    reader = FailingReader(scripted_reader(), code="quota_exhausted", recent_videos_on=2)
+    result = asyncio.run(
+        measure_hypothesis(isolated_engine, reader, hypothesis, run_id, settings(), NOW)
+    )
+    assert reader.recent_videos_calls == 2  # the first channel was already processed
+    assert result == {
+        "slug": "history_revenge",
+        "stopped_reason": "quota_exhausted",
+        "partial": True,
+    }
+    assert_nothing_written(isolated_engine)
+
+
+@pytest.mark.postgres
+def test_a_stop_while_looking_up_channels_writes_nothing(isolated_engine: Engine) -> None:
+    run_id, hypothesis = prepare(isolated_engine)
+    reader = FailingReader(scripted_reader(), code="quota_exhausted", channels_on=1)
+    result = asyncio.run(
+        measure_hypothesis(isolated_engine, reader, hypothesis, run_id, settings(), NOW)
+    )
+    assert result == {
+        "slug": "history_revenge",
+        "stopped_reason": "quota_exhausted",
+        "partial": True,
+    }
+    assert_nothing_written(isolated_engine)
+
+
+@pytest.mark.postgres
+def test_a_failed_channel_batch_is_retried_one_channel_at_a_time(isolated_engine: Engine) -> None:
+    run_id, hypothesis = prepare(isolated_engine)
+    reader = FailingReader(
+        scripted_reader(), code="provider_response_failed", channels_when_batch=True
+    )
+    result = asyncio.run(
+        measure_hypothesis(isolated_engine, reader, hypothesis, run_id, settings(), NOW)
+    )
+    assert reader.channels_calls == 3  # the failed batch plus one call per channel
+    assert result["channels_seen"] == 2
+    assert measured_channel_ids(isolated_engine) == {"UC" + A * 22, "UC" + B * 22}
