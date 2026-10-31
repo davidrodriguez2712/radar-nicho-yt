@@ -149,3 +149,40 @@ def test_market_scrape_requests_do_not_shift_the_radar_exploration_balance(db: C
             },
         )
     assert request_counts_by_kind(db, profile_id, "live") == [("catalog", 1)]
+
+
+def test_subniche_requests_do_not_shift_the_radar_exploration_balance(db: Connection) -> None:
+    profile_id = seed_profile(db, CreatorProfile(), initial_catalog())
+    runs: list[tuple[str, dict[str, str], int]] = [
+        ("scheduled", {"discovery_kind": "catalog"}, 1),
+        ("subniche", {}, 30),
+        ("subniche_propose", {}, 5),
+    ]
+    for trigger, configuration, requests in runs:
+        run_id = insert_record(
+            db,
+            "analysis_runs",
+            {
+                "profile_id": profile_id,
+                "mode": "live",
+                "trigger": trigger,
+                "status": "succeeded",
+                "configuration": configuration,
+            },
+        )
+        for index in range(requests):
+            insert_record(
+                db,
+                "provider_requests",
+                {
+                    "run_id": run_id,
+                    "provider": "youtube",
+                    "operation": "search",
+                    "auth_scope": "test",
+                    "cache_key": f"{trigger}{index}",
+                    "idempotency_key": f"{trigger}{index}",
+                    "state": "sent",
+                    "sent_at": NOW,
+                },
+            )
+    assert request_counts_by_kind(db, profile_id, "live") == [("catalog", 1)]
