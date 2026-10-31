@@ -367,3 +367,75 @@
   status: "proposed"
   finalist: false
   seed_channels: []
+- slug: "sci_fi_stories_narrated"
+  label: "Sci-Fi Stories Narrated"
+  family: "scifi"
+  parent_niche: "horror_stories"
+  queries: ["sci fi short stories narrated", "sci fi audiobook full story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "futurism_what_if_explained"
+  label: "Futurism and What-If Explained"
+  family: "scifi"
+  parent_niche: "space_astronomy"
+  queries: ["what if the future documentary", "future of humanity explained"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "sci_fi_lore_explained"
+  label: "Sci-Fi Universe Lore Explained"
+  family: "scifi"
+  parent_niche: "gaming_lore"
+  queries: ["sci fi universe lore explained", "space opera lore documentary"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "black_history_untold_stories"
+  label: "Black History Untold Stories"
+  family: "black_audience"
+  parent_niche: "historical_stories"
+  queries: ["black history untold stories", "hidden black history documentary"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "african_kingdoms_history"
+  label: "African Kingdoms and Empires"
+  family: "black_audience"
+  parent_niche: "history_documentaries"
+  queries: ["african empires history documentary", "ancient african kingdoms explained"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "black_inventors_innovators"
+  label: "Black Inventors and Innovators"
+  family: "black_audience"
+  parent_niche: "historical_stories"
+  queries: ["black inventors who changed the world", "forgotten black innovators history"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "black_entrepreneurs_stories"
+  label: "Black Entrepreneurs Success Stories"
+  family: "black_audience"
+  parent_niche: "wealth_stories"
+  queries: ["black entrepreneurs success stories", "black owned business history"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "civil_rights_history_documentary"
+  label: "Civil Rights History"
+  family: "black_audience"
+  parent_niche: "history_documentaries"
+  queries: ["civil rights movement documentary", "civil rights history untold stories"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
