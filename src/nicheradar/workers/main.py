@@ -3,6 +3,7 @@ import asyncio
 import json
 import signal
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -17,6 +18,7 @@ from nicheradar.market_intel.worker import tick_market
 from nicheradar.repositories import schema_v1 as s
 from nicheradar.repositories.core import seed_profile
 from nicheradar.repositories.database import database_engine
+from nicheradar.subniche_discovery.worker import tick_subniche
 from nicheradar.workers.health import record
 from nicheradar.workers.pipeline import Pipeline
 from nicheradar.workers.queue import QUEUE_LOCK, claim, create_schedule, schedule_due
@@ -92,8 +94,14 @@ def tick(config: Settings, engine: Engine | None = None) -> dict[str, object]:
 MARKET_HEARTBEAT_SECONDS = 60.0
 
 
-def run_market_tick(config: Settings, status: dict[str, Any], poll_seconds: int) -> dict[str, Any]:
-    """Run the scraper tick while keeping the worker heartbeat fresh.
+def run_background_tick(
+    name: str,
+    tick_fn: Callable[[Settings], dict[str, Any]],
+    config: Settings,
+    status: dict[str, Any],
+    poll_seconds: int,
+) -> dict[str, Any]:
+    """Run a long tick in a thread while keeping the worker heartbeat fresh.
 
     A full scrape takes far longer than the heartbeat's maximum age; without this the
     orchestrator would see an unhealthy worker and restart it in the middle of a stage.
@@ -102,11 +110,9 @@ def run_market_tick(config: Settings, status: dict[str, Any], poll_seconds: int)
 
     def work() -> None:
         try:
-            result.update(tick_market(config))
+            result.update(tick_fn(config))
         except Exception:
-            result.update(
-                {"service": "market_intel", "status": "error", "error_code": "unexpected"}
-            )
+            result.update({"service": name, "status": "error", "error_code": "unexpected"})
 
     thread = threading.Thread(target=work, daemon=True)
     thread.start()
@@ -114,6 +120,10 @@ def run_market_tick(config: Settings, status: dict[str, Any], poll_seconds: int)
         thread.join(MARKET_HEARTBEAT_SECONDS)
         record(status, poll_seconds)
     return result
+
+
+def run_market_tick(config: Settings, status: dict[str, Any], poll_seconds: int) -> dict[str, Any]:
+    return run_background_tick("market_intel", tick_market, config, status, poll_seconds)
 
 
 def main() -> None:
@@ -132,6 +142,11 @@ def main() -> None:
         print(json.dumps(status), flush=True)
         market = run_market_tick(config, status, config.worker_poll_seconds)
         print(json.dumps(market), flush=True)
+        if config.subniche_enabled:
+            subniche = run_background_tick(
+                "subniche", tick_subniche, config, status, config.worker_poll_seconds
+            )
+            print(json.dumps(subniche), flush=True)
         if args.once:
             break
         stopped.wait(config.worker_poll_seconds)

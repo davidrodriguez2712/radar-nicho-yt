@@ -58,7 +58,18 @@ RESEARCH_TABLES = MARKET_TABLES | FLOW_TABLES
 # evidencia de proveedores y `market_scrape_runs` las referencia por clave foránea, así que el
 # dump debe conservarlas o la restauración falla.
 RUN_TABLES = {"analysis_runs"}
-REVIEWED_TABLES = BOOTSTRAP_TABLES | PILOT_TABLES | RESEARCH_TABLES | RUN_TABLES
+# Descubrimiento de subnichos: hipótesis y semillas del propietario, y el historial propio de
+# mediciones (sin datos crudos de la API). Van juntas: `hypothesis_snapshots` referencia a
+# `discovery_runs`, que a su vez referencia a `analysis_runs` (RUN_TABLES). Los datos de la API
+# de YouTube (`discovery_channel_snapshots`, `hypothesis_channel_hits`, máximo 30 días) quedan
+# en PROVIDER_EVIDENCE_TABLES.
+DISCOVERY_TABLES = {
+    "niche_hypotheses",
+    "hypothesis_seed_channels",
+    "discovery_runs",
+    "hypothesis_snapshots",
+}
+REVIEWED_TABLES = BOOTSTRAP_TABLES | PILOT_TABLES | RESEARCH_TABLES | RUN_TABLES | DISCOVERY_TABLES
 
 # Evidencia de proveedores y estado operativo del radar (decisión del propietario, 2026-10-26,
 # opción A): su esquema se respalda pero sus FILAS NO. Los datos de vidIQ/YouTube se
@@ -76,11 +87,13 @@ PROVIDER_EVIDENCE_TABLES = frozenset(
         "cost_ledger",
         "cost_reservations",
         "credit_balances",
+        "discovery_channel_snapshots",
         "discovery_cursors",
         "discovery_queries",
         "evaluation_versions",
         "evidence_links",
         "feature_values",
+        "hypothesis_channel_hits",
         "jobs",
         "listing_channel_snapshots",
         "opportunities",
@@ -158,7 +171,7 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
     ).scalar_one():
         raise ValueError("market_intel_not_paused")
     revision = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-    if revision != "0019":
+    if revision != "0020":
         raise ValueError("unreviewed_schema_revision")
     has_pilots = any(counts[name] for name in PILOT_TABLES)
     has_research = any(counts[name] for name in RESEARCH_TABLES)

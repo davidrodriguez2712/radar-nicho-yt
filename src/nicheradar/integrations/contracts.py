@@ -23,6 +23,7 @@ class Operation(StrEnum):
     VIDEO_CATEGORIES = "video_categories"
     NICHE_MATCH = "niche_match"
     LISTING_EVIDENCE = "listing_evidence"
+    HYPOTHESIS_PROPOSAL = "hypothesis_proposal"
 
 
 class Contract(BaseModel):

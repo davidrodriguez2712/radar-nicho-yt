@@ -16,6 +16,9 @@ from nicheradar.repositories.schema import discovery_cursors as cursors
 from nicheradar.services.backlog import latest_decision
 from nicheradar.services.budget import lock_profile
 
+# Runs that are not radar exploration or refresh: the market scraper and sub-niche discovery.
+NON_RADAR_TRIGGERS = ("market_scrape", "subniche", "subniche_propose")
+
 
 def request_counts_by_kind(
     connection: Connection, profile_id: UUID, mode: str
@@ -30,7 +33,7 @@ def request_counts_by_kind(
         .where(
             s.analysis_runs.c.profile_id == profile_id,
             s.analysis_runs.c.mode == mode,
-            s.analysis_runs.c.trigger != "market_scrape",
+            s.analysis_runs.c.trigger.notin_(NON_RADAR_TRIGGERS),
             s.provider_requests.c.sent_at.is_not(None),
         )
         .group_by("kind")
