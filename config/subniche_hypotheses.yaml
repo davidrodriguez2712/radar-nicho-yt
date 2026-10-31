@@ -439,3 +439,75 @@
   status: "proposed"
   finalist: false
   seed_channels: []
+- slug: "alien_romance_stories"
+  label: "Alien and Sci-Fi Romance Stories"
+  family: "scifi"
+  parent_niche: "reddit_relationship_stories"
+  queries: ["alien romance story audiobook", "sci fi romance stories narrated"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "space_horror_stories"
+  label: "Space Horror Stories"
+  family: "scifi"
+  parent_niche: "horror_stories"
+  queries: ["space horror stories narrated", "scary sci fi stories"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "humans_vs_aliens_hfy_stories"
+  label: "Humans vs Aliens HFY Stories"
+  family: "scifi"
+  parent_niche: "horror_stories"
+  queries: ["hfy stories narrated", "humans vs aliens story narrated"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "ai_robot_dystopia_stories"
+  label: "AI and Robot Dystopia Stories"
+  family: "scifi"
+  parent_niche: "horror_stories"
+  queries: ["ai takeover story narrated", "robot uprising short story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "post_apocalyptic_sci_fi_stories"
+  label: "Post-Apocalyptic Sci-Fi Stories"
+  family: "scifi"
+  parent_niche: "survival_stories"
+  queries: ["post apocalyptic story narrated", "last survivors sci fi story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "sci_fi_sleep_stories"
+  label: "Sci-Fi Sleep Stories"
+  family: "scifi"
+  parent_niche: "sleep_education"
+  queries: ["sci fi bedtime story for sleep", "space story to fall asleep"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "time_travel_stories_narrated"
+  label: "Time Travel Stories Narrated"
+  family: "scifi"
+  parent_niche: "horror_stories"
+  queries: ["time travel story narrated", "time loop sci fi story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "fermi_paradox_aliens_explained"
+  label: "Fermi Paradox and Aliens Explained"
+  family: "scifi"
+  parent_niche: "space_astronomy"
+  queries: ["fermi paradox explained", "alien civilizations documentary"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
