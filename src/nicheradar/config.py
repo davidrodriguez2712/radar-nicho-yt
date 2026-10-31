@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     llm_enabled: bool = False
     llm_api_key: SecretStr | None = None
     llm_configuration: LLMConfiguration | None = None
+    anthropic_enabled: bool = False
+    anthropic_api_key: SecretStr | None = None
+    anthropic_configuration: LLMConfiguration | None = None
     api_url: str = "http://127.0.0.1:8000"
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8000, ge=1024, le=65535)
@@ -152,6 +155,11 @@ class Settings(BaseSettings):
                 "enabled": self.llm_enabled,
                 "credentials_configured": self.llm_api_key is not None,
                 "tariff_configured": self.llm_configuration is not None,
+            },
+            "hypothesis_proposals": {
+                "enabled": self.anthropic_enabled,
+                "credentials_configured": self.anthropic_api_key is not None,
+                "tariff_configured": self.anthropic_configuration is not None,
             },
             "providers": {
                 "synthetic": {"credentials_configured": True, "policy": "enabled"},
