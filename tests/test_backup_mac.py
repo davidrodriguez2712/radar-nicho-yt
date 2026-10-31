@@ -28,6 +28,7 @@ from scripts.backup_mac import (
 )
 from scripts.backup_snapshot import (
     BOOTSTRAP_TABLES,
+    DISCOVERY_TABLES,
     FLOW_TABLES,
     MARKET_TABLES,
     PILOT_TABLES,
@@ -243,7 +244,14 @@ def test_reviewed_table_groups_are_exact_and_disjoint() -> None:
     }
     assert FLOW_TABLES == {"flow_research_requests", "flow_research_dossiers"}
     assert RESEARCH_TABLES == MARKET_TABLES | FLOW_TABLES
-    groups = [BOOTSTRAP_TABLES, PILOT_TABLES, MARKET_TABLES, FLOW_TABLES, RUN_TABLES]
+    groups = [
+        BOOTSTRAP_TABLES,
+        PILOT_TABLES,
+        MARKET_TABLES,
+        FLOW_TABLES,
+        RUN_TABLES,
+        DISCOVERY_TABLES,
+    ]
     assert sum(len(group) for group in groups) == len(set().union(*groups))
     reviewed = set().union(*groups)
     assert reviewed <= set(schema.metadata.tables) | {"alembic_version"}
