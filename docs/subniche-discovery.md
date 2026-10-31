@@ -43,7 +43,30 @@ uv run python scripts/subniche.py archive <slug>
 uv run python scripts/subniche.py finalist <slug> [--off]   # finalista: se refresca a los 7 días
 uv run python scripts/subniche.py measure <slug>     # exige `active` (si no: invalid_transition); agenda re-medir en la próxima corrida (no mide al instante)
 uv run python scripts/subniche.py export [--out hipotesis.yaml]
+uv run python scripts/subniche.py import <ruta.yaml> [--dry-run]     # carga masiva desde el formato de `export`
+uv run python scripts/subniche.py import --b64 <texto-en-base64> [--dry-run]
 ```
+
+### Carga masiva (`import`)
+
+Carga hipótesis desde un archivo con el formato exacto de `export` (el repo trae `config/subniche_hypotheses.yaml`,
+60 hipótesis con 2 consultas cada una). Acepta una ruta o el contenido en base64 (`--b64`); exactamente una de las dos.
+En producción el script entra por stdin al contenedor del worker, así que el archivo no es alcanzable por ruta: se usa `--b64`.
+Pruebe primero con `--dry-run` (valida todo y reporta lo mismo que la corrida real, sin escribir nada):
+
+```sh
+/tmp/nr/on_server.sh worker scripts/subniche.py import --b64 "$(base64 < config/subniche_hypotheses.yaml | tr -d '\n')" --dry-run
+/tmp/nr/on_server.sh worker scripts/subniche.py import --b64 "$(base64 < config/subniche_hypotheses.yaml | tr -d '\n')"
+```
+
+- Todo o nada: si algún elemento es inválido (campo mal formado, nicho padre que no está en el catálogo, slug o consulta
+  repetidos dentro del archivo) no se escribe nada y sale con código 1: `{"error": "invalid_import", "invalid": [{"slug", "error"}]}`.
+  Un formato ilegible o un base64 inválido da `{"error": "invalid_format", "detail": ...}`; una ruta ilegible, `{"error": "file_not_found"}`.
+- Es idempotente: lo que ya existe (mismo slug, consulta o canal semilla en una hipótesis viva) se salta y se reporta en
+  `skipped` con su razón; no es un error. Resultado: `{"ok": true, "dry_run", "imported": [slugs], "skipped": [{"slug","reason"}], "total"}`.
+- Los campos `status` y `finalist` del archivo se IGNORAN: todo lo importado queda `proposed` y no finalista.
+  Cada hipótesis importada debe aprobarse una por una con `subniche approve <slug>` antes de que gaste cuota.
+- Toda la importación es una sola transacción. Nunca imprime el contenido del archivo.
 
 Flujo: `add` → `proposed` → `approve` → `active` → la próxima corrida del worker la mide (en 3 días como
 máximo; las nuevas se miden primero, ordenadas por fecha de aprobación) → `scripts/subniche_report.py`.
