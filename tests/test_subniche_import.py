@@ -102,6 +102,18 @@ def test_parser_garbage_line_number_is_exact() -> None:
         parse_export(text)
 
 
+@pytest.mark.parametrize("field", ["slug", "queries"])
+def test_parser_turns_excessive_nesting_into_a_format_error(field: str) -> None:
+    deep = "[" * 100_000
+    text = (
+        BLOCK.replace(f"{field}: ", f"{field}: {deep}", 1)
+        if field == "queries"
+        else f"- slug: {deep}\n"
+    )
+    with pytest.raises(ImportFormatError, match=r"line \d+"):
+        parse_export(text)
+
+
 def test_parser_requires_the_mandatory_keys() -> None:
     incomplete = '- slug: "abc"\n  label: "Label"\n  family: "history"\n  origin: "manual"\n'
     with pytest.raises(ImportFormatError, match="line 1.*queries"):
@@ -331,3 +343,17 @@ def test_cli_requires_exactly_one_source(
             engine=isolated_engine,
         )
     capsys.readouterr()
+
+
+@pytest.mark.parametrize("field", ["slug", "queries"])
+def test_cli_excessive_nesting_is_invalid_format(
+    isolated_engine: Engine, capsys: CaptureFixture[str], field: str
+) -> None:
+    deep = "[" * 100_000
+    text = (
+        BLOCK.replace("queries: ", f"queries: {deep}", 1)
+        if field == "queries"
+        else f"- slug: {deep}\n"
+    )
+    code, out = run(isolated_engine, capsys, "import", "--b64", b64(text))
+    assert code == 1 and out["error"] == "invalid_format" and "line" in out["detail"]

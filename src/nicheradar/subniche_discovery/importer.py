@@ -43,7 +43,7 @@ class ImportFormatError(ValueError):
 def _value(raw: str, number: int) -> Any:
     try:
         return json.loads(raw)
-    except ValueError as error:
+    except (ValueError, RecursionError) as error:
         raise ImportFormatError(f"line {number}: invalid JSON value") from error
 
 
