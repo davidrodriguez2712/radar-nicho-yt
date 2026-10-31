@@ -538,29 +538,29 @@
   status: "proposed"
   finalist: false
   seed_channels: []
-- slug: "african_tribes_culture_documentary"
-  label: "African Tribes and Culture"
+- slug: "african_tribe_first_person_stories"
+  label: "African Tribe First-Person Stories"
   family: "black_audience"
-  parent_niche: "documentary_general"
-  queries: ["african tribes documentary", "life in an african tribe"]
+  parent_niche: "survival_stories"
+  queries: ["growing up in an african tribe story", "i lived with an african tribe story"]
   origin: "manual"
   status: "proposed"
   finalist: false
   seed_channels: []
-- slug: "african_village_traditions"
-  label: "African Village Life and Traditions"
+- slug: "tribal_warrior_hunter_stories"
+  label: "Tribal Warrior and Hunter Stories"
   family: "black_audience"
-  parent_niche: "documentary_general"
-  queries: ["african village life documentary", "african tribe traditions explained"]
+  parent_niche: "survival_stories"
+  queries: ["tribal warrior story first person", "african hunter story narrated"]
   origin: "manual"
   status: "proposed"
   finalist: false
   seed_channels: []
-- slug: "african_folktales_narrated"
-  label: "African Folktales Narrated"
+- slug: "african_village_family_drama_stories"
+  label: "African Village Family Drama Stories"
   family: "black_audience"
-  parent_niche: "documentary_general"
-  queries: ["african folktales narrated", "african folk stories animated"]
+  parent_niche: "survival_stories"
+  queries: ["african village girl story narrated", "tribal family drama story"]
   origin: "manual"
   status: "proposed"
   finalist: false
