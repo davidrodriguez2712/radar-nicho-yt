@@ -103,6 +103,9 @@ const qualityRpmDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:d233
 const isolatedIncomeBackend = 'davidrodriguez2712/nicheradar-backend@sha256:04e83051892ad199318a8012862dc0197f0b14e1e073363fcc79f21ca4091e11';
 const isolatedIncomeWorker = 'davidrodriguez2712/nicheradar-worker@sha256:3703bf469efcf01bc088d4db9e8a49fce896658d4c65d8633f7a44ba046ec42a';
 const isolatedIncomeDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:e12841ebb4a68b8c0dade29725c6c8d5076b35150d269455e355128025e3b035';
+const subnicheBackend = 'davidrodriguez2712/nicheradar-backend@sha256:899710b33111d54fca314bba2a3fee915148d3c732142a515797ce37f5f86fb3';
+const subnicheWorker = 'davidrodriguez2712/nicheradar-worker@sha256:f1032b66c7cb9ece7a08ce6ef9f83acc4c548381d55521e70318ac4305ed09ac';
+const subnicheDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:040f4df0d79f1169e8d03526c926a21b9eece3739e30c8958401a063b4eac358';
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
 const resources = (cpu) => ({memoryLimit:512,memoryReservation:128,cpuLimit:cpu,cpuReservation:0.1});
@@ -636,6 +639,75 @@ try {
     if(after.source?.image!==image) throw new Error('Image setting not persisted');
     cli(['app','deploy',`${project}/${name}`,'--yes']);
     console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='migrate-live-0020') {
+    const env=appEnv('nicheradar-api');
+    // Revisión 0020: tablas del descubrimiento de subnichos (aditiva). Exige radar pausado, como las anteriores.
+    if(env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true' || env.NR_DATABASE_URL!==dbURL())
+      throw new Error('Live migration preconditions failed');
+    const code='import json,os,subprocess,sys; os.environ.update(json.load(sys.stdin)); sys.exit(subprocess.call(["alembic","upgrade","head"]))';
+    const args=['docker','run','--rm','-i','--name','nicheradar-migration-20261031-020',
+      '--network','easypanel-proy1-credito-riesgo','--memory','512m','--cpus','1',
+      '--read-only','--tmpfs','/tmp:rw,noexec,nosuid,size=64m','--cap-drop','ALL',
+      '--security-opt','no-new-privileges',subnicheBackend,'python','-c',code];
+    const result=spawnSync('ssh',[...sshArgs,args.map(quote).join(' ')],{
+      input:JSON.stringify({NR_DATABASE_URL:env.NR_DATABASE_URL}),
+      encoding:'utf8',timeout:180000,maxBuffer:1024*1024});
+    console.log(JSON.stringify({migrationExit:result.status,processError:result.error?.code ?? null}));
+    if(result.error || result.status!==0) throw new Error('Migration failed; raw response withheld. Inspect only this migration safely.');
+  } else if(action==='deploy-subniche-code') {
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?isolatedIncomeDashboard:name==='nicheradar-worker'?isolatedIncomeWorker:isolatedIncomeBackend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Subniche release preconditions failed');
+    const image=isDashboard?subnicheDashboard:name==='nicheradar-worker'?subnicheWorker:subnicheBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='set-subniche-env') {
+    // Variables del descubrimiento de subnichos en el worker (docs/subniche-discovery.md). Uso: set-subniche-env [dry].
+    // NR_SUBNICHE_ENABLED NO se toca: sigue desactivado hasta que el propietario revise la lista de hipótesis.
+    // Nunca imprime el entorno ni la clave; solo los nombres y valores no secretos que cambia.
+    const name='nicheradar-worker';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    if(env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true') throw new Error('Subniche env preconditions failed');
+    if(!env.NR_ANTHROPIC_API_KEY || /\s/.test(env.NR_ANTHROPIC_API_KEY)) throw new Error('NR_ANTHROPIC_API_KEY is not set in the worker');
+    if(env.NR_SUBNICHE_ENABLED==='true') throw new Error('NR_SUBNICHE_ENABLED is already true; refusing to touch it');
+    const configuration={auth_scope:'anthropic-owner',
+      tariff:{version:'anthropic-sonnet-5-5-2026-10-31',model:'claude-sonnet-5-5',
+        source:'https://platform.claude.com/docs/en/about-claude/pricing',
+        verified_at:'2026-10-31T00:00:00Z',valid_until:'2027-01-29T00:00:00Z',
+        context_window_tokens:16000,output_tokens:800,input_usd_per_million:'2',
+        cached_input_usd_per_million:'0.10',output_usd_per_million:'10'},
+      limits:{operation:'100',run:'1000',week:'10000',period:'100000'},timeout_seconds:20};
+    const settings={NR_ANTHROPIC_ENABLED:'true',
+      NR_SUBNICHE_SEARCH_UNITS_PER_DAY:'5000',NR_SUBNICHE_SEARCH_QUOTA_PER_RUN:'5000',
+      NR_SUBNICHE_SEARCH_QUOTA_PER_WEEK:'35000',NR_SUBNICHE_SEARCH_QUOTA_PER_MONTH:'150000'};
+    const dryRun=process.argv[3]==='dry';
+    const result={name,set:Object.keys(settings).concat(['NR_ANTHROPIC_CONFIGURATION']),subnicheEnabled:env.NR_SUBNICHE_ENABLED ?? 'unset',dryRun};
+    if(dryRun) {
+      console.log(JSON.stringify(result));
+    } else {
+      const next={...env,...settings,NR_ANTHROPIC_CONFIGURATION:JSON.stringify(configuration)};
+      cli(['app','update-env',`${project}/${name}`,'--yes'],{env:Object.entries(next).map(([k,v])=>`${k}=${v}`).join('\n')});
+      const after=cli(['app','inspect',`${project}/${name}`]);
+      for(const field of ['source','resources','deploy','ports','mounts','basicAuth']) {
+        if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected non-environment change');
+      }
+      cli(['app','deploy',`${project}/${name}`,'--yes']);
+      console.log(JSON.stringify({...result,deployRequested:true}));
+    }
   } else if(action==='migrate-live-0019') {
     const env=appEnv('nicheradar-api');
     // NR_MARKET_INTEL_LIVE_ENABLED puede ser true (decisión del propietario tras 012): se exige
