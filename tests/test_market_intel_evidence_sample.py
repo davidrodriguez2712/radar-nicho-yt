@@ -29,7 +29,9 @@ def test_a_video_of_181_seconds_is_not_a_short() -> None:
     assert shorts_share_of_views([video(100, 181)]) == 0.0
 
 
-def derived(scope: str = "long", *, eligible: bool = True, monthly: str | None = "100.00") -> dict:
+def derived(
+    scope: str = "long", *, eligible: bool = True, monthly: str | None = "100.00"
+) -> dict[str, Any]:
     return {
         "rpm_sample_eligible": eligible,
         "primary": {"scope": scope},
