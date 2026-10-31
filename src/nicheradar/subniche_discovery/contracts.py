@@ -48,14 +48,14 @@ class HypothesisDraft(Contract):
     @field_validator("slug")
     @classmethod
     def valid_slug(cls, value: str) -> str:
-        if not _SLUG.match(value):
+        if not _SLUG.fullmatch(value):
             raise ValueError("slug must be snake_case, 3 to 60 characters")
         return value
 
     @field_validator("family")
     @classmethod
     def valid_family(cls, value: str) -> str:
-        if not _FAMILY.match(value):
+        if not _FAMILY.fullmatch(value):
             raise ValueError("family must be snake_case, 2 to 40 characters")
         return value
 
@@ -74,6 +74,6 @@ class HypothesisDraft(Contract):
     @field_validator("seed_channel_ids")
     @classmethod
     def valid_seeds(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        if not all(_CHANNEL_ID.match(item) for item in value):
+        if not all(_CHANNEL_ID.fullmatch(item) for item in value):
             raise ValueError("invalid YouTube channel id")
-        return value
+        return tuple(dict.fromkeys(value))

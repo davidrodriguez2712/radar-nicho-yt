@@ -60,6 +60,25 @@ def test_draft_validates_slug_and_seed_channel_ids() -> None:
     assert isinstance(draft(seeds=(SEED,)), HypothesisDraft)
 
 
+def test_trailing_newline_is_rejected_by_slug_family_and_seed_validators() -> None:
+    with pytest.raises(ValidationError):
+        draft(slug="history_revenge\n")
+    with pytest.raises(ValidationError):
+        HypothesisDraft(
+            slug="history_revenge",
+            label="History",
+            family="history\n",
+            queries=("history revenge",),
+            origin="manual",
+        )
+    with pytest.raises(ValidationError):
+        draft(seeds=(SEED + "\n",))
+
+
+def test_duplicate_seed_channel_ids_in_one_draft_are_collapsed() -> None:
+    assert draft(seeds=(SEED, SEED)).seed_channel_ids == (SEED,)
+
+
 @pytest.mark.postgres
 def test_create_then_approve_moves_proposed_to_active(db: Connection) -> None:
     create_proposed(db, draft(), NOW)
