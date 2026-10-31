@@ -19,7 +19,11 @@ from nicheradar.repositories.database import database_engine
 from nicheradar.repositories.schema import discovery_runs as runs
 from nicheradar.repositories.schema_v1 import analysis_runs
 from nicheradar.subniche_discovery.measure import measure_hypothesis
-from nicheradar.subniche_discovery.reader import YouTubeReader, build_reader
+from nicheradar.subniche_discovery.reader import (
+    YouTubeReader,
+    build_reader,
+    search_units_needed,
+)
 from nicheradar.subniche_discovery.store import due_hypotheses
 
 CADENCE = timedelta(days=3)
@@ -54,13 +58,17 @@ async def _measure_all(
     run_id: Any,
     config: Settings,
     clock: Callable[[], datetime],
+    skipped: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     measured = 0
     stats: dict[str, Any] = {"measured": 0, "slugs": []}
+    if skipped:
+        stats["skipped"] = skipped
     for hypothesis in hypotheses:
         result = await measure_hypothesis(engine, reader, hypothesis, run_id, config, clock())
         if result.get("partial"):
             stats["stopped_reason"] = result["stopped_reason"]
+            stats["stopped_slug"] = result["slug"]
             break
         measured += 1
         stats["slugs"].append(result["slug"])
@@ -82,6 +90,8 @@ def tick_subniche(
         return status | {"status": "synthetic_mode"}
     if not config.youtube_live_enabled:
         return status | {"status": "youtube_not_enabled"}
+    if config.youtube_api_key is None or config.youtube_auth_scope is None:
+        return status | {"status": "youtube_not_configured"}
     if config.database_url is None and engine is None:
         return status | {"status": "not_configured"}
     database = engine or database_engine(config)
@@ -94,6 +104,30 @@ def tick_subniche(
             due = due_hypotheses(connection, now)
             if not due:
                 return status
+            cap = min(config.subniche_search_units_per_day, config.subniche_search_quota_per_run)
+            fitting: list[dict[str, Any]] = []
+            skipped: list[dict[str, Any]] = []
+            for hypothesis in due:
+                needed = search_units_needed(hypothesis["queries"], config)
+                if needed > cap:
+                    skipped.append(
+                        {
+                            "slug": hypothesis["slug"],
+                            "reason": "insufficient_search_cap",
+                            "needed": needed,
+                            "cap": cap,
+                        }
+                    )
+                else:
+                    fitting.append(hypothesis)
+            if not fitting:
+                # Never fits, however many days pass: do not open a run or reserve anything.
+                return status | {
+                    "status": "insufficient_search_cap",
+                    "needed": min(item["needed"] for item in skipped),
+                    "cap": cap,
+                }
+            due = fitting
             profile_id = seed_profile(connection, CreatorProfile(), initial_catalog())
             analysis_id = insert_record(
                 connection,
@@ -122,7 +156,13 @@ def tick_subniche(
         except ProviderError as error:
             _finish(database, run_id, analysis_id, "failed", {"error": error.code}, clock())
             return status | {"status": "failed", "error_code": error.code}
-        stats = asyncio.run(_measure_all(database, active, due, run_id, config, clock))
+        try:
+            stats = asyncio.run(_measure_all(database, active, due, run_id, config, clock, skipped))
+        except Exception as error:
+            _finish_best_effort(
+                database, run_id, analysis_id, "failed", {"error": type(error).__name__}, clock()
+            )
+            raise
         outcome = "partial" if "stopped_reason" in stats else "complete"
         _finish(database, run_id, analysis_id, outcome, stats, clock())
         return (
@@ -135,6 +175,21 @@ def tick_subniche(
     finally:
         if engine is None:
             database.dispose()
+
+
+def _finish_best_effort(
+    engine: Engine,
+    run_id: Any,
+    analysis_id: Any,
+    outcome: str,
+    stats: dict[str, Any],
+    now: datetime,
+) -> None:
+    """Close the run rows; a failure here must not mask the error that got us here."""
+    try:
+        _finish(engine, run_id, analysis_id, outcome, stats, now)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _finish(

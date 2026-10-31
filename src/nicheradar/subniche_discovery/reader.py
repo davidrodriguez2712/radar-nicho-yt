@@ -1,6 +1,6 @@
 """YouTube access for sub-niche discovery: the Gateway enforces policy, ledger and idempotency."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Protocol
@@ -51,6 +51,11 @@ def subniche_youtube_limits(config: Settings) -> dict[str, Limits]:
             period=Decimal(config.subniche_detail_quota_per_month),
         ),
     }
+
+
+def search_units_needed(queries: Sequence[str], config: Settings) -> int:
+    """Search quota units one full measurement of a hypothesis spends at most."""
+    return len(queries) * config.subniche_search_pages * int(SEARCH_COST)
 
 
 def search_units_used_today(connection: Connection, now: datetime, timezone: str) -> Decimal:

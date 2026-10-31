@@ -10,18 +10,25 @@ from sqlalchemy import Engine
 from nicheradar.config import Settings
 from nicheradar.integrations.contracts import Channel, ProviderError, Video
 from nicheradar.repositories import schema
+from nicheradar.repositories import schema_v1 as s
 from nicheradar.repositories.core import insert_record
 from nicheradar.subniche_discovery.measure import measure_hypothesis
 from nicheradar.subniche_discovery.store import approve, create_proposed, get_hypothesis
 from tests.subniche_samples import NOW, FakeReader, channel, draft, make_run, video
+from tests.test_subniche_reader import reserve_search
 
 A, B, C = "a", "b", "c"
 
 
 def settings(**over: Any) -> Settings:
-    return Settings(
-        mode="live", subniche_search_pages=2, subniche_channels_per_hypothesis=2, **over
-    )
+    values: dict[str, Any] = {
+        "mode": "live",
+        "subniche_search_pages": 2,
+        "subniche_channels_per_hypothesis": 2,
+        "subniche_search_units_per_day": 1_000,
+        "subniche_search_quota_per_run": 1_000,
+    }
+    return Settings(**(values | over))
 
 
 def prepare(engine: Engine, **kwargs: Any) -> tuple[Any, dict[str, Any]]:
@@ -316,3 +323,155 @@ def test_a_failed_channel_batch_is_retried_one_channel_at_a_time(isolated_engine
     assert reader.channels_calls == 3  # the failed batch plus one call per channel
     assert result["channels_seen"] == 2
     assert measured_channel_ids(isolated_engine) == {"UC" + A * 22, "UC" + B * 22}
+
+
+class SingleFailingReader(FakeReader):
+    """`channels` fails for one given channel when it is asked about alone."""
+
+    def __init__(self, base: FakeReader, *, bad: str, code: str) -> None:
+        super().__init__(base.pages, base._channels, base.uploads)
+        self.bad, self.code = bad, code
+
+    async def channels(self, ids: list[str]) -> dict[str, Channel]:
+        if ids == [self.bad]:
+            raise ProviderError(self.code, not_sent=True)
+        return await super().channels(ids)
+
+
+@pytest.mark.postgres
+def test_a_lone_channel_with_a_channel_level_failure_is_treated_as_missing(
+    isolated_engine: Engine,
+) -> None:
+    run_id, hypothesis = prepare(isolated_engine)
+    reader = SingleFailingReader(
+        scripted_reader(), bad="UC" + A * 22, code="provider_response_failed"
+    )
+    # one channel per hypothesis: the batch is a single id, which used to re-raise
+    result = asyncio.run(
+        measure_hypothesis(
+            isolated_engine,
+            reader,
+            hypothesis,
+            run_id,
+            settings(subniche_channels_per_hypothesis=1),
+            NOW,
+        )
+    )
+    assert "partial" not in result and result["channels_seen"] == 0
+    assert measured_channel_ids(isolated_engine) == set()
+
+
+@pytest.mark.postgres
+def test_a_lone_channel_with_a_stop_code_still_stops_the_hypothesis(
+    isolated_engine: Engine,
+) -> None:
+    run_id, hypothesis = prepare(isolated_engine)
+    reader = SingleFailingReader(scripted_reader(), bad="UC" + A * 22, code="quota_exhausted")
+    result = asyncio.run(
+        measure_hypothesis(
+            isolated_engine,
+            reader,
+            hypothesis,
+            run_id,
+            settings(subniche_channels_per_hypothesis=1),
+            NOW,
+        )
+    )
+    assert result["partial"] is True and result["stopped_reason"] == "quota_exhausted"
+    assert_nothing_written(isolated_engine)
+
+
+def profile_of(engine: Engine) -> dict[str, Any]:
+    with engine.connect() as connection:
+        profile: dict[str, Any] = connection.execute(
+            sa.select(schema.hypothesis_snapshots.c.profile)
+        ).scalar_one()
+    return profile
+
+
+def add_benchmark(engine: Engine, label: str) -> None:
+    with engine.begin() as connection:
+        insert_record(
+            connection,
+            "advertising_benchmarks",
+            {
+                "niche_label": label,
+                "niche_description": "fixture",
+                "format": "long",
+                "rate_low": Decimal("3.5"),
+                "rate_high": Decimal("8"),
+                "source": "fixture",
+                "assumptions": "fixture",
+                "created_at": NOW,
+            },
+        )
+
+
+@pytest.mark.postgres
+def test_a_failed_harvest_is_excluded_not_counted_as_a_stable_zero(
+    isolated_engine: Engine,
+) -> None:
+    label = "test_subniche_measure_harvest"
+    add_benchmark(isolated_engine, label)
+    run_id, hypothesis = prepare(isolated_engine, parent=label)
+    reader = FailingReader(scripted_reader(), code="provider_response_failed", recent_videos_on=2)
+    asyncio.run(measure_hypothesis(isolated_engine, reader, hypothesis, run_id, settings(), NOW))
+    profile = profile_of(isolated_engine)
+    assert profile["excluded"] == {"harvest_failed": 1}
+    assert profile["stable_channels"] == 1 and profile["channels_included"] == 1
+    # the medians are channel A's alone (80_000 monthly views x 3.5 / x 8)
+    assert profile["median_income_low"] == "280.00"
+    assert profile["median_income_high"] == "640.00"
+    with isolated_engine.connect() as connection:
+        rows = connection.execute(
+            sa.select(
+                schema.hypothesis_channel_hits.c.channel_id,
+                schema.hypothesis_channel_hits.c.excluded_reason,
+            )
+        ).all()
+    reasons = {row.channel_id: row.excluded_reason for row in rows}
+    assert reasons["UC" + B * 22] == "harvest_failed"
+
+
+@pytest.mark.postgres
+def test_a_channel_without_recent_videos_is_excluded(isolated_engine: Engine) -> None:
+    run_id, hypothesis = prepare(isolated_engine)
+    reader = scripted_reader()
+    reader.uploads.pop("UC" + B * 22)  # B has no uploads at all
+    asyncio.run(measure_hypothesis(isolated_engine, reader, hypothesis, run_id, settings(), NOW))
+    profile = profile_of(isolated_engine)
+    assert profile["excluded"] == {"no_recent_videos": 1}
+    assert profile["stable_channels"] == 1
+
+
+@pytest.mark.postgres
+def test_not_enough_search_units_left_today_stops_before_the_first_search(
+    isolated_engine: Engine,
+) -> None:
+    run_id, hypothesis = prepare(isolated_engine)  # 1 query x 2 pages needs 200 units
+    with isolated_engine.begin() as connection:
+        _, analysis_id, profile_id = make_run(connection)
+        reserve_search(connection, profile_id, analysis_id, NOW, 1)  # 100 units already used today
+    reader = scripted_reader()
+    result = asyncio.run(
+        measure_hypothesis(
+            isolated_engine,
+            reader,
+            hypothesis,
+            run_id,
+            settings(subniche_search_units_per_day=250),
+            NOW,
+        )
+    )
+    assert result == {
+        "slug": "history_revenge",
+        "stopped_reason": "subniche_daily_search_cap",
+        "partial": True,
+    }
+    assert reader.search_calls == 0
+    with isolated_engine.connect() as connection:
+        reserved = connection.execute(
+            sa.select(sa.func.count()).select_from(s.cost_reservations)
+        ).scalar_one()
+    assert reserved == 1  # only the one already there
+    assert_nothing_written(isolated_engine)

@@ -26,7 +26,11 @@ from nicheradar.subniche_discovery.estimate import (
     shorts_share,
 )
 from nicheradar.subniche_discovery.persist import rpm_range, save_measurement
-from nicheradar.subniche_discovery.reader import YouTubeReader
+from nicheradar.subniche_discovery.reader import (
+    YouTubeReader,
+    search_units_needed,
+    search_units_used_today,
+)
 
 RECENT_VIDEOS_LIMIT = 30
 
@@ -36,8 +40,10 @@ async def _channels_of(reader: YouTubeReader, ids: list[str]) -> dict[str, Chann
     try:
         return await reader.channels(ids)
     except ProviderError as error:
-        if error.code not in CHANNEL_LEVEL_FAILURES or len(ids) == 1:
+        if error.code not in CHANNEL_LEVEL_FAILURES:
             raise
+        if len(ids) == 1:
+            return {}  # the one channel is unreadable: treat it as missing
     found: dict[str, Channel] = {}
     for single in ids:
         try:
@@ -54,6 +60,15 @@ def _points(videos: Sequence[Video]) -> list[VideoPoint]:
     ]
 
 
+def _excluded_reason(points: Sequence[VideoPoint], harvest_failed: bool) -> str | None:
+    """A channel found by search has recent long videos, so an empty harvest is a data failure."""
+    if harvest_failed:
+        return "harvest_failed"
+    if not points:
+        return "no_recent_videos"
+    return None if language_ok(points) else "language"
+
+
 def _hit(
     channel: Channel,
     videos: Sequence[Video],
@@ -62,6 +77,7 @@ def _hit(
     rank: int | None,
     rpm: tuple[Decimal, Decimal, str] | None,
     now: datetime,
+    harvest_failed: bool = False,
 ) -> HitMetrics:
     points = _points(videos)
     monthly = monthly_long_views(points, now)
@@ -81,7 +97,7 @@ def _hit(
         and channel.subscribers < SMALL_CHANNEL_SUBSCRIBERS,
         traction=is_traction_channel(channel.subscribers, ratio),
         flags=channel_flags(channel.published_at, points, now),
-        excluded_reason=None if language_ok(points) else "language",
+        excluded_reason=_excluded_reason(points, harvest_failed),
     )
 
 
@@ -98,6 +114,12 @@ async def measure_hypothesis(
     appearances: dict[str, int] = {}
     first_rank: dict[str, int] = {}
     position = 0
+    with engine.connect() as connection:
+        used = search_units_used_today(connection, now, config.timezone)
+    needed = search_units_needed(hypothesis["queries"], config)
+    if needed > config.subniche_search_units_per_day - used:
+        # Stop before the first search: a measurement that cannot finish today spends nothing.
+        return {"slug": slug, "stopped_reason": "subniche_daily_search_cap", "partial": True}
     try:
         for query in hypothesis["queries"]:
             token: str | None = None
@@ -125,12 +147,14 @@ async def measure_hypothesis(
             channel = found.get(channel_id)
             if channel is None:
                 continue
+            harvest_failed = False
             try:
                 videos_of = await reader.recent_videos(channel, RECENT_VIDEOS_LIMIT)
             except ProviderError as error:
                 if error.code not in CHANNEL_LEVEL_FAILURES:
                     raise
                 videos_of = ()
+                harvest_failed = True
             collected.append((channel, videos_of))
             hits.append(
                 _hit(
@@ -140,6 +164,7 @@ async def measure_hypothesis(
                     rank=first_rank.get(channel_id),
                     rpm=rpm,
                     now=now,
+                    harvest_failed=harvest_failed,
                 )
             )
     except ProviderError as error:

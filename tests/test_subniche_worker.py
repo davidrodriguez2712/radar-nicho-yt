@@ -8,6 +8,7 @@ from sqlalchemy import Connection, Engine
 
 from nicheradar.config import Settings
 from nicheradar.repositories import schema
+from nicheradar.repositories import schema_v1 as s
 from nicheradar.subniche_discovery.store import (
     approve,
     create_proposed,
@@ -20,20 +21,28 @@ from tests.test_subniche_measure import scripted_reader
 
 
 def live(**over: Any) -> Settings:
-    return Settings(
-        mode="live",
-        subniche_enabled=True,
-        youtube_live_enabled=True,
-        subniche_channels_per_hypothesis=2,
-        **over,
-    )
+    values: dict[str, Any] = {
+        "mode": "live",
+        "subniche_enabled": True,
+        "youtube_live_enabled": True,
+        "subniche_channels_per_hypothesis": 2,
+        "subniche_search_pages": 2,
+        "subniche_search_units_per_day": 1_000,
+        "subniche_search_quota_per_run": 1_000,
+        "youtube_api_key": "test-key",
+        "youtube_auth_scope": "test-scope",
+    }
+    return Settings(**(values | over))
 
 
 def seed_hypothesis(
-    engine: Engine, slug: str = "history_revenge", words: str = "history revenge"
+    engine: Engine,
+    slug: str = "history_revenge",
+    words: str | tuple[str, ...] = "history revenge",
 ) -> None:
+    queries = (words,) if isinstance(words, str) else words
     with engine.begin() as connection:
-        create_proposed(connection, draft(slug=slug, queries=(words,)), NOW)
+        create_proposed(connection, draft(slug=slug, queries=queries), NOW)
         approve(connection, slug, NOW)
 
 
@@ -194,3 +203,116 @@ def test_finalist_is_refreshed_only_after_seven_days(isolated_engine: Engine) ->
     day8 = NOW + timedelta(days=8)
     out = tick_subniche(live(), isolated_engine, reader=scripted_reader(), clock=lambda: day8)
     assert out["status"] == "complete" and out["measured"] == 1
+
+
+def table_count(engine: Engine, table: sa.Table, *where: Any) -> int:
+    with engine.connect() as connection:
+        return connection.execute(
+            sa.select(sa.func.count()).select_from(table).where(*where)
+        ).scalar_one()
+
+
+@pytest.mark.postgres
+def test_a_hypothesis_that_can_never_fit_the_search_cap_spends_and_records_nothing(
+    isolated_engine: Engine,
+) -> None:
+    seed_hypothesis(isolated_engine, words=("history revenge", "dark history"))  # 2 x 2 x 100
+    reader = FakeReader()
+    out = tick_subniche(
+        live(subniche_search_units_per_day=100, subniche_search_quota_per_run=100),
+        isolated_engine,
+        reader=reader,
+        clock=lambda: NOW,
+    )
+    assert out["status"] == "insufficient_search_cap"
+    assert out["needed"] == 400 and out["cap"] == 100
+    assert reader.search_calls == 0
+    assert table_count(isolated_engine, schema.discovery_runs) == 0
+    assert table_count(isolated_engine, s.analysis_runs) == 0
+    assert (
+        table_count(
+            isolated_engine,
+            s.cost_reservations,
+            s.cost_reservations.c.unit == "youtube_search_quota",
+        )
+        == 0
+    )
+
+
+@pytest.mark.postgres
+def test_a_one_query_one_page_hypothesis_fits_the_default_search_cap(
+    isolated_engine: Engine,
+) -> None:
+    seed_hypothesis(isolated_engine)
+    config = live(
+        subniche_search_pages=1,
+        subniche_search_units_per_day=100,
+        subniche_search_quota_per_run=100,
+    )
+    out = tick_subniche(config, isolated_engine, reader=scripted_reader(), clock=lambda: NOW)
+    assert out["status"] == "complete" and out["measured"] == 1
+
+
+@pytest.mark.postgres
+def test_a_hypothesis_that_cannot_fit_is_skipped_and_the_next_one_is_measured(
+    isolated_engine: Engine,
+) -> None:
+    seed_hypothesis(isolated_engine, "too_big_idea", ("big idea words", "second big idea"))
+    seed_hypothesis(isolated_engine)  # 1 query x 2 pages = 200 fits the cap of 200
+    config = live(subniche_search_units_per_day=200, subniche_search_quota_per_run=200)
+    out = tick_subniche(config, isolated_engine, reader=scripted_reader(), clock=lambda: NOW)
+    assert out["status"] == "complete" and out["measured"] == 1
+    assert out["skipped"] == [
+        {"slug": "too_big_idea", "reason": "insufficient_search_cap", "needed": 400, "cap": 200}
+    ]
+    with isolated_engine.connect() as connection:
+        assert get_hypothesis(connection, "too_big_idea")["last_measured_at"] is None
+        assert get_hypothesis(connection, "history_revenge")["last_measured_at"] == NOW
+        stats = connection.execute(sa.select(schema.discovery_runs.c.stats)).scalar_one()
+    assert stats["skipped"][0]["slug"] == "too_big_idea"
+
+
+class ExplodingReader(FakeReader):
+    async def search(self, query: str, published_after: datetime, page_token: str | None) -> Any:
+        raise RuntimeError("boom")
+
+
+@pytest.mark.postgres
+def test_an_unexpected_error_marks_the_run_failed_and_still_propagates(
+    isolated_engine: Engine,
+) -> None:
+    seed_hypothesis(isolated_engine)
+    with pytest.raises(RuntimeError, match="boom"):
+        tick_subniche(live(), isolated_engine, reader=ExplodingReader(), clock=lambda: NOW)
+    with isolated_engine.connect() as connection:
+        run = connection.execute(sa.select(schema.discovery_runs)).mappings().one()
+        analysis = connection.execute(sa.select(s.analysis_runs.c.status)).scalar_one()
+    assert run["status"] == "failed" and run["finished_at"] is not None
+    assert run["stats"] == {"error": "RuntimeError"}
+    assert analysis == "failed"
+
+
+@pytest.mark.postgres
+def test_a_partial_run_records_the_slug_where_it_stopped(isolated_engine: Engine) -> None:
+    seed_hypothesis(isolated_engine)
+    out = tick_subniche(
+        live(), isolated_engine, reader=FakeReader(fail_search_after=0), clock=lambda: NOW
+    )
+    assert out["status"] == "partial" and out["stopped_slug"] == "history_revenge"
+    with isolated_engine.connect() as connection:
+        stats = connection.execute(sa.select(schema.discovery_runs.c.stats)).scalar_one()
+    assert stats["stopped_slug"] == "history_revenge"
+
+
+@pytest.mark.postgres
+@pytest.mark.parametrize(
+    "missing", [{"youtube_api_key": None}, {"youtube_auth_scope": None}], ids=["key", "scope"]
+)
+def test_missing_youtube_credentials_return_a_status_without_creating_a_run(
+    isolated_engine: Engine, missing: dict[str, Any]
+) -> None:
+    seed_hypothesis(isolated_engine)
+    out = tick_subniche(live(**missing), isolated_engine, clock=lambda: NOW)
+    assert out["status"] == "youtube_not_configured"
+    assert table_count(isolated_engine, schema.discovery_runs) == 0
+    assert table_count(isolated_engine, s.analysis_runs) == 0
