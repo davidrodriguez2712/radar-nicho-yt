@@ -76,13 +76,19 @@ PROVIDER_EVIDENCE_TABLES = frozenset(
         "cost_ledger",
         "cost_reservations",
         "credit_balances",
+        "discovery_channel_snapshots",
         "discovery_cursors",
+        "discovery_runs",
         "discovery_queries",
         "evaluation_versions",
         "evidence_links",
         "feature_values",
+        "hypothesis_channel_hits",
+        "hypothesis_seed_channels",
+        "hypothesis_snapshots",
         "jobs",
         "listing_channel_snapshots",
+        "niche_hypotheses",
         "opportunities",
         "opportunity_decisions",
         "opportunity_recipe_assignments",
@@ -158,7 +164,7 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
     ).scalar_one():
         raise ValueError("market_intel_not_paused")
     revision = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-    if revision != "0019":
+    if revision != "0020":
         raise ValueError("unreviewed_schema_revision")
     has_pilots = any(counts[name] for name in PILOT_TABLES)
     has_research = any(counts[name] for name in RESEARCH_TABLES)

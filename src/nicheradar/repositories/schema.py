@@ -642,3 +642,135 @@ channel_tokens = sa.Table(
     sa.Column("revoked_at", sa.DateTime(timezone=True)),
     sa.Index("ix_channel_tokens_channel", "channel_id"),
 )
+niche_hypotheses = sa.Table(
+    "niche_hypotheses",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid4),
+    sa.Column("slug", sa.String(60), nullable=False, unique=True),
+    sa.Column("label", sa.String(120), nullable=False),
+    sa.Column("family", sa.String(40), nullable=False),
+    sa.Column("parent_niche_slug", sa.String(60)),
+    sa.Column("queries", JSONB, nullable=False),
+    sa.Column("language", sa.String(5), nullable=False, server_default="en"),
+    sa.Column("format", sa.String(10), nullable=False, server_default="long"),
+    sa.Column("origin", sa.String(12), nullable=False),
+    sa.Column("status", sa.String(10), nullable=False, server_default="proposed"),
+    sa.Column("finalist", sa.Boolean, nullable=False, server_default=sa.false()),
+    sa.Column("source_input", sa.Text),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("approved_at", sa.DateTime(timezone=True)),
+    sa.Column("last_measured_at", sa.DateTime(timezone=True)),
+    sa.CheckConstraint(
+        "origin IN ('manual', 'catalog', 'marketplace', 'lead')", name="hypothesis_origin"
+    ),
+    sa.CheckConstraint(
+        "status IN ('proposed', 'active', 'paused', 'archived')", name="hypothesis_status"
+    ),
+)
+hypothesis_seed_channels = sa.Table(
+    "hypothesis_seed_channels",
+    metadata,
+    sa.Column(
+        "hypothesis_id",
+        UUID(as_uuid=True),
+        sa.ForeignKey("niche_hypotheses.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    sa.Column("channel_id", sa.String(40), primary_key=True),
+    sa.Column("added_at", sa.DateTime(timezone=True), nullable=False),
+)
+discovery_runs = sa.Table(
+    "discovery_runs",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid4),
+    sa.Column(
+        "analysis_run_id", UUID(as_uuid=True), sa.ForeignKey("analysis_runs.id"), nullable=False
+    ),
+    sa.Column("status", sa.String(10), nullable=False),
+    sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("finished_at", sa.DateTime(timezone=True)),
+    sa.Column("stats", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.CheckConstraint(
+        "status IN ('running', 'partial', 'complete', 'failed')", name="discovery_run_status"
+    ),
+)
+discovery_channel_snapshots = sa.Table(
+    "discovery_channel_snapshots",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid4),
+    sa.Column(
+        "run_id",
+        UUID(as_uuid=True),
+        sa.ForeignKey("discovery_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    sa.Column("channel_id", sa.String(40), nullable=False),
+    sa.Column("fetched_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("title", sa.String(200)),
+    sa.Column("country", sa.String(2)),
+    sa.Column("channel_created_at", sa.DateTime(timezone=True)),
+    sa.Column("subscribers", sa.BigInteger),
+    sa.Column("total_views", sa.BigInteger),
+    sa.Column("video_count", sa.BigInteger),
+    sa.Column("recent_videos", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    # YouTube API data may not be kept more than 30 days without a refresh.
+    sa.Column("retain_until", sa.DateTime(timezone=True), nullable=False),
+    sa.Index("ix_discovery_channel_snapshots_channel_id", "channel_id"),
+)
+hypothesis_channel_hits = sa.Table(
+    "hypothesis_channel_hits",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid4),
+    sa.Column(
+        "hypothesis_id",
+        UUID(as_uuid=True),
+        sa.ForeignKey("niche_hypotheses.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    sa.Column(
+        "run_id",
+        UUID(as_uuid=True),
+        sa.ForeignKey("discovery_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    sa.Column("channel_id", sa.String(40), nullable=False),
+    sa.Column("source", sa.String(6), nullable=False),
+    sa.Column("rank", sa.Integer),
+    sa.Column("subscribers", sa.BigInteger),
+    sa.Column("monthly_long_views", sa.BigInteger, nullable=False),
+    sa.Column("income_low", sa.Numeric(14, 2)),
+    sa.Column("income_high", sa.Numeric(14, 2)),
+    sa.Column("shorts_share", sa.Numeric(5, 4)),
+    sa.Column("outlier_ratio_max", sa.Numeric(10, 2)),
+    sa.Column("small_channel", sa.Boolean, nullable=False),
+    sa.Column("traction", sa.Boolean, nullable=False),
+    sa.Column("flags", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("excluded_reason", sa.String(30)),
+    sa.Column("retain_until", sa.DateTime(timezone=True), nullable=False),
+    sa.CheckConstraint("source IN ('search', 'seed')", name="hit_source"),
+    sa.UniqueConstraint("hypothesis_id", "run_id", "channel_id", name="uq_hit_per_run"),
+)
+hypothesis_snapshots = sa.Table(
+    "hypothesis_snapshots",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid4),
+    sa.Column(
+        "hypothesis_id",
+        UUID(as_uuid=True),
+        sa.ForeignKey("niche_hypotheses.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    sa.Column(
+        "run_id",
+        UUID(as_uuid=True),
+        sa.ForeignKey("discovery_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    sa.Column("measured_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("stable_channels", sa.Integer, nullable=False),
+    sa.Column("traction_channels", sa.Integer, nullable=False),
+    sa.Column("median_income_low", sa.Numeric(14, 2)),
+    sa.Column("median_income_high", sa.Numeric(14, 2)),
+    sa.Column("profile", JSONB, nullable=False),
+    sa.UniqueConstraint("hypothesis_id", "run_id", name="uq_snapshot_per_run"),
+)

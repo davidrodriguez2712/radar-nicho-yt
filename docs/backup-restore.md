@@ -18,7 +18,7 @@ Alcance del snapshot (`scripts/backup_snapshot.py`, falla cerrado):
 | Evidencia de proveedores y estado del radar | `raw_observations`, `provider_requests`, `topics`, `videos`, `jobs`, rankings, costos… (`PROVIDER_EVIDENCE_TABLES`) | **esquema sí, filas no** (decisión 2026-10-26, opción A) |
 
 Una tabla nueva queda fuera de las listas revisadas y, si tiene filas, bloquea el respaldo hasta
-que alguien la clasifique en el código. Siguen exigiéndose: esquema exacto, revisión `0019`
+que alguien la clasifique en el código. Siguen exigiéndose: esquema exacto, revisión `0020`
 (al migrar hay que revisar el alcance y subir esa constante), radar y programación de mercado
 en pausa y ningún proveedor real habilitado.
 
