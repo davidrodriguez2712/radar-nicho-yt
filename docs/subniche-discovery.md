@@ -180,6 +180,13 @@ por completo y dejarían sin cupo a las lecturas de detalle (1 unidad cada una).
 "Search Queries per day", se puede subir a 10000. Con 50 búsquedas por día, la corrida inicial (≈ 240 búsquedas)
 tarda unos 5 días.
 
+**Topes de detalle (lectura de canales y videos, 1 unidad cada una).** El ledger suma todo el uso del perfil de
+la unidad `youtube_quota` en la semana y el mes, incluido el enriquecimiento del mercado, que ya ronda las 10.000
+unidades por semana. Con los defectos (`NR_SUBNICHE_DETAIL_QUOTA_PER_WEEK=10000`) el tope estaba lleno antes de empezar y
+la primera corrida terminó `partial` con `period_budget_exhausted` **después de gastar 4 búsquedas** (400 unidades) sin
+guardar nada. En producción se subieron a `_PER_WEEK=50000` y `_PER_MONTH=150000` (`set-subniche-env`); el límite real
+de Google es 10.000 por día. Conviene que la comprobación previa también mire estos topes (pendiente).
+
 ### Historial: la verificación que estaba pendiente
 
 `docs/channel-analysis.md` y el plan del 2026-10-01 dicen que `search.list` tiene un cupo propio

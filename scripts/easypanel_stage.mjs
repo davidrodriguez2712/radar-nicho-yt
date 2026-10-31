@@ -706,6 +706,31 @@ try {
     if(after.source?.image!==image) throw new Error('Image setting not persisted');
     cli(['app','deploy',`${project}/${name}`,'--yes']);
     console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='set-subniche-enabled') {
+    // Enciende o apaga el descubrimiento de subnichos en el worker. Uso: set-subniche-enabled <true|false> [dry].
+    // Exige la configuración de Anthropic y los topes ya cargados (set-subniche-env). Nunca imprime el entorno.
+    const name='nicheradar-worker';
+    const value=process.argv[3];
+    if(value!=='true' && value!=='false') throw new Error('Usage: set-subniche-enabled <true|false> [dry]');
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    if(env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true') throw new Error('Subniche enable preconditions failed');
+    if(value==='true' && (env.NR_YOUTUBE_LIVE_ENABLED!=='true' || !env.NR_YOUTUBE_API_KEY || !env.NR_YOUTUBE_AUTH_SCOPE ||
+       !env.NR_SUBNICHE_SEARCH_UNITS_PER_DAY || !env.NR_SUBNICHE_SEARCH_QUOTA_PER_RUN))
+      throw new Error('Subniche env is incomplete; run set-subniche-env first');
+    const result={name,before:env.NR_SUBNICHE_ENABLED ?? 'unset',after:value,dryRun:process.argv[4]==='dry'};
+    if(result.dryRun) {
+      console.log(JSON.stringify(result));
+    } else {
+      const next={...env,NR_SUBNICHE_ENABLED:value};
+      cli(['app','update-env',`${project}/${name}`,'--yes'],{env:Object.entries(next).map(([k,v])=>`${k}=${v}`).join('\n')});
+      const after=cli(['app','inspect',`${project}/${name}`]);
+      for(const field of ['source','resources','deploy','ports','mounts','basicAuth']) {
+        if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected non-environment change');
+      }
+      cli(['app','deploy',`${project}/${name}`,'--yes']);
+      console.log(JSON.stringify({...result,deployRequested:true}));
+    }
   } else if(action==='set-subniche-env') {
     // Variables del descubrimiento de subnichos en el worker (docs/subniche-discovery.md). Uso: set-subniche-env [dry].
     // NR_SUBNICHE_ENABLED NO se toca: sigue desactivado hasta que el propietario revise la lista de hipótesis.
@@ -717,7 +742,6 @@ try {
     // La clave se toma del entorno del worker si ya está guardada; si no, del .env local privado (nunca se imprime).
     const anthropicKey=env.NR_ANTHROPIC_API_KEY || localAnthropicKey();
     if(/\s/.test(anthropicKey)) throw new Error('Invalid Anthropic key');
-    if(env.NR_SUBNICHE_ENABLED==='true') throw new Error('NR_SUBNICHE_ENABLED is already true; refusing to touch it');
     const configuration={auth_scope:'anthropic-owner',
       tariff:{version:'anthropic-sonnet-5-5-2026-10-31',model:'claude-sonnet-5-5',
         source:'https://platform.claude.com/docs/en/about-claude/pricing',
@@ -727,7 +751,10 @@ try {
       limits:{operation:'100',run:'1000',week:'10000',period:'100000'},timeout_seconds:20};
     const settings={NR_ANTHROPIC_ENABLED:'true',
       NR_SUBNICHE_SEARCH_UNITS_PER_DAY:'5000',NR_SUBNICHE_SEARCH_QUOTA_PER_RUN:'5000',
-      NR_SUBNICHE_SEARCH_QUOTA_PER_WEEK:'35000',NR_SUBNICHE_SEARCH_QUOTA_PER_MONTH:'150000'};
+      NR_SUBNICHE_SEARCH_QUOTA_PER_WEEK:'35000',NR_SUBNICHE_SEARCH_QUOTA_PER_MONTH:'150000',
+      // Detalle (canales/videos, 1 unidad cada uno): el ledger suma TODO el uso del perfil esta semana (el enriquecimiento del
+      // mercado ya ronda las 10.000), así que 10.000/semana dejaba el tope lleno. El límite real de Google es 10.000 por día.
+      NR_SUBNICHE_DETAIL_QUOTA_PER_WEEK:'50000',NR_SUBNICHE_DETAIL_QUOTA_PER_MONTH:'150000'};
     const dryRun=process.argv[3]==='dry';
     const result={name,set:Object.keys(settings).concat(['NR_ANTHROPIC_CONFIGURATION']),subnicheEnabled:env.NR_SUBNICHE_ENABLED ?? 'unset',dryRun};
     if(dryRun) {
