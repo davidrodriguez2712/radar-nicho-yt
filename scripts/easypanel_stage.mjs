@@ -750,8 +750,9 @@ try {
         cached_input_usd_per_million:'0.10',output_usd_per_million:'10'},
       limits:{operation:'100',run:'1000',week:'10000',period:'100000'},timeout_seconds:20};
     const settings={NR_ANTHROPIC_ENABLED:'true',
-      NR_SUBNICHE_SEARCH_UNITS_PER_DAY:'5000',NR_SUBNICHE_SEARCH_QUOTA_PER_RUN:'5000',
-      NR_SUBNICHE_SEARCH_QUOTA_PER_WEEK:'35000',NR_SUBNICHE_SEARCH_QUOTA_PER_MONTH:'150000',
+      // 100 búsquedas por día = el cupo real de "Search Queries per day" en Google Cloud Console (100 unidades cada una).
+      NR_SUBNICHE_SEARCH_UNITS_PER_DAY:'10000',NR_SUBNICHE_SEARCH_QUOTA_PER_RUN:'10000',
+      NR_SUBNICHE_SEARCH_QUOTA_PER_WEEK:'70000',NR_SUBNICHE_SEARCH_QUOTA_PER_MONTH:'300000',
       // Detalle (canales/videos, 1 unidad cada uno): el ledger suma TODO el uso del perfil esta semana (el enriquecimiento del
       // mercado ya ronda las 10.000), así que 10.000/semana dejaba el tope lleno. El límite real de Google es 10.000 por día.
       NR_SUBNICHE_DETAIL_QUOTA_PER_WEEK:'50000',NR_SUBNICHE_DETAIL_QUOTA_PER_MONTH:'150000'};
