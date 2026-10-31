@@ -1,10 +1,10 @@
 # tests/test_subniche_worker.py
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 import sqlalchemy as sa
-from sqlalchemy import Engine
+from sqlalchemy import Connection, Engine
 
 from nicheradar.config import Settings
 from nicheradar.repositories import schema
@@ -115,7 +115,7 @@ def test_cadence_open_rules(isolated_engine: Engine) -> None:
         run_id, _, _ = make_run(connection, NOW)
         # a run that is still `running` and young blocks a second worker
         assert cadence_open(connection, NOW + timedelta(hours=1), "America/Lima") is False
-        # a stale `running` run is treated as partial: open on the next local day
+        # a stale `running` run on the same Lima day is still closed
         assert cadence_open(connection, NOW + timedelta(hours=7), "America/Lima") is False
         assert cadence_open(connection, NOW + timedelta(days=1), "America/Lima") is True
         connection.execute(
@@ -125,6 +125,57 @@ def test_cadence_open_rules(isolated_engine: Engine) -> None:
         )
         assert cadence_open(connection, NOW + timedelta(days=2), "America/Lima") is False
         assert cadence_open(connection, NOW + CADENCE, "America/Lima") is True
+
+
+def set_run(
+    connection: Connection,
+    run_id: Any,
+    status: str,
+    started_at: datetime,
+    finished_at: datetime | None,
+) -> None:
+    connection.execute(
+        sa.update(schema.discovery_runs)
+        .where(schema.discovery_runs.c.id == run_id)
+        .values(status=status, started_at=started_at, finished_at=finished_at)
+    )
+
+
+@pytest.mark.postgres
+def test_complete_cadence_counts_from_started_at_not_finished_at(isolated_engine: Engine) -> None:
+    with isolated_engine.begin() as connection:
+        run_id, _, _ = make_run(connection, NOW)
+        set_run(connection, run_id, "complete", NOW, NOW + timedelta(days=2, hours=12))
+        # 3 days after started_at is open; 3 days after finished_at would still be closed.
+        assert cadence_open(connection, NOW + CADENCE, "America/Lima") is True
+        assert (
+            cadence_open(connection, NOW + CADENCE - timedelta(minutes=1), "America/Lima") is False
+        )
+
+
+LIMA_DAY_CASES = [
+    # (status, started UTC hour, probe offset from start, expected)
+    # Lima is UTC-5: 03:00 UTC is 22:00 Lima; 06:00 UTC is already the next Lima day.
+    ("partial", 3, timedelta(hours=3), True),
+    ("failed", 3, timedelta(hours=3), True),
+    ("running", 3, timedelta(hours=6), True),
+    # 23:00 UTC is 18:00 Lima; 01:00 UTC next day is 20:00 Lima, the same Lima day.
+    ("partial", 23, timedelta(hours=2), False),
+    ("failed", 23, timedelta(hours=2), False),
+]
+
+
+@pytest.mark.postgres
+@pytest.mark.parametrize(("status", "hour", "offset", "expected"), LIMA_DAY_CASES)
+def test_resume_day_follows_the_lima_calendar_not_utc(
+    isolated_engine: Engine, status: str, hour: int, offset: timedelta, expected: bool
+) -> None:
+    started = datetime(2026, 10, 31, hour, tzinfo=UTC)
+    with isolated_engine.begin() as connection:
+        run_id, _, _ = make_run(connection, started)
+        finished = None if status == "running" else started
+        set_run(connection, run_id, status, started, finished)
+        assert cadence_open(connection, started + offset, "America/Lima") is expected
 
 
 @pytest.mark.postgres
