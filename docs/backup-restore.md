@@ -255,7 +255,7 @@ El propietario aprobó programar el respaldo. Los archivos están en `scripts/la
 (`run_backup.sh` y `com.nicheradar.backup.plist.template`): diario 03:30, `backup` y luego
 `prune --apply`, con salida en `~/Library/Application Support/NicheRadar/backup.log`. **No se
 instala hasta que `backup` funcione contra producción** (hoy lo impide que producción sigue en la revisión 0016 y el
-respaldo espera la 0019). Para activarla:
+respaldo espera la 0020). Para activarla:
 
 ```sh
 sed -e "s#@REPO@/#$PWD/#" -e "s#@HOME@#$HOME#" scripts/launchd/com.nicheradar.backup.plist.template \
@@ -294,7 +294,7 @@ El propietario aprobó programar el respaldo. Los archivos están en `scripts/la
 (`run_backup.sh` y `com.nicheradar.backup.plist.template`): diario 03:30, `backup` y luego
 `prune --apply`, con salida en `~/Library/Application Support/NicheRadar/backup.log`. **No se
 instala hasta que `backup` funcione contra producción** (hoy lo impide que producción sigue en la revisión 0016 y el
-respaldo espera la 0019). Para activarla:
+respaldo espera la 0020). Para activarla:
 
 ```sh
 sed -e "s#@REPO@/#$PWD/#" -e "s#@HOME@#$HOME#" scripts/launchd/com.nicheradar.backup.plist.template \
