@@ -511,3 +511,57 @@
   status: "proposed"
   finalist: false
   seed_channels: []
+- slug: "discrimination_karma_stories"
+  label: "Discrimination Karma Stories"
+  family: "black_audience"
+  parent_niche: "entitled_people_stories"
+  queries: ["racist karen karma stories", "racist neighbor gets karma story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "workplace_racism_justice_stories"
+  label: "Workplace Racism Justice Stories"
+  family: "black_audience"
+  parent_niche: "workplace_drama_stories"
+  queries: ["racism at work revenge story", "black employee wins against racist boss"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "overcoming_racism_first_person_stories"
+  label: "Overcoming Racism First-Person Stories"
+  family: "black_audience"
+  parent_niche: "revenge_stories"
+  queries: ["overcoming racism true story narrated", "black man facing discrimination story"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "african_tribes_culture_documentary"
+  label: "African Tribes and Culture"
+  family: "black_audience"
+  parent_niche: "documentary_general"
+  queries: ["african tribes documentary", "life in an african tribe"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "african_village_traditions"
+  label: "African Village Life and Traditions"
+  family: "black_audience"
+  parent_niche: "documentary_general"
+  queries: ["african village life documentary", "african tribe traditions explained"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
+- slug: "african_folktales_narrated"
+  label: "African Folktales Narrated"
+  family: "black_audience"
+  parent_niche: "documentary_general"
+  queries: ["african folktales narrated", "african folk stories animated"]
+  origin: "manual"
+  status: "proposed"
+  finalist: false
+  seed_channels: []
