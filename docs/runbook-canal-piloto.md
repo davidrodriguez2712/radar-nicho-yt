@@ -37,9 +37,13 @@ Con el token solo de lectura, `check` muestra `upload_scope: false`: es lo esper
 
 ## Fase 1: conectar el canal a NicheRadar
 
-1. **Carpeta del canal** (agente): copiar la estructura de `canal-historias` a
-   `~/Programming/youtube-project/canal-speedrun-ledger`, con `.foundry/manifest.yaml` y
-   `.nicheradar/` (`inbox/`, `outbox/`). Sin `credentials/` copiadas. El nombre de la carpeta es el `channel_id`.
+1. **Carpeta del canal** (agente): crearla con el comando del Foundry (`DEC-YT-0006`, `DEC-CORE-0023`):
+   `python3 ~/Foundries/david-foundry-core/tools/foundry/foundry.py init canal-speedrun-ledger --youtube --pilot pil_20261026_gaming-general --git`.
+   Crea `~/Programming/youtube-project/canal-speedrun-ledger` con `.foundry/manifest.yaml`, `.nicheradar/`
+   (`inbox/`, `outbox/`), `AGENTS.md` y `.gitignore`. El nombre de la carpeta es el `channel_id`. **No crea el
+   pipeline**: ese se copia de `canal-historias` sin `credentials/` ni `datos/`. El comando no se conecta a
+   NicheRadar; declara el formato con `--recipes` si hay receta (hoy solo `faceless-storytelling`, narración larga
+   sin rostro).
 2. **Túnel** (agente): `uv run python scripts/pilots_tunnel.py --port 18000` (127.0.0.1:18000; se cierra al terminar).
 3. **Token del canal** (agente, aprobación C): con el túnel abierto y el token de servicio solo en el entorno,
    `uv run python scripts/pilots.py token-issue --channel canal-speedrun-ledger --label mac`. El token se imprime

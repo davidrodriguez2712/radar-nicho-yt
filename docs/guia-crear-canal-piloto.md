@@ -82,10 +82,12 @@ reutilizarse el proyecto, pero cada canal necesita su propia autorización.
 
 ## 7. Carpeta del proyecto del canal
 
-1. Copia `~/Programming/youtube-project/canal-historias` a
-   `~/Programming/youtube-project/canal-<slug>` (el id debe ser `canal-[a-z0-9-]{1,40}`, p. ej.
-   `canal-gaming-historia`). Ver [`ecosistema-youtube.md`](ecosistema-youtube.md).
-2. Ajusta `.foundry/manifest.yaml` (receta y puertas del canal) y `.nicheradar/`.
+1. Crea la carpeta con el comando del Foundry:
+   `python3 ~/Foundries/david-foundry-core/tools/foundry/foundry.py init canal-<slug> --youtube --pilot <pilot_id> --git`
+   (el id debe ser `canal-[a-z0-9-]{1,40}`, p. ej. `canal-gaming-historia`). Crea el manifiesto,
+   `.nicheradar/` y `AGENTS.md` en `~/Programming/youtube-project/canal-<slug>`. Después copia el pipeline de
+   `canal-historias` (sin `credentials/` ni `datos/`). Ver [`ecosistema-youtube.md`](ecosistema-youtube.md).
+2. Revisa `.foundry/manifest.yaml` (receta y puertas del canal) y `.nicheradar/`.
 3. El pipeline de `canal-historias` está hecho para otro nicho: revisa receta, voz y estados antes
    de producir.
 

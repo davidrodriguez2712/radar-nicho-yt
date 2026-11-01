@@ -125,7 +125,7 @@ canal y el estado de cada paso, que informa el canal.
 | Paso | Dónde se hace | Cómo se entera NicheRadar |
 |---|---|---|
 | Crear el canal en YouTube | Tú, en YouTube Studio | Tú registras el enlace del canal en la pestaña «Preparación» del piloto |
-| Crear la carpeta del canal (copia de `canal-historias`) | Tu Mac | `check` de la carpeta del canal |
+| Crear la carpeta del canal (`foundry init canal-<nombre> --youtube --pilot <id>`; el pipeline se copia de `canal-historias`) | Tu Mac | `check` de la carpeta del canal |
 | Autorizar subida y medición | Tu Mac, con el script de autorización del canal | `check` `youtube_oauth`, con fecha de caducidad |
 | Voz de referencia | Tu Mac, en el canal | `check` `voice_ref` |
 | Visuales del nicho | Tu Mac, en el canal | `check` `visual_assets` |
