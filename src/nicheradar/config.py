@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     # El defecto de búsqueda diaria es 1 búsqueda (100 unidades) hasta que el propietario verifique
     # el cupo real de search.list en Google Cloud Console.
     subniche_enabled: bool = False
+    # Google resets the YouTube quota at midnight Pacific, not at the local `timezone` midnight.
+    subniche_quota_timezone: str = "America/Los_Angeles"
     subniche_search_units_per_day: int = Field(default=100, ge=0, le=100_000)
     subniche_search_pages: int = Field(default=2, ge=1, le=3)
     subniche_channels_per_hypothesis: int = Field(default=30, ge=1, le=100)
@@ -104,7 +106,7 @@ class Settings(BaseSettings):
     gate_max_human_minutes: int = Field(default=60, ge=0, le=10_000)
     gate_block_high_policy_risk: bool = True
 
-    @field_validator("timezone")
+    @field_validator("timezone", "subniche_quota_timezone")
     @classmethod
     def valid_timezone(cls, value: str) -> str:
         try:

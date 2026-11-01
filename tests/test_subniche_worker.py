@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 import sqlalchemy as sa
+from pydantic import ValidationError
 from sqlalchemy import Connection, Engine
 
 from nicheradar.config import Settings
@@ -316,3 +317,65 @@ def test_missing_youtube_credentials_return_a_status_without_creating_a_run(
     assert out["status"] == "youtube_not_configured"
     assert table_count(isolated_engine, schema.discovery_runs) == 0
     assert table_count(isolated_engine, s.analysis_runs) == 0
+
+
+PACIFIC = "America/Los_Angeles"
+NOV1 = datetime(2026, 11, 1, tzinfo=UTC)
+
+# Pacific day of 2026-10-31 (PDT, UTC-7) ends at 07:00 UTC on Nov 1. The incident: a retry at
+# Lima midnight (05:00 UTC) hit Google's quota, which had not reset yet.
+PACIFIC_DAY_CASES = [
+    # (status, started, probe, expected)
+    ("partial", NOV1.replace(hour=5), NOV1.replace(hour=6, minute=30), False),
+    ("partial", NOV1.replace(hour=5), NOV1.replace(hour=7, minute=30), True),
+    ("failed", NOV1.replace(hour=5), NOV1.replace(hour=6, minute=30), False),
+    ("failed", NOV1.replace(hour=5), NOV1.replace(hour=7, minute=30), True),
+    # stale (>= 6 h) running run: still the same Pacific day at 06:30, a new one at 07:30
+    ("running", NOV1.replace(hour=0), NOV1.replace(hour=6, minute=30), False),
+    ("running", NOV1.replace(hour=0), NOV1.replace(hour=7, minute=30), True),
+]
+
+
+@pytest.mark.postgres
+@pytest.mark.parametrize(("status", "started", "probe", "expected"), PACIFIC_DAY_CASES)
+def test_resume_day_follows_the_pacific_quota_day(
+    isolated_engine: Engine, status: str, started: datetime, probe: datetime, expected: bool
+) -> None:
+    with isolated_engine.begin() as connection:
+        run_id, _, _ = make_run(connection, started)
+        finished = None if status == "running" else started
+        set_run(connection, run_id, status, started, finished)
+        assert cadence_open(connection, probe, PACIFIC) is expected
+
+
+def test_quota_timezone_defaults_to_pacific_and_rejects_unknown_zones() -> None:
+    assert Settings().subniche_quota_timezone == PACIFIC
+    with pytest.raises(ValidationError):
+        Settings(subniche_quota_timezone="Invalid/Zone")
+
+
+@pytest.mark.postgres
+def test_tick_retries_a_partial_run_only_after_pacific_midnight(isolated_engine: Engine) -> None:
+    seed_hypothesis(isolated_engine)
+    first = tick_subniche(
+        live(),
+        isolated_engine,
+        reader=FakeReader(fail_search_after=0),
+        clock=lambda: NOV1.replace(hour=5),
+    )
+    assert first["status"] == "partial"
+    # Lima midnight has passed, Google's quota has not reset: no retry, no wasted quota day.
+    early = tick_subniche(
+        live(),
+        isolated_engine,
+        reader=scripted_reader(),
+        clock=lambda: NOV1.replace(hour=6, minute=30),
+    )
+    assert early["status"] == "idle"
+    resumed = tick_subniche(
+        live(),
+        isolated_engine,
+        reader=scripted_reader(),
+        clock=lambda: NOV1.replace(hour=7, minute=30),
+    )
+    assert resumed["status"] == "complete" and resumed["measured"] == 1

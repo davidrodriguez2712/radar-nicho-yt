@@ -48,7 +48,7 @@ def cadence_open(connection: Connection, now: datetime, timezone: str) -> bool:
         return now - started >= STALE_RUN and new_local_day
     if status == "complete":
         return now - started >= CADENCE
-    return new_local_day  # partial or failed: continue the next local day (daily cap resets)
+    return new_local_day  # partial or failed: continue the next quota day (daily cap resets)
 
 
 async def _measure_all(
@@ -99,7 +99,7 @@ def tick_subniche(
     try:
         with database.begin() as connection:
             connection.execute(select(func.pg_advisory_xact_lock(SUBNICHE_LOCK)))
-            if not cadence_open(connection, now, config.timezone):
+            if not cadence_open(connection, now, config.subniche_quota_timezone):
                 return status
             due = due_hypotheses(connection, now)
             if not due:

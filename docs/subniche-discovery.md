@@ -82,10 +82,16 @@ máximo; las nuevas se miden primero, ordenadas por fecha de aprobación) → `s
 
 - Un tick cada **3 días** (`CADENCE`), con un cerrojo asesor de Postgres. Mide primero las hipótesis
   `active` sin medir (por `approved_at`) y luego las **finalistas con más de 7 días** desde la última medición.
-- Una corrida `partial` (cuota agotada) o `failed` **continúa el día local siguiente** (America/Lima:
-  el tope diario se reinicia a medianoche local). Una hipótesis se guarda completa o no se guarda; la
-  siguiente corrida no repite las ya medidas.
-- Una corrida `running` con más de 6 h se considera muerta y se reanuda al día local siguiente.
+- Una corrida `partial` (cuota agotada) o `failed` **continúa el día de cuota siguiente**. El día de
+  cuota es el día del **Pacífico** (`NR_SUBNICHE_QUOTA_TIMEZONE`, defecto `America/Los_Angeles`)
+  porque Google reinicia la cuota de la YouTube Data API a medianoche del Pacífico (07:00 UTC en
+  horario de verano, 08:00 UTC en invierno), no a medianoche de Lima. El mismo día de cuota rige el
+  tope diario de búsquedas. Una hipótesis se guarda completa o no se guarda; la siguiente corrida no
+  repite las ya medidas.
+- Incidente del 2026-11-01: con el día de Lima, el reintento de una corrida `partial` se abrió a la
+  medianoche de Lima (05:00 UTC), antes del reinicio real de Google; respondió `quotaExceeded`, la
+  corrida volvió a `partial` y quedó bloqueada hasta el siguiente día de Lima, perdiendo un día de cuota.
+- Una corrida `running` con más de 6 h se considera muerta y se reanuda al día de cuota siguiente.
 - Puertas: `NR_SUBNICHE_ENABLED=true` (defecto `false`), `NR_MODE=live` y `NR_YOUTUBE_LIVE_ENABLED=true`.
   Si falta cualquiera, el tick informa `disabled`, `synthetic_mode` o `youtube_not_enabled` y no hace nada.
   Sin `NR_YOUTUBE_API_KEY` o `NR_YOUTUBE_AUTH_SCOPE` informa `youtube_not_configured`, también sin crear corrida.
@@ -100,7 +106,7 @@ Debe cumplirse `NR_SUBNICHE_SEARCH_UNITS_PER_DAY >= consultas × páginas × 100
 - Si ninguna hipótesis pendiente cabe nunca en el tope, el tick responde `insufficient_search_cap` (con `needed` y `cap`)
   **sin crear corrida ni reservar nada**; las que no caben se omiten con la razón en `stats.skipped` y se miden las demás.
 - Si cabe en el tope pero hoy ya se gastó parte del cupo diario, la corrida queda `partial` **antes** de la primera
-  búsqueda de esa hipótesis (no se gasta nada) y continúa al día local siguiente. `stats.stopped_slug` dice dónde paró.
+  búsqueda de esa hipótesis (no se gasta nada) y continúa al día de cuota siguiente. `stats.stopped_slug` dice dónde paró.
 
 ## Variables de entorno del worker
 
@@ -112,7 +118,8 @@ Leídas de `src/nicheradar/config.py` (prefijo `NR_`).
 | `NR_ANTHROPIC_API_KEY` | sin valor | Credencial; el propietario ya la cargó en el worker. **Nunca va en el repo ni en este documento** |
 | `NR_ANTHROPIC_CONFIGURATION` | sin valor | JSON `LLMConfiguration`: tarifa, límites y timeout (ver abajo) |
 | `NR_SUBNICHE_ENABLED` | `false` | Interruptor del tick de descubrimiento |
-| `NR_SUBNICHE_SEARCH_UNITS_PER_DAY` | 100 (0–100.000) | Tope diario de unidades de `search.list` (100 por búsqueda), por día de Lima |
+| `NR_SUBNICHE_QUOTA_TIMEZONE` | `America/Los_Angeles` | Zona IANA que define el día de cuota de YouTube (tope diario y reintento tras `partial`); Google reinicia a medianoche del Pacífico |
+| `NR_SUBNICHE_SEARCH_UNITS_PER_DAY` | 100 (0–100.000) | Tope diario de unidades de `search.list` (100 por búsqueda), por día de cuota del Pacífico |
 | `NR_SUBNICHE_SEARCH_PAGES` | 2 (1–3) | Páginas de resultados por consulta |
 | `NR_SUBNICHE_CHANNELS_PER_HYPOTHESIS` | 30 (1–100) | Canales distintos que se leen por hipótesis |
 | `NR_SUBNICHE_SEARCH_QUOTA_PER_RUN` / `_PER_WEEK` / `_PER_MONTH` | 100 / 700 / 3000 | Topes del ledger de búsqueda (unidades) |
