@@ -103,10 +103,13 @@ def annotation(niche: dict[str, Any], gates: Gates) -> dict[str, Any]:
 
 
 def authorization_reasons(
-    dossier: dict[str, Any], niche: dict[str, Any], gates: Gates
+    dossier: dict[str, Any], niche: dict[str, Any] | None, gates: Gates
 ) -> list[GateReason]:
-    """Every gate again, on a stored dossier (any version) just before a pilot is authorized."""
-    reasons = niche_reasons(niche, gates)
+    """Every gate again, on a stored dossier (any version) just before a pilot is authorized.
+
+    A sub-niche order has no backlog niche (``niche`` is ``None``): the niche gates are skipped.
+    """
+    reasons = [] if niche is None else niche_reasons(niche, gates)
     minutes = sum(step["human_minutes_per_video"] for step in dossier["production_flow"])
     reasons += minutes_reasons(minutes, gates)
     calibration = dossier.get("calibration")
