@@ -115,6 +115,9 @@ const subnicheQuotaDayDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha25
 const dossierV3Backend = 'davidrodriguez2712/nicheradar-backend@sha256:d9d0822299d40523c268087015cf1b65abe06b809edc9de423a3c10241d3c177';
 const dossierV3Worker = 'davidrodriguez2712/nicheradar-worker@sha256:0902b827a3fdc3448e4c3d48558bda98fe5ad3964600a1f8cbe3d62fc29ae499';
 const dossierV3Dashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:1f22fec15e6f1f15e52a91735bb6ff8072af978a8fd910453c2c4f1db1b4787f';
+const subnicheDashBackend = 'davidrodriguez2712/nicheradar-backend@sha256:c1cbef84beba5b0c313bb75ea2095457602ccf30bf0a9c749648b65d93eca0b4';
+const subnicheDashWorker = 'davidrodriguez2712/nicheradar-worker@sha256:1ab836efd1049dbb1b8eeea13ffeffa1a7f9012dd0f0c63f2d29a3aeac5a29e5';
+const subnicheDashDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:95e4c4ee1bbb79819203ae37b7756e227d428f4001b16035b908362cde2c2f99';
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
 const resources = (cpu) => ({memoryLimit:512,memoryReservation:128,cpuLimit:cpu,cpuReservation:0.1});
@@ -744,6 +747,26 @@ try {
        env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
       throw new Error('Dossier v3 release preconditions failed');
     const image=isDashboard?dossierV3Dashboard:name==='nicheradar-worker'?dossierV3Worker:dossierV3Backend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='deploy-subniche-dashboard-code') {
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?dossierV3Dashboard:name==='nicheradar-worker'?dossierV3Worker:dossierV3Backend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Subniche dashboard release preconditions failed');
+    const image=isDashboard?subnicheDashDashboard:name==='nicheradar-worker'?subnicheDashWorker:subnicheDashBackend;
     cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
     const after=cli(['app','inspect',`${project}/${name}`]);
     for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
