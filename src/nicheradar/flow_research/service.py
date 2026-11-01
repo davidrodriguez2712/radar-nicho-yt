@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from nicheradar.flow_research import gates as gate_rules
 from nicheradar.flow_research.contracts import (
     SCHEMA_VERSION,
-    DossierV2,
+    DossierV3,
     Problem,
     human_minutes_per_video,
     validate_dossier,
@@ -21,6 +21,7 @@ from nicheradar.flow_research.evidence import REASONS, build_evidence, ineligibl
 from nicheradar.flow_research.gates import (
     GateReason,
     Gates,
+    calibration_reasons,
     describe,
     minutes_reasons,
     niche_reasons,
@@ -235,7 +236,7 @@ def claim_request(
     return _stored(connection, request_id) | {"lease_owner": holder}
 
 
-def _gate_problems(dossier: DossierV2, row: Any, gates: Gates) -> list[Problem]:
+def _gate_problems(dossier: DossierV3, row: Any, gates: Gates) -> list[Problem]:
     """A dossier that recommends going ahead must pass the gates, unless a human overrode them.
 
     ``no_go`` is always acceptable. Blocked rights are not overridable (contract-level check).
@@ -247,6 +248,7 @@ def _gate_problems(dossier: DossierV2, row: Any, gates: Gates) -> list[Problem]:
     if "gate_override" not in evidence:
         reasons += niche_reasons(evidence["niche"], gates)
         reasons += minutes_reasons(human_minutes_per_video(dossier), gates)
+        reasons += calibration_reasons(dossier.calibration_hours, gates)
     if not reasons:
         return []
     return [
@@ -257,7 +259,7 @@ def _gate_problems(dossier: DossierV2, row: Any, gates: Gates) -> list[Problem]:
     ]
 
 
-def _request_problems(dossier: DossierV2, row: Any, gates: Gates) -> list[Problem]:
+def _request_problems(dossier: DossierV3, row: Any, gates: Gates) -> list[Problem]:
     """Checks that need the request: the dossier must answer exactly what was ordered."""
     problems: list[Problem] = _gate_problems(dossier, row, gates)
     if dossier.request_id != row["id"]:
