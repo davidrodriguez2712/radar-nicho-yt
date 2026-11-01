@@ -84,7 +84,8 @@ Separa dos escenarios; no los mezcles:
 - **Régimen** (`production_flow[].human_minutes_per_video`): minutos humanos por video cuando el flujo ya está
   mapeado y el humano solo da instrucciones y valida. Es lo único que compara la compuerta de minutos.
 - **Calibración** (`calibration`): los primeros videos, mientras se construye y ajusta el flujo. Declara
-  `videos` (1 a 12), `setup_hours` (horas únicas de preparación), `minutes_by_step` (un valor por cada paso de
+  `videos` (1 a 12), `setup_hours` (horas únicas de preparación; referencia: montar `canal-historias` desde cero tomó unas 12 horas,
+  estimado por el propietario; un canal que copia ese pipeline debería necesitar igual o menos), `minutes_by_step` (un valor por cada paso de
   `production_flow`, nunca menor que su régimen) y `exit_criterion` (`max_minutes_per_video`,
   `consecutive_videos` y un `statement` claro). **No declares `total_hours`**: se deriva.
 

@@ -36,5 +36,6 @@ como antes (su total cuenta como régimen y no tiene calibración).
 ## Evidencia de referencia
 
 `canal-historias`: ~20 min de régimen por video (10 de instrucción y postura + 10 de validación y programación) en los
-últimos 10 videos; primera semana: 2 a 3 horas por semana en errores de producción, hoy ninguna. Tiempos declarados por el
+últimos 10 videos; primera semana: 2 a 3 horas por semana en errores de producción, hoy ninguna. Montaje inicial del canal: unas 12 horas
+("me debe haber tomado 12 horas"; incluye construir el pipeline desde cero). Tiempos declarados por el
 propietario, no cronometrados con reloj.
