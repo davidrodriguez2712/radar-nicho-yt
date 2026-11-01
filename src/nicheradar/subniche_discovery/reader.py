@@ -87,7 +87,7 @@ class GatewayReader:
     ) -> tuple[list[Video], str | None]:
         now = self.clock()
         with self.engine.connect() as connection:
-            used = search_units_used_today(connection, now, self.config.timezone)
+            used = search_units_used_today(connection, now, self.config.subniche_quota_timezone)
         if used + SEARCH_COST > self.config.subniche_search_units_per_day:
             raise ProviderError("subniche_daily_search_cap", not_sent=True)
         parameters: dict[str, Any] = {

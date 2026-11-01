@@ -115,7 +115,7 @@ async def measure_hypothesis(
     first_rank: dict[str, int] = {}
     position = 0
     with engine.connect() as connection:
-        used = search_units_used_today(connection, now, config.timezone)
+        used = search_units_used_today(connection, now, config.subniche_quota_timezone)
     needed = search_units_needed(hypothesis["queries"], config)
     if needed > config.subniche_search_units_per_day - used:
         # Stop before the first search: a measurement that cannot finish today spends nothing.

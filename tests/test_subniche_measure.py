@@ -1,5 +1,6 @@
 # tests/test_subniche_measure.py
 import asyncio
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -475,3 +476,30 @@ def test_not_enough_search_units_left_today_stops_before_the_first_search(
         ).scalar_one()
     assert reserved == 1  # only the one already there
     assert_nothing_written(isolated_engine)
+
+
+@pytest.mark.postgres
+def test_preflight_counts_units_from_pacific_midnight_not_lima_midnight(
+    isolated_engine: Engine,
+) -> None:
+    run_id, hypothesis = prepare(isolated_engine)  # 1 query x 2 pages needs 200 units
+    with isolated_engine.begin() as connection:
+        _, analysis_id, profile_id = make_run(connection)
+        # 06:30 UTC: after Lima midnight (05:00) but before Pacific midnight (07:00 in PDT).
+        reserve_search(
+            connection, profile_id, analysis_id, datetime(2026, 10, 31, 6, 30, tzinfo=UTC), 1
+        )
+    reader = scripted_reader()
+    now = datetime(2026, 10, 31, 7, 30, tzinfo=UTC)  # new Pacific day: that spend is yesterday's
+    result = asyncio.run(
+        measure_hypothesis(
+            isolated_engine,
+            reader,
+            hypothesis,
+            run_id,
+            settings(subniche_search_units_per_day=250),
+            now,
+        )
+    )
+    assert result.get("partial") is not True
+    assert reader.search_calls == 2
