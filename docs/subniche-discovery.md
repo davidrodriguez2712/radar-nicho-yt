@@ -92,6 +92,12 @@ máximo; las nuevas se miden primero, ordenadas por fecha de aprobación) → `s
   medianoche de Lima (05:00 UTC), antes del reinicio real de Google; respondió `quotaExceeded`, la
   corrida volvió a `partial` y quedó bloqueada hasta el siguiente día de Lima, perdiendo un día de cuota.
 - Una corrida `running` con más de 6 h se considera muerta y se reanuda al día de cuota siguiente.
+- Límites conocidos:
+  - Las ventanas **semanal y mensual** del ledger (`_PER_WEEK`, `_PER_MONTH`) siguen calculándose con la zona
+    horaria general (`NR_TIMEZONE`, Lima); solo el tope diario y el reintento usan el día del Pacífico.
+  - La comprobación previa (`insufficient_search_cap`) valida solo el tope de **búsqueda**. Si el tope de
+    **detalle** (`NR_SUBNICHE_DETAIL_QUOTA_*`) se agota, la corrida queda `partial` con `period_budget_exhausted`
+    (como en la primera corrida); se sube el tope y la corrida continúa el siguiente día de cuota.
 - Puertas: `NR_SUBNICHE_ENABLED=true` (defecto `false`), `NR_MODE=live` y `NR_YOUTUBE_LIVE_ENABLED=true`.
   Si falta cualquiera, el tick informa `disabled`, `synthetic_mode` o `youtube_not_enabled` y no hace nada.
   Sin `NR_YOUTUBE_API_KEY` o `NR_YOUTUBE_AUTH_SCOPE` informa `youtube_not_configured`, también sin crear corrida.
