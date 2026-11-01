@@ -35,12 +35,15 @@ se revisan otras opciones (nivel B o A del informe 01). Efecto sobre el catálog
 | 06 Música/SFX/subtítulos | YouTube Audio Library + Pixabay con ducking en ffmpeg; Freesound CC0; `mlx-whisper` y WhisperX; Argos Translate | Uppbeat (condiciones sin verificar) o Suno Pro; `whisper.cpp` con Core ML | Epidemic Sound o Artlist (no recomendados) |
 | 07 Publicación | Script propio sobre YouTube Data API (privado + `publishAt`, `containsSyntheticMedia`), Studio para Test & Compare, Analytics y Reporting API | A + vidIQ gratis o Metricool gratis | vidIQ Boost (US$19/mes) o TubeBuddy, solo si prueban subir el CTR |
 
-## Minutos humanos por video: la cuenta que importa para la compuerta
+## Minutos humanos por video: calibración y régimen
 
-Compuerta de NicheRadar: máximo **60 minutos humanos por video** y mínimo 90 % de automatización. Cifras de los propios
-informes (todas supuestos, nadie las cronometró):
+La compuerta de NicheRadar (contrato `dossier-v3`, `docs/contracts/dossier-v3.md`) compara el **régimen** (flujo ya
+mapeado, donde el humano solo da instrucciones y valida) con un máximo de **60 minutos por video**; la **calibración**
+(primeros videos, mientras se ajusta el flujo) se presupuesta aparte, en horas, con un tope de 40 horas. Las cifras por
+etapa de abajo, tomadas de los informes de herramientas, mezclaban ambos escenarios: son **supuestos de calibración**,
+nadie los cronometró.
 
-| Etapa | A (min humanos) | B (min humanos) |
+| Etapa | Calibración A (min humanos) | Calibración B (min humanos) |
 |---|---|---|
 | 01 Guion | 20–30 | 12–20 |
 | 02 Voz | 5–10 | 5–10 |
@@ -49,12 +52,16 @@ informes (todas supuestos, nadie las cronometró):
 | 05 Miniaturas | 5–12 | 5–12 |
 | 06 Música/subtítulos | 0–3 | 0–3 |
 | 07 Publicación | 5–10 | 5–10 |
-| **Total** | **62–103** | **49–88** |
+| **Total (calibración)** | **62–103** | **49–88** |
 
-**Lectura:** con todo en el nivel A, ni el mejor caso cumple los 60 minutos; con el B solo se cumple en el mejor caso.
-La etapa que más pesa es **Visuales** (revisión de derechos y marcas por imagen), seguida del **Guion**. Si la
-compuerta se mantiene, habrá que automatizar la revisión visual (por muestreo) o negociar la compuerta; el cálculo por
-etapa dice dónde está el esfuerzo. Son supuestos: el primer paso es cronometrar un video real.
+**Régimen medido (declarado por el propietario):** unos **20 minutos por video** en `canal-historias` (10 de instrucción y
+postura + 10 de validar el privado y programarlo), en los últimos 10 videos. Primera semana de ese canal: 2 a 3 horas por
+semana en errores de producción, hoy ninguna. Montar el canal desde cero le tomó unas 12 horas (estimado). Es evidencia de
+un canal de narración larga sin rostro en inglés: otro formato debe tratarse como estimación hasta cronometrarlo.
+
+**Lectura:** el régimen medido (20 min) está muy por debajo de la compuerta de 60; lo que antes parecía incumplirla (62–103
+y 49–88) es calibración. Con las cifras de este cuadro, una calibración de 6 videos de 95 minutos más 12 horas de
+preparación da 21,5 horas, bajo el tope de 40.
 
 **Dinero por video (nivel B, según los informes):** guion ~US$0,02–0,33, voz ~US$0,41, visuales ~US$7–14 (150–200
 imágenes por API), miniatura centavos: del orden de **US$8–15 por video**, dominado por las imágenes. En el nivel A es
