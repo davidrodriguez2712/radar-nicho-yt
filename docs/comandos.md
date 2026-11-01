@@ -62,6 +62,9 @@ Ejemplo: `/tmp/nr/on_server.sh worker scripts/subniche.py list --status active`.
 | `uv run python scripts/subniche_report.py` | Ranking y reporte de medición |
 | `uv run python scripts/subniche_spend_report.py` | Gasto de cuota y USD del descubrimiento |
 | `uv run python scripts/seed_subniche_policy.py` | Siembra la política de subnichos (una vez) |
+| `GET /api/v1/subniches` (y `/subniches/{slug}`) | API privada de lectura: listado (`include_inactive`) y ficha con canales |
+
+`scripts/pilots.py lanzar` acepta `--niche-label subniche:<slug>` (con el `--dossier-id` de una investigación `listo`).
 
 ## Investigación y datos
 

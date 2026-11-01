@@ -246,7 +246,21 @@ solicitudes, no como dólares.
 - Un canal sin videos recientes o cuya lectura de videos falló se guarda con `excluded_reason`
   `no_recent_videos` / `harvest_failed`: cuenta en `profile.excluded` y no entra en las medianas ni en los estables.
 - La regla de subcadenas `www`/`http` en consultas rechaza algunas consultas legítimas (p. ej. una que contenga "www" dentro de otra palabra).
-- La página del dashboard queda fuera (fase 4 del spec, condicionada a que el informe sea útil).
+
+## Dashboard e investigación de flujo
+
+- La página **Subnichos** del dashboard lista las hipótesis (casilla para mostrar pausadas y archivadas) y su ficha
+  muestra la medición y los canales relevantes, con el botón «Iniciar investigación de flujo».
+- El ingreso que muestra es la **mediana mensual estimada por canal estable**, con el RPM heredado del nicho padre:
+  una estimación, no un agregado del subnicho ni ingresos verificados. No hay score de automatización de subnichos.
+- El encargo usa `niche_label = subniche:<slug>` con el formato y el idioma de la hipótesis. Es elegible solo si la
+  hipótesis está `active` y tiene al menos una medición (`subniche_not_ready` en otro caso).
+- Los canales de la ficha salen de datos con retención de 30 días: vencidos, `evidence.channels` queda vacío
+  (`channels_available` falso). Las compuertas de minutos de régimen, horas de calibración y derechos siguen aplicando.
+- Autorizar el piloto: `scripts/pilots.py lanzar --niche-label subniche:<slug> --dossier-id ...` (resto de opciones
+  como en cualquier piloto).
+- En el paquete del piloto, la evidencia trae `scores` nulos, cifras con origen `estimate` y `confidence` `low` con
+  menos de 10 canales incluidos (`medium` desde 10).
 
 ## Puesta en producción (no ejecutada aquí)
 
