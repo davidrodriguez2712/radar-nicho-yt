@@ -112,9 +112,18 @@ video para fijar el dato.
 5. **Dinero ≠ tiempo de máquina:** el tiempo de máquina sigue sin contar como minutos humanos (regla del PR #64).
 6. **`calibration.total_hours`** se deriva; si el payload lo trae declarado, se rechaza (campo no permitido).
 
-## Decisiones pendientes del propietario
+## Decisiones del propietario (2026-11-01, spec aprobado)
 
-1. ¿`NR_GATE_MAX_CALIBRATION_HOURS` por defecto en 40 h, u otro valor?
-2. ¿Cuántos videos seguidos bajo el máximo para dar por terminada la calibración (propuesta: 3) y cuál es el
-   `max_minutes_per_video` de salida por defecto (propuesta: el mismo máximo de 60)?
-3. ¿Cuántos videos tiene `canal-historias` con ese régimen de 20 minutos, para declarar `measured` con su `n`?
+1. `NR_GATE_MAX_CALIBRATION_HOURS` por defecto en 40 h (propuesta aceptada con el spec; supuesto no medido).
+2. La calibración termina tras 3 videos seguidos bajo el máximo, con salida por defecto en 60 min por video (propuesta
+   aceptada con el spec).
+3. `canal-historias`: los últimos 10 videos tomaron ~20 min de régimen (10 + 10), salvo que el propietario decida un
+   cambio grande en algún frente del flujo. Se declara `measured`, `reference_sample_videos = 10`, tiempo **declarado
+   por el propietario, no cronometrado con reloj**.
+
+## Nota sobre el porcentaje de automatización
+
+El contrato ya captura por etapa `mode` (manual, semi, auto), herramientas con su interfaz, entradas, salidas, puerta de
+calidad, modo de fallo, reintentos, minutos humanos y qué sigue siendo humano (`automation_plan.stages`). **No deriva
+ningún porcentaje:** el 90 % del backlog es otra fuente (puntuación del nicho). Calcular un porcentaje del dossier a
+partir de las etapas queda fuera de este spec y se trata como seguimiento si el propietario lo pide.
