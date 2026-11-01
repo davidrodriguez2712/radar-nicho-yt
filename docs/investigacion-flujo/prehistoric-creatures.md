@@ -158,7 +158,7 @@ Presupuesto por fase (probable): fase 1 (mes 1) ~US$96; fase 2 (meses 2 a 3) ~US
 
 ### Punto de equilibrio (ESTIMACIÓN, etiqueta [E])
 - Costo acumulado probable a 6 meses: US$488.
-- Con RPM supuesto de US$3 por mil vistas monetizadas [E, no verificado; NicheRadar hereda RPM del nicho padre wildlife_documentaries y estima US$673 a US$1.682/mes agregado para los 29 videos medidos, no ingresos reales del canal], se necesitan ~163.000 vistas monetizadas acumuladas para recuperar US$488 (488 / 3 x 1.000).
+- Con RPM supuesto de US$3 por mil vistas monetizadas [E, no verificado; NicheRadar hereda RPM del nicho padre wildlife_documentaries y estima una mediana de US$673 a US$1.682/mes por canal estable, no ingresos reales de un canal nuevo], se necesitan ~163.000 vistas monetizadas acumuladas para recuperar US$488 (488 / 3 x 1.000).
 - Sin YPP no hay ingresos por anuncios: es probable que los meses 1 a 4 den ingreso cero **[E]**. Si el YPP se alcanza hacia el mes 5 a 6, el equilibrio dentro de los 6 meses es poco probable; plan de recuperación realista: 9 a 12 meses **[E]**.
 
 ---
