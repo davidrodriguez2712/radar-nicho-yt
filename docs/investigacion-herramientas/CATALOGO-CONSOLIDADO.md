@@ -9,6 +9,20 @@ es decir el 2027-01-30), **tercero** (blog o agregador) y **supuesto**. **Casi t
 supuesto; lo único medido es lo que ya estaba en el Foundry y una prueba sintética de ffmpeg.** Este resumen lo armé
 con los resúmenes de los agentes, no leí los siete informes completos ni verifiqué sus fuentes.
 
+## Decisión del propietario (2026-11-01): guion y tareas asociadas con la suscripción Claude Code Max 5x
+
+Para guion e investigación (y las tareas de texto asociadas: esquema, verificación de citas, títulos y descripciones)
+se usa la **suscripción Claude Code Max 5x** del propietario, sin API de pago. Si el cupo de la suscripción se agota,
+se revisan otras opciones (nivel B o A del informe 01). Efecto sobre el catálogo:
+- **Dinero:** US$0 marginal por video (se suma al nivel A en dinero). Reemplaza al nivel B de la etapa 01 en costo.
+- **Límite:** el cupo de uso de la suscripción (ventanas de uso y topes semanales), no el dinero. Hay que medir cuántos
+  videos alcanza por semana y qué fracción del cupo consumen los otros trabajos de Claude Code.
+- **Minutos humanos:** siguen siendo los del informe 01 (12–20 con el flujo del nivel B), porque dependen de la
+  revisión y no del modelo.
+- **Por confirmar:** si los términos de la suscripción permiten ejecutar este trabajo de forma automatizada y
+  recurrente (sin sesión interactiva). Hoy el propio NicheRadar ya trabaja así con las investigaciones de flujo,
+  pero conviene leer los términos vigentes antes de diseñar un proceso por lotes.
+
 ## Recomendación por etapa y nivel
 
 | Etapa | A: gratis y local | B: gratis con límites o bajo costo | C: pago |
