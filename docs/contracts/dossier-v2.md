@@ -1,5 +1,8 @@
 # dossier-v2
 
+> **Legado:** `dossier-v2` solo se conserva para leer dossiers guardados. Los encargos nuevos usan
+> [`dossier-v3`](dossier-v3.md).
+
 Estado: **implementado en la rama `feat/niche-gates-dossier-v2`, sin desplegar** (2026-10-26).
 Dirección: **investigador (Claude Code) → NicheRadar**. Contexto operativo y compuertas:
 [`../flow-research.md`](../flow-research.md). Código: `src/nicheradar/flow_research/contracts.py`,
@@ -16,7 +19,7 @@ audio se puede usar y (2) cómo se automatizaría cada etapa del canal.
 | Versión | Estado |
 |---|---|
 | `dossier-v1` | **Histórico, solo lectura.** Existe para leer dossiers guardados antes del 2026-10-26. Un encargo nuevo que lo envíe recibe `422` («dossier-v1 ya no se acepta en encargos nuevos: usa dossier-v2») |
-| `dossier-v2` | Vigente. `schema_version` es `"dossier-v2"` |
+| `dossier-v2` | **Legado, solo lectura.** Vigente hasta dossier-v3; `schema_version` es `"dossier-v2"` |
 
 Un dossier `dossier-v1` guardado se muestra en el panel con un aviso y falla la compuerta de derechos
 al autorizar un piloto, salvo `accept_gate_failure`. No se migra ni se reescribe: el dossier es

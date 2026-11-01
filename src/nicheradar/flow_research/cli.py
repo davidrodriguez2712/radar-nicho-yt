@@ -11,7 +11,7 @@ from typing import Any
 
 from nicheradar.config import Settings
 from nicheradar.flow_research.client import ApiError, FlowResearchClient
-from nicheradar.flow_research.contracts import DossierV2, validate_dossier
+from nicheradar.flow_research.contracts import DossierV3, validate_dossier
 
 
 def _print(value: object) -> None:
@@ -46,7 +46,7 @@ def _parser() -> argparse.ArgumentParser:
     submit.add_argument("request_id")
     submit.add_argument("file")
     submit.add_argument("--owner", required=True)
-    commands.add_parser("schema", help="print the dossier-v2 JSON schema")
+    commands.add_parser("schema", help="print the dossier-v3 JSON schema")
     return parser
 
 
@@ -59,7 +59,7 @@ def main(
     args = _parser().parse_args(argv)
     try:
         if args.command == "schema":
-            _print(DossierV2.model_json_schema())
+            _print(DossierV3.model_json_schema())
             return 0
         if args.command in ("validate", "submit"):
             payload = _read(args.file)

@@ -8,7 +8,7 @@ from uuid import UUID
 import pytest
 
 from nicheradar.flow_research.contracts import (
-    DossierV2,
+    DossierV3,
     human_minutes_per_video,
     validate_dossier,
 )
@@ -32,18 +32,18 @@ def paths(payload: dict[str, Any]) -> set[str]:
     return {problem["path"] for problem in problems_of(payload)}
 
 
-def test_the_sample_is_a_valid_v2_dossier_and_minutes_are_derived_from_the_flow() -> None:
+def test_the_sample_is_a_valid_dossier_and_minutes_are_derived_from_the_flow() -> None:
     dossier, problems = validate_dossier(sample(), NOW)
-    assert problems == [] and isinstance(dossier, DossierV2)
+    assert problems == [] and isinstance(dossier, DossierV3)
     assert human_minutes_per_video(dossier) == dossier.human_minutes_per_video == 55
 
 
-def test_a_new_dossier_must_be_v2_and_the_message_says_so() -> None:
+def test_a_new_dossier_must_be_v3_and_the_message_says_so() -> None:
     payload = sample() | {"schema_version": "dossier-v1"}
     assert problems_of(payload) == [
         {
             "path": "schema_version",
-            "message": "dossier-v1 ya no se acepta en encargos nuevos: usa dossier-v2",
+            "message": "dossier-v1 ya no se acepta en encargos nuevos: usa dossier-v3",
         }
     ]
 

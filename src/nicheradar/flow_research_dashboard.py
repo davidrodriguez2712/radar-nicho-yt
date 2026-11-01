@@ -12,6 +12,7 @@ from urllib.parse import urlencode
 import streamlit as st
 
 from nicheradar.config import Settings
+from nicheradar.flow_research.contracts import calibration_total_hours
 from nicheradar.flow_research.evidence import REASONS, ineligible_reason
 
 ApiRequest = Callable[..., dict[str, Any]]
@@ -195,13 +196,44 @@ def flow_rows(content: dict[str, Any]) -> list[dict[str, Any]]:
         {
             "Paso": step["order"],
             "Etapa": step["name"],
-            "Minutos humanos por video": step["human_minutes_per_video"],
+            "Minutos humanos por video (régimen)": step["human_minutes_per_video"],
             "Automatización": AUTOMATION[step["automation"]],
             "Herramientas": ", ".join(step["tools"]),
             "Sigue siendo humano": step.get("stays_human") or "",
         }
         for step in sorted(content["production_flow"], key=lambda step: step["order"])
     ]
+
+
+BASIS = {
+    "measured": "medido",
+    "mapped_flow_equivalent": "flujo equivalente ya mapeado",
+    "estimate": "estimación",
+}
+
+
+def calibration_rows(content: dict[str, Any]) -> list[dict[str, Any]]:
+    regime = {step["name"]: step["human_minutes_per_video"] for step in content["production_flow"]}
+    return [
+        {
+            "Etapa": item["step"],
+            "Minutos en régimen": regime.get(item["step"]),
+            "Minutos en calibración": item["minutes_per_video"],
+        }
+        for item in content["calibration"]["minutes_by_step"]
+    ]
+
+
+def regime_text(evidence: dict[str, Any]) -> str:
+    text = f"Régimen: {BASIS[evidence['basis']]}"
+    if evidence.get("reference_channel"):
+        text += f" · canal de referencia {evidence['reference_channel']}"
+    if evidence.get("reference_minutes_per_video") is not None:
+        text += (
+            f" · {evidence['reference_minutes_per_video']} min en "
+            f"{evidence['reference_sample_videos']} videos"
+        )
+    return text
 
 
 def source_rows(content: dict[str, Any]) -> list[dict[str, Any]]:
@@ -241,6 +273,23 @@ def render_dossier(content: dict[str, Any]) -> None:
     st.dataframe(competitor_rows(content), hide_index=True, width="stretch")
     st.markdown("**Flujo de producción**")
     st.dataframe(flow_rows(content), hide_index=True, width="stretch")
+    if "calibration" in content:
+        calibration = content["calibration"]
+        evidence = content["steady_state_evidence"]
+        hours = calibration_total_hours(
+            calibration["setup_hours"],
+            calibration["videos"],
+            sum(item["minutes_per_video"] for item in calibration["minutes_by_step"]),
+        )
+        st.markdown("**Calibración y régimen**")
+        st.text(
+            f"Calibración: {calibration['videos']} videos, {hours:g} horas en total "
+            f"({calibration['setup_hours']:g} h de preparación). "
+            f"Salida: {calibration['exit_criterion']['statement']}"
+        )
+        st.dataframe(calibration_rows(content), hide_index=True, width="stretch")
+        st.text(regime_text(evidence))
+        st.text("Formato: " + evidence["format_match"])
     st.markdown("**Roadmap**")
     st.dataframe(roadmap_rows(content), hide_index=True, width="stretch")
     st.markdown("**Presupuesto**")
@@ -258,7 +307,7 @@ def render_dossier(content: dict[str, Any]) -> None:
         plan = content["automation_plan"]
         minutes = sum(step["human_minutes_per_video"] for step in content["production_flow"])
         st.markdown("**Plan de automatización por etapa**")
-        st.text(f"Minutos humanos por video (suma del flujo): {minutes}")
+        st.text(f"Minutos humanos por video en régimen (suma del flujo): {minutes}")
         st.text(plan["summary"])
         st.dataframe(stage_rows(content), hide_index=True, width="stretch")
         st.markdown("**Hitos de implementación**")
