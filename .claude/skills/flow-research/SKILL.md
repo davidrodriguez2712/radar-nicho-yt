@@ -86,7 +86,9 @@ Cómo usarlo, sin cambiar el contrato `dossier-v2`:
    `evidence`: nicho, **idioma elegido** (`evidence.language`), mezcla de idiomas de las fichas
    (`language_mix`), scores, métricas, fichas verificadas y la **compuerta** (`evidence.gate`).
 4. `uv run python scripts/flow_research.py schema` imprime el contrato `dossier-v2`.
-5. Investiga con `WebSearch` y `WebFetch`, partiendo **solo de la evidencia congelada**:
+5. Investiga con `WebSearch` y `WebFetch`. El nicho, sus métricas y sus fichas salen **solo de la evidencia
+   congelada** del encargo; la experiencia de los canales propios (stacks del Foundry) solo informa las
+   herramientas y los costos de producción, nunca el mercado:
    - competidores del nicho **en el idioma del encargo** (3 a 8; un canal en otro idioma no es
      competencia directa), flujo de producción, herramientas y precios actuales (**antes**, lee
      los stacks de la sección «Experiencia de los canales propios»);
