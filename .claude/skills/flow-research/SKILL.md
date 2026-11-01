@@ -104,6 +104,19 @@ no puede ser menor que la suma del régimen. Reglas: `verdict.conditions` es obl
 canal de referencia (otras visuales, otro idioma) no es régimen medido: decláralo en `format_match` y baja a
 `estimate`. El tiempo de máquina no cuenta como minutos humanos. No presupuestes régimen sin base.
 
+## Encargos de subnicho (`niche_label` = `subniche:<slug>`)
+
+Si el `niche_label` empieza con `subniche:`, el encargo viene de una hipótesis medida por el descubrimiento de
+subnichos, no del backlog de Mercado: `evidence.source` es `subniche` y `evidence.niche` es `null`. La evidencia
+congelada trae `evidence.subniche` (hipótesis, consultas, familia, idioma y formato), `evidence.measurement` (canales
+incluidos, estables, volátiles, de tracción, grandes, exclusiones por idioma y rango de ingreso mensual
+**por canal estable**, con RPM heredado del nicho padre: es una estimación) y `evidence.channels` (los canales más
+relevantes, o vacío si los datos de 30 días vencieron: `channels_available`). No hay score de automatización: no
+inventes uno; esa compuerta no aplica, pero sí las de minutos de régimen, horas de calibración y derechos. Con
+`evidence.confidence` `baja`, declara en `verdict.unknowns` qué no pudiste verificar. Investiga la competencia en el
+idioma del encargo partiendo de `evidence.channels` y de las consultas, y no copies el `niche_label` con otro texto:
+el dossier lo repite igual (`subniche:<slug>`).
+
 ## Pasos
 
 1. `uv run python scripts/flow_research.py pending`. Si la lista está vacía, dilo y termina.

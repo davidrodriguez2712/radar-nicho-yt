@@ -15,6 +15,9 @@ la app valida y guarda. `dossier-v1` solo se conserva para leer dossiers guardad
    `scripts/flow_research.py validate` y lo envía con `submit`.
 4. El dashboard muestra el estado y, cuando está `listo`, el dossier completo.
 
+Un encargo también puede nacer de una hipótesis de subnicho (página **Subnichos**, `niche_label` = `subniche:<slug>`);
+ver «Dashboard e investigación de flujo» en `docs/subniche-discovery.md`.
+
 ## Estados
 
 `pendiente` → `en_curso` → `listo` | `rechazado`.

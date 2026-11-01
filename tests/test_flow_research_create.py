@@ -85,6 +85,9 @@ def test_the_skill_asks_for_v3_calibration_and_the_plan_and_forbids_overrides() 
         "no_go",
         "gate_override",
         "production_flow",
+        "subniche:",
+        "evidence.source",
+        "measurement",
     ):
         assert needle in text, needle
     assert "No pidas ni uses excepciones" in text

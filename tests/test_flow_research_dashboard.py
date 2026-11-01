@@ -78,6 +78,21 @@ def test_a_v2_dossier_renders_its_rights_and_plan_sections() -> None:
     assert "**Hitos de implementación**" in titles
 
 
+def test_dossier_fields_with_hostile_text_render_only_as_plain_text() -> None:
+    content = stored_shape()
+    content["verdict"]["thesis"] = HOSTILE
+    content["rights"]["summary"] = HOSTILE
+    content["tools"][0]["name"] = HOSTILE
+    content["sources"][0]["title"] = HOSTILE
+    app = AppTest.from_function(_render, kwargs={"content": content}).run()
+    assert not app.exception
+    rendering = [*app.markdown, *app.caption, *app.info, *app.warning]
+    assert not any("<script>" in block.value for block in rendering)
+    assert sum(HOSTILE in block.value for block in app.text) >= 2  # thesis and rights summary
+    cells = [str(cell) for frame in app.dataframe for cell in frame.value.to_numpy().ravel()]
+    assert sum(HOSTILE in cell for cell in cells) >= 2  # the tool name and the source title
+
+
 def backend_for(monkeypatch: pytest.MonkeyPatch, engine: Engine) -> TestClient:
     config = Settings(service_token=SecretStr(TOKEN))
     backend = TestClient(create_app(config, engine=engine, clock=lambda: NOW))
