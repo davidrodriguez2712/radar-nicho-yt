@@ -1,11 +1,14 @@
 # tests/flow_research_samples.py
+import copy
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+EXIT_STATEMENT = "Pasar a régimen tras 3 videos seguidos bajo 60 minutos humanos"
+
 
 def valid_dossier(request_id: UUID, now: datetime) -> dict[str, Any]:
-    """A complete, internally consistent dossier-v2 (JSON-shaped, as the skill sends it)."""
+    """A complete, internally consistent dossier-v3 (JSON-shaped, as the skill sends it)."""
     checked = (now - timedelta(days=10)).date().isoformat()
     competitors = [
         {
@@ -21,7 +24,7 @@ def valid_dossier(request_id: UUID, now: datetime) -> dict[str, Any]:
         for number, letter in enumerate("ABC", start=1)
     ]
     return {
-        "schema_version": "dossier-v2",
+        "schema_version": "dossier-v3",
         "request_id": str(request_id),
         "niche_label": "personal_finance",
         "format": "long",
@@ -34,6 +37,7 @@ def valid_dossier(request_id: UUID, now: datetime) -> dict[str, Any]:
             "thesis": "Nicho con demanda estable y producción parcialmente automatizable.",
             "main_risks": ["Dependencia de voz sintética aceptada por la plataforma"],
             "unknowns": ["RPM real del nicho en el país objetivo"],
+            "conditions": [EXIT_STATEMENT],
         },
         "competitors": competitors,
         "production_flow": [
@@ -324,4 +328,34 @@ def valid_dossier(request_id: UUID, now: datetime) -> dict[str, Any]:
             }
             for number in (1, 2, 3)
         ],
+        "calibration": {
+            "videos": 6,
+            "setup_hours": 8.0,
+            "exit_criterion": {
+                "max_minutes_per_video": 60,
+                "consecutive_videos": 3,
+                "statement": EXIT_STATEMENT,
+            },
+            "minutes_by_step": [
+                {"step": "Guion", "minutes_per_video": 40},
+                {"step": "Voz", "minutes_per_video": 10},
+                {"step": "Edición", "minutes_per_video": 45},
+            ],
+        },
+        "steady_state_evidence": {
+            "basis": "measured",
+            "reference_channel": "canal-historias",
+            "reference_minutes_per_video": 20,
+            "reference_sample_videos": 10,
+            "format_match": "Mismo formato (narración larga sin rostro) e idioma (inglés)",
+        },
     }
+
+
+def valid_dossier_v2(request_id: UUID, now: datetime) -> dict[str, Any]:
+    """The same dossier as ``valid_dossier`` in the dossier-v2 shape (stored before dossier-v3)."""
+    payload = copy.deepcopy(valid_dossier(request_id, now))
+    payload["schema_version"] = "dossier-v2"
+    del payload["calibration"], payload["steady_state_evidence"]
+    del payload["verdict"]["conditions"]
+    return payload

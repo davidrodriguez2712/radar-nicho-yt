@@ -1,5 +1,5 @@
 # src/nicheradar/flow_research/contracts.py
-"""dossier-v2: the structured result a researcher hands back (dossier-v1 is legacy, read-only).
+"""dossier-v3: the structured result a researcher hands back (v1 and v2 are legacy, read-only).
 
 The payload is untrusted: it comes from a person-driven Claude Code session that read the web.
 Shape is checked by pydantic; cross-references and arithmetic by ``consistency_problems``.
@@ -23,8 +23,8 @@ from pydantic import (
 )
 from pydantic_core import ErrorDetails
 
-SCHEMA_VERSION = "dossier-v2"
-LEGACY_SCHEMA_VERSION = "dossier-v1"
+SCHEMA_VERSION = "dossier-v3"
+LEGACY_SCHEMA_VERSIONS = ("dossier-v1", "dossier-v2")
 PLAN_TEXT_MIN = 120  # approach / summary must explain, not list
 MAX_PRICE_AGE = timedelta(days=90)
 GENERATED_WINDOW = timedelta(hours=24)
@@ -269,14 +269,78 @@ class AutomationPlan(Contract):
     milestones: list[ImplementationMilestone] = Field(min_length=2, max_length=20)
 
 
-class DossierV2(DossierBody):
-    schema_version: Literal["dossier-v2"]
+class RightsDossier(DossierBody):
+    """Fields of dossier-v2 and dossier-v3: rights and the per-stage automation plan."""
+
     rights: Rights
     automation_plan: AutomationPlan
 
     @property
     def human_minutes_per_video(self) -> int:
         return human_minutes_per_video(self)
+
+
+class DossierV2(RightsDossier):
+    """dossier-v2: kept only to read dossiers stored before dossier-v3."""
+
+    schema_version: Literal["dossier-v2"]
+
+
+class VerdictV3(Verdict):
+    conditions: list[Text] = Field(max_length=10)
+
+
+class CalibrationStep(Contract):
+    step: Label
+    minutes_per_video: int = Field(ge=0, le=10_000)
+
+
+class ExitCriterion(Contract):
+    max_minutes_per_video: int = Field(ge=1, le=10_000)
+    consecutive_videos: int = Field(ge=1, le=12)
+    statement: Text
+
+
+class Calibration(Contract):
+    """The first videos of a channel, while the flow is built and tuned (not a per-video cost)."""
+
+    videos: int = Field(ge=1, le=12)
+    setup_hours: float = Field(ge=0, le=1000)
+    exit_criterion: ExitCriterion
+    minutes_by_step: list[CalibrationStep] = Field(min_length=3, max_length=15)
+
+
+SteadyBasis = Literal["measured", "mapped_flow_equivalent", "estimate"]
+
+
+class SteadyStateEvidence(Contract):
+    """What backs the regime minutes: a timed channel, an equivalent mapped flow, or a guess."""
+
+    basis: SteadyBasis
+    reference_channel: Label | None = None
+    reference_minutes_per_video: int | None = Field(default=None, ge=0, le=10_000)
+    reference_sample_videos: int | None = Field(default=None, ge=1, le=10_000)
+    format_match: Text
+
+
+class DossierV3(RightsDossier):
+    schema_version: Literal["dossier-v3"]
+    verdict: VerdictV3
+    calibration: Calibration
+    steady_state_evidence: SteadyStateEvidence
+
+    @property
+    def calibration_hours(self) -> float:
+        return calibration_total_hours(
+            self.calibration.setup_hours,
+            self.calibration.videos,
+            sum(item.minutes_per_video for item in self.calibration.minutes_by_step),
+        )
+
+
+def calibration_total_hours(setup_hours: float, videos: int, minutes_per_video: int) -> float:
+    """Derived, never declared: preparation plus the human minutes of every calibration video."""
+    return round(setup_hours + videos * minutes_per_video / 60, 2)
 
 
 def human_minutes_per_video(dossier: DossierBody) -> int:
@@ -358,7 +422,7 @@ def consistency_problems(dossier: DossierBody, now: datetime) -> list[Problem]:
     return problems
 
 
-def v2_problems(dossier: DossierV2) -> list[Problem]:
+def v2_problems(dossier: RightsDossier) -> list[Problem]:
     """Rights and automation plan: cross-references and the numbers that must agree."""
     problems: list[Problem] = []
 
@@ -421,6 +485,54 @@ def v2_problems(dossier: DossierV2) -> list[Problem]:
     return problems
 
 
+def v3_problems(dossier: DossierV3) -> list[Problem]:
+    """Calibration against the flow, and what the regime minutes are allowed to promise."""
+    problems: list[Problem] = []
+
+    def add(path: str, message: str) -> None:
+        problems.append({"path": path, "message": message})
+
+    regime = {step.name: step.human_minutes_per_video for step in dossier.production_flow}
+    steps = [item.step for item in dossier.calibration.minutes_by_step]
+    if len(set(steps)) != len(steps) or set(steps) != set(regime):
+        add("calibration.minutes_by_step", "debe haber un valor por cada paso de production_flow")
+    for index, item in enumerate(dossier.calibration.minutes_by_step):
+        steady = regime.get(item.step)
+        if steady is not None and item.minutes_per_video < steady:
+            add(
+                f"calibration.minutes_by_step.{index}.minutes_per_video",
+                "la calibración no puede costar menos minutos que el régimen",
+            )
+
+    evidence = dossier.steady_state_evidence
+    if evidence.basis != "estimate" and evidence.reference_channel is None:
+        add("steady_state_evidence.reference_channel", "cita el canal de referencia")
+    if evidence.basis == "measured" and (
+        evidence.reference_minutes_per_video is None or evidence.reference_sample_videos is None
+    ):
+        add(
+            "steady_state_evidence.reference_minutes_per_video",
+            "un régimen medido declara los minutos y cuántos videos se midieron",
+        )
+
+    recommendation = dossier.verdict.recommendation
+    conditions = dossier.verdict.conditions
+    if recommendation == "go_with_conditions" and not conditions:
+        add("verdict.conditions", "go_with_conditions debe listar sus condiciones")
+    if evidence.basis == "estimate":
+        if recommendation == "go":
+            add(
+                "verdict.recommendation",
+                "el régimen es una estimación: usa go_with_conditions o no_go",
+            )
+        elif (
+            recommendation == "go_with_conditions"
+            and dossier.calibration.exit_criterion.statement not in conditions
+        ):
+            add("verdict.conditions", "incluye el criterio de salida de la calibración tal cual")
+    return problems
+
+
 def _problem(item: ErrorDetails) -> Problem:
     location = [str(part) for part in item["loc"]]
     if item["type"] == "extra_forbidden" and location:
@@ -428,20 +540,23 @@ def _problem(item: ErrorDetails) -> Problem:
     return {"path": ".".join(location) or "(raiz)", "message": item["msg"]}
 
 
-def validate_dossier(payload: object, now: datetime) -> tuple[DossierV2 | None, list[Problem]]:
+def validate_dossier(payload: object, now: datetime) -> tuple[DossierV3 | None, list[Problem]]:
     """Return the dossier, or ``None`` with every problem found; never raises on bad input.
 
-    Only ``dossier-v2`` is accepted: ``dossier-v1`` exists solely for stored dossiers.
+    Only ``dossier-v3`` is accepted: v1 and v2 exist solely for stored dossiers.
     """
-    if isinstance(payload, dict) and payload.get("schema_version") == LEGACY_SCHEMA_VERSION:
+    if isinstance(payload, dict) and payload.get("schema_version") in LEGACY_SCHEMA_VERSIONS:
         return None, [
             {
                 "path": "schema_version",
-                "message": "dossier-v1 ya no se acepta en encargos nuevos: usa dossier-v2",
+                "message": (
+                    f"{payload['schema_version']} ya no se acepta en encargos nuevos: "
+                    "usa dossier-v3"
+                ),
             }
         ]
     try:
-        dossier = DossierV2.model_validate(payload)
+        dossier = DossierV3.model_validate(payload)
     except ValidationError as error:
         return None, [
             _problem(item)
@@ -449,5 +564,7 @@ def validate_dossier(payload: object, now: datetime) -> tuple[DossierV2 | None, 
                 :MAX_PROBLEMS
             ]
         ]
-    problems = (consistency_problems(dossier, now) + v2_problems(dossier))[:MAX_PROBLEMS]
+    problems = (consistency_problems(dossier, now) + v2_problems(dossier) + v3_problems(dossier))[
+        :MAX_PROBLEMS
+    ]
     return (None if problems else dossier), problems
