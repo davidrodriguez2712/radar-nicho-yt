@@ -69,7 +69,7 @@ def test_channel_rows_keep_hostile_text_as_plain_values() -> None:
     assert rows[0]["Canal"] == HOSTILE and rows[0]["Tracción"] == "sí"
 
 
-def _render(listing, card):  # type: ignore[no-untyped-def]  # AppTest runs it as a standalone script
+def _render(listing, card, rejected=None):  # type: ignore[no-untyped-def]  # AppTest runs it as a standalone script
     from typing import Any
 
     import streamlit as st
@@ -78,6 +78,9 @@ def _render(listing, card):  # type: ignore[no-untyped-def]  # AppTest runs it a
     from nicheradar.subniche_dashboard import render_subniches
 
     def api(config: Settings, method: str, path: str, body: Any = None) -> dict[str, Any]:
+        if path.startswith("/flow-research/"):
+            detail: dict[str, Any] = rejected
+            return detail
         if method == "POST":
             st.session_state["posted"] = (path, body)
         result: dict[str, Any] = listing if path.startswith("/subniches?") else card
@@ -127,3 +130,30 @@ def test_starting_the_research_posts_the_subniche_label_with_its_format_and_lang
         "/flow-research",
         {"niche_label": "subniche:history_revenge", "format": "long", "language": "en"},
     )
+
+
+def test_hostile_text_reaches_the_page_only_as_plain_text() -> None:
+    research = {"id": "r1", "status": "rechazado", "language": "xx", "created_at": "x"}
+    hostile = item(label=HOSTILE, family=HOSTILE, queries=[HOSTILE], language=HOSTILE)
+    hostile["research"] = research
+    card = {
+        "hypothesis": hostile,
+        "measurement": hostile["measurement"] | {"rpm_source": HOSTILE},
+        "channels": [],
+        "channels_available": False,
+        "research": research,
+    }
+    rejected = {"rejection": {"problems": [{"path": "rights", "message": HOSTILE}]}}
+    app = AppTest.from_function(
+        _render, kwargs={"listing": {"items": [hostile]}, "card": card, "rejected": rejected}
+    )
+    app.run()
+    assert not app.exception
+    texts = [block.value for block in app.text]
+    assert any(HOSTILE in value and value.startswith("Consulta:") for value in texts)
+    assert any(HOSTILE in value and value.startswith("Idioma de la hipótesis") for value in texts)
+    assert any(HOSTILE in value and value.startswith("rights:") for value in texts)
+    assert any(HOSTILE in value and "estado" in value for value in texts)
+    assert any(HOSTILE in value and "RPM" in value for value in texts)
+    rendering = [*app.markdown, *app.caption, *app.info, *app.warning]
+    assert not any("<script>" in block.value for block in rendering)

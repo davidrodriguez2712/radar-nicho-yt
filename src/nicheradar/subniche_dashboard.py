@@ -71,7 +71,7 @@ def _render_research(
 ) -> None:
     st.markdown("**Investigación de flujo**")
     language = hypothesis["language"]
-    st.caption(
+    st.text(
         f"Idioma de la hipótesis: {language_name(language)}. "
         "La investigación usa el mismo idioma y formato."
     )
