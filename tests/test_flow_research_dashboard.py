@@ -11,9 +11,10 @@ from streamlit.testing.v1 import AppTest
 
 from nicheradar.api import create_app
 from nicheradar.config import Settings
-from nicheradar.flow_research.contracts import DossierV2
+from nicheradar.flow_research.contracts import DossierV2, DossierV3
 from nicheradar.flow_research_dashboard import (
     budget_rows,
+    calibration_rows,
     flow_rows,
     language_options,
     milestone_rows,
@@ -22,7 +23,7 @@ from nicheradar.flow_research_dashboard import (
     stage_rows,
     suggested_language,
 )
-from tests.flow_research_samples import valid_dossier
+from tests.flow_research_samples import valid_dossier, valid_dossier_v2
 from tests.test_foundation import TOKEN
 from tests.test_market_intel_niches import seed_niche
 from tests.test_persistence import NOW
@@ -31,7 +32,7 @@ HOSTILE = "**negrita** <script>alert(1)</script> [x](https://evil.test)"
 
 
 def stored_shape() -> dict[str, Any]:
-    dossier = DossierV2.model_validate(valid_dossier(UUID(int=1), NOW))
+    dossier = DossierV3.model_validate(valid_dossier(UUID(int=1), NOW))
     return dossier.model_dump(mode="json")
 
 
@@ -216,3 +217,23 @@ def test_the_scope_banner_does_not_claim_english_only(
     banner = " ".join(markdown.value for markdown in app.markdown if "nr-scope" in markdown.value)
     assert "Idioma elegido por investigación" in banner
     assert "Contenido en inglés" not in banner
+
+
+def test_calibration_rows_show_regime_and_calibration_minutes_per_step() -> None:
+    rows = calibration_rows(stored_shape())
+    assert [row["Etapa"] for row in rows] == ["Guion", "Voz", "Edición"]
+    assert rows[0]["Minutos en régimen"] == 20 and rows[0]["Minutos en calibración"] == 40
+
+
+def test_a_stored_v2_dossier_renders_without_the_calibration_section() -> None:
+    legacy = DossierV2.model_validate(valid_dossier_v2(UUID(int=1), NOW)).model_dump(mode="json")
+    app = AppTest.from_function(_render, kwargs={"content": legacy}).run()
+    assert not app.exception
+    assert not any("Calibración" in item.value for item in app.markdown)
+
+
+def test_a_v3_dossier_renders_the_calibration_and_the_regime_evidence() -> None:
+    app = AppTest.from_function(_render, kwargs={"content": stored_shape()}).run()
+    assert not app.exception
+    assert any("Calibración" in item.value for item in app.markdown)
+    assert any("canal-historias" in item.value for item in app.text)

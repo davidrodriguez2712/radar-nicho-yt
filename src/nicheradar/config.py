@@ -104,6 +104,9 @@ class Settings(BaseSettings):
     # datos medidos: ajústalos con evidencia. No cambian los scores; solo frenan el flujo.
     gate_min_automation: int = Field(default=90, ge=0, le=100)
     gate_max_human_minutes: int = Field(default=60, ge=0, le=10_000)
+    # Horas de calibración (primeros videos de un canal): supuesto inicial, no medido. El
+    # propietario reportó 2 a 3 horas semanales en la primera semana de canal-historias.
+    gate_max_calibration_hours: float = Field(default=40, ge=0, le=10_000)
     gate_block_high_policy_risk: bool = True
 
     @field_validator("timezone", "subniche_quota_timezone")

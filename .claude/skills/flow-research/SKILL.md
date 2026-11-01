@@ -1,6 +1,6 @@
 ---
 name: flow-research
-description: Atiende un encargo de "investigación de flujo" de NicheRadar. Reclama el encargo, investiga con búsqueda web (derechos del material y plan de automatización por etapa incluidos) y entrega un dossier dossier-v2 a la API privada. Úsalo cuando el propietario pida atender investigaciones de flujo pendientes.
+description: Atiende un encargo de "investigación de flujo" de NicheRadar. Reclama el encargo, investiga con búsqueda web (derechos del material y plan de automatización por etapa incluidos) y entrega un dossier dossier-v3 a la API privada. Úsalo cuando el propietario pida atender investigaciones de flujo pendientes.
 ---
 
 # Investigación de flujo
@@ -24,7 +24,7 @@ raíz del repo.
 ## Compuertas de selección (qué te exigen)
 
 Cada encargo trae en `evidence.gate` los umbrales vigentes y lo que el nicho obtuvo:
-`min_automation`, `max_human_minutes`, `automation_value`, `policy_risk_level` y `reasons`.
+`min_automation`, `max_human_minutes`, `max_calibration_hours`, `automation_value`, `policy_risk_level` y `reasons`.
 Si trae `evidence.gate_override`, el propietario decidió investigarlo pese a una compuerta:
 sigue adelante, pero anótalo en `verdict.thesis`.
 
@@ -33,6 +33,8 @@ El dossier se **rechaza** si recomienda `go` o `go_with_conditions` y:
 - `rights.verdict` es `blocked` (nunca se puede forzar), o
 - los minutos humanos por video (la suma de `production_flow`) superan
   `evidence.gate.max_human_minutes`, o
+- las horas de calibración (derivadas: `setup_hours + videos × Σ minutes_by_step / 60`) superan
+  `evidence.gate.max_calibration_hours`, o
 - la automatización del nicho es menor que `min_automation` o su riesgo de política es alto
   (si no hay `gate_override`).
 
@@ -47,7 +49,7 @@ Es lectura local, sin red y sin credenciales (`DEC-YT-0005`):
 - `~/Foundries/david-youtube-foundry/stacks/*.md`: un stack por etapa de producción (hoy `voice-narration` y `thumbnails-packaging`), con costo por video, defectos conocidos y los límites de lo que se midió.
 - `~/Foundries/david-foundry-core/tool-registry/*.md`: la ficha de cada herramienta nombrada en un stack.
 
-Cómo usarlo, sin cambiar el contrato `dossier-v2`:
+Cómo usarlo, sin cambiar el contrato `dossier-v3`:
 
 1. **Es un punto de partida, no una verdad.** Cada cifra de un stack declara su tipo: `medido`
    (un canal, con `n` pequeño), `web` (caduca a los 90 días) o `supuesto`. Un `medido` describe
@@ -75,6 +77,33 @@ Cómo usarlo, sin cambiar el contrato `dossier-v2`:
 9. **Si un stack y la web se contradicen**, no elijas en silencio: presupuesta con el valor más
    conservador y deja la diferencia en `assumptions`.
 
+## Tiempo humano: calibración y régimen (`dossier-v3`)
+
+Separa dos escenarios; no los mezcles:
+
+- **Régimen** (`production_flow[].human_minutes_per_video`): minutos humanos por video cuando el flujo ya está
+  mapeado y el humano solo da instrucciones y valida. Es lo único que compara la compuerta de minutos.
+- **Calibración** (`calibration`): los primeros videos, mientras se construye y ajusta el flujo. Declara
+  `videos` (1 a 12), `setup_hours` (horas únicas de preparación; referencia: montar `canal-historias` desde cero tomó unas 12 horas,
+  estimado por el propietario; un canal que copia ese pipeline debería necesitar igual o menos), `minutes_by_step` (un valor por cada paso de
+  `production_flow`, nunca menor que su régimen) y `exit_criterion` (`max_minutes_per_video`,
+  `consecutive_videos` y un `statement` claro). **No declares `total_hours`**: se deriva.
+
+Evidencia del régimen (`steady_state_evidence`):
+
+1. `measured`: cronometrado en un canal propio. Cita `reference_channel`, `reference_minutes_per_video` y
+   `reference_sample_videos`. Hoy el único dato es `canal-historias`: unos 20 minutos por video (10 de
+   instrucción y postura + 10 de validar y programar) en los últimos 10 videos, declarado por el propietario.
+2. `mapped_flow_equivalent`: un canal propio con un flujo mapeado de mismo formato e idioma. Cita
+   `reference_channel` y di en `format_match` qué cambia.
+3. `estimate`: nadie lo ha hecho. Entonces **no recomiendes `go`**: usa `go_with_conditions` y copia
+   literalmente `exit_criterion.statement` entre `verdict.conditions`, o `no_go`.
+
+Además `exit_criterion.consecutive_videos` no puede superar `videos` y `exit_criterion.max_minutes_per_video`
+no puede ser menor que la suma del régimen. Reglas: `verdict.conditions` es obligatorio (lista; no vacía con `go_with_conditions`). Un formato distinto al
+canal de referencia (otras visuales, otro idioma) no es régimen medido: decláralo en `format_match` y baja a
+`estimate`. El tiempo de máquina no cuenta como minutos humanos. No presupuestes régimen sin base.
+
 ## Pasos
 
 1. `uv run python scripts/flow_research.py pending`. Si la lista está vacía, dilo y termina.
@@ -85,7 +114,7 @@ Cómo usarlo, sin cambiar el contrato `dossier-v2`:
    reclamo; úsala como `--owner` en `submit` (el identificador del paso 2 no sirve ahí). Lee su
    `evidence`: nicho, **idioma elegido** (`evidence.language`), mezcla de idiomas de las fichas
    (`language_mix`), scores, métricas, fichas verificadas y la **compuerta** (`evidence.gate`).
-4. `uv run python scripts/flow_research.py schema` imprime el contrato `dossier-v2`.
+4. `uv run python scripts/flow_research.py schema` imprime el contrato `dossier-v3`.
 5. Investiga con `WebSearch` y `WebFetch`, partiendo **solo de la evidencia congelada**:
    - competidores del nicho **en el idioma del encargo** (3 a 8; un canal en otro idioma no es
      competencia directa), flujo de producción, herramientas y precios actuales (**antes**, lee
@@ -96,7 +125,7 @@ Cómo usarlo, sin cambiar el contrato `dossier-v2`:
    Registra cada fuente con su `accessed_on`. Cita cada afirmación de derechos o de precios con
    una `source_id` de `sources`.
 6. Arma el JSON y guárdalo en un archivo temporal **fuera del repo**. Reglas del contrato:
-   - `schema_version` es `dossier-v2`. `request_id`, `niche_label`, `format` y `language`
+   - `schema_version` es `dossier-v3`. `request_id`, `niche_label`, `format` y `language`
      copiados del encargo (el idioma no se cambia ni se infiere); `generated_at` es la hora
      actual en UTC.
    - Dinero en USD. `quantity` cuenta unidades dentro del horizonte (en partidas mensuales,
