@@ -39,6 +39,42 @@ El dossier se **rechaza** si recomienda `go` o `go_with_conditions` y:
 Si algo de eso es verdad, no lo maquilles: entrega `no_go` con la razón. Un `no_go` bien
 fundado es un resultado válido y útil.
 
+## Experiencia de los canales propios (Foundry de YouTube)
+
+Antes de investigar las herramientas de una etapa, lee lo que los canales propios ya midieron.
+Es lectura local, sin red y sin credenciales (`DEC-YT-0005`):
+
+- `~/Foundries/david-youtube-foundry/stacks/*.md`: un stack por etapa de producción (hoy `voice-narration` y `thumbnails-packaging`), con costo por video, defectos conocidos y los límites de lo que se midió.
+- `~/Foundries/david-foundry-core/tool-registry/*.md`: la ficha de cada herramienta nombrada en un stack.
+
+Cómo usarlo, sin cambiar el contrato `dossier-v2`:
+
+1. **Es un punto de partida, no una verdad.** Cada cifra de un stack declara su tipo: `medido`
+   (un canal, con `n` pequeño), `web` (caduca a los 90 días) o `supuesto`. Un `medido` describe
+   **un** canal, en un idioma, con una máquina; si tu nicho cambia alguna de esas condiciones, dilo.
+2. **Solo aplica si el formato coincide.** Los stacks salen de un canal de narración larga sin
+   rostro, en inglés. Si el nicho es otro formato, úsalos solo como lista de defectos a evitar.
+3. **El dinero y el tiempo de máquina van por separado.** Un costo de API de 0 USD con una
+   herramienta local no es «gratis»: anota el tiempo de máquina en `assumptions` y **no** lo
+   cuentes como minutos humanos de `production_flow`.
+4. **Si presupuestas una herramienta distinta a la del stack** (por ejemplo voz de pago en lugar
+   de la local), explica por qué en `budget.assumptions`: otro hardware, otro idioma, otra
+   licencia. No presupuestes una herramienta que el stack ya muestra sustituida sin decirlo.
+5. **Reverifica los precios `web` con más de 90 días** con una búsqueda, como siempre. Un precio
+   `medido` no se reverifica en la web: se cita.
+6. **El dossier no puede citar un archivo local como fuente** (`sources` exige URLs `https`), y
+   `evidence_kind` solo admite `seller_declared`, `researched` y `estimate`; no existe «medido».
+   Entonces: una partida que viene de un stack va como `estimate`, y su `description` dice de dónde
+   sale, con este formato exacto: `(medido en canal-historias, n=1; voice-narration@0.1.0)`. Lo
+   que no pudiste contrastar con una fuente web va también en `verdict.unknowns`.
+7. **Una etapa sin stack se investiga como siempre.** Hoy guion e investigación, imágenes o
+   animación, edición y publicación no tienen stack: no inventes que lo tienen.
+8. **Si esas carpetas no existen en esta máquina** (por ejemplo, otra computadora sin los
+   Foundries), no falla nada: investiga como siempre y anótalo en `assumptions` («sin stacks del
+   Foundry disponibles»). No inventes su contenido.
+9. **Si un stack y la web se contradicen**, no elijas en silencio: presupuesta con el valor más
+   conservador y deja la diferencia en `assumptions`.
+
 ## Pasos
 
 1. `uv run python scripts/flow_research.py pending`. Si la lista está vacía, dilo y termina.
@@ -52,7 +88,8 @@ fundado es un resultado válido y útil.
 4. `uv run python scripts/flow_research.py schema` imprime el contrato `dossier-v2`.
 5. Investiga con `WebSearch` y `WebFetch`, partiendo **solo de la evidencia congelada**:
    - competidores del nicho **en el idioma del encargo** (3 a 8; un canal en otro idioma no es
-     competencia directa), flujo de producción, herramientas y precios actuales;
+     competencia directa), flujo de producción, herramientas y precios actuales (**antes**, lee
+     los stacks de la sección «Experiencia de los canales propios»);
    - política de YouTube sobre contenido reutilizado o inauténtico;
    - **derechos** del material (ver abajo) y **plan de automatización** (ver abajo).
 
