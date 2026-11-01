@@ -116,7 +116,7 @@ class Evidence(Contract):
 
 class DossierSummary(Contract):
     request_id: UUID
-    schema_: Annotated[Literal["dossier-v1", "dossier-v2"], Field(alias="schema")]
+    schema_: Annotated[Literal["dossier-v1", "dossier-v2", "dossier-v3"], Field(alias="schema")]
     recommendation: Literal["go", "go_with_conditions", "no_go"]
     confidence: Confidence
     thesis: Text

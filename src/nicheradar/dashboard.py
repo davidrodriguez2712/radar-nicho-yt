@@ -16,6 +16,7 @@ from nicheradar.config import Settings
 from nicheradar.domain.production import STAGES
 from nicheradar.market_dashboard import render_market, render_market_operations
 from nicheradar.pilots_dashboard import render_portfolio
+from nicheradar.subniche_dashboard import render_subniches
 
 REVIEW_LABELS = {
     "new": "Nueva",
@@ -1404,6 +1405,7 @@ def render() -> None:
         [
             "Resumen",
             "Mercado",
+            "Subnichos",
             "Backlog",
             "Escenarios",
             "Configuración",
@@ -1415,6 +1417,8 @@ def render() -> None:
     )
     if page == "Mercado":
         render_market(config, api_request)
+    elif page == "Subnichos":
+        render_subniches(config, api_request)
     elif page == "Backlog":
         render_backlog(config)
     elif page == "Escenarios":

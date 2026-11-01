@@ -36,7 +36,7 @@ def test_the_schema_command_prints_the_v2_sections(capsys: pytest.CaptureFixture
     assert main(["schema"]) == 0
     properties = json.loads(capsys.readouterr().out)["properties"]
     assert {"rights", "automation_plan"} <= set(properties)
-    assert properties["schema_version"]["const"] == "dossier-v2"
+    assert properties["schema_version"]["const"] == "dossier-v3"
 
 
 def test_create_orders_research_without_an_override_by_default() -> None:
@@ -70,18 +70,26 @@ def test_the_client_surfaces_the_gate_reasons_of_a_refused_niche(isolated_engine
     assert created["created"] is True
 
 
-def test_the_skill_asks_for_v2_rights_and_the_automation_plan_and_forbids_overrides() -> None:
+def test_the_skill_asks_for_v3_calibration_and_the_plan_and_forbids_overrides() -> None:
     text = Path(".claude/skills/flow-research/SKILL.md").read_text()
     for needle in (
-        "dossier-v2",
+        "dossier-v3",
+        "calibration",
+        "steady_state_evidence",
+        "régimen",
         "rights",
         "automation_plan",
         "evidence.gate",
         "max_human_minutes",
+        "max_calibration_hours",
         "no_go",
         "gate_override",
         "production_flow",
+        "subniche:",
+        "evidence.source",
+        "measurement",
     ):
         assert needle in text, needle
     assert "No pidas ni uses excepciones" in text
     assert "dossier-v1" not in text
+    assert "dossier-v2" not in text

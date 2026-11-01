@@ -215,6 +215,47 @@ def _evidence(detail: dict[str, Any], now: datetime) -> dict[str, Any]:
     }
 
 
+SUBNICHE_PREFIX = "subniche:"
+
+
+def _subniche_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    """Map a frozen sub-niche measurement to the existing pilot-package-v1 evidence shape."""
+    measurement = evidence["measurement"]
+    figures: list[dict[str, Any]] = []
+    for name, key in (
+        ("income_estimate_low", "income_low"),
+        ("income_estimate_high", "income_high"),
+    ):
+        if measurement[key] is not None:
+            figures.append(
+                {
+                    "name": name,
+                    "value": _plain(_number(measurement[key])),
+                    "unit": "usd_per_month",
+                    "origin": "estimate",
+                }
+            )
+    for name in ("traction_channels", "stable_channels", "large_channels", "volatile_channels"):
+        figures.append(
+            {
+                "name": name,
+                "value": _plain(Decimal(measurement[name])),
+                "unit": "channels",
+                "origin": "estimate",
+            }
+        )
+    measured_at = measurement["measured_at"]
+    return {
+        # The evidence is as old as the measurement, not as new as the authorization.
+        "captured_at": measured_at if isinstance(measured_at, str) else measured_at.isoformat(),
+        "scores": {"opportunity": None, "automation": None, "creator_fit": None, "market": None},
+        "confidence": CONFIDENCE[evidence["confidence"]],
+        "listings_with_income": 0,
+        "language_mix": evidence["language_mix"],
+        "figures": figures,
+    }
+
+
 def _new_pilot_id(connection: Connection, label: str, now: datetime) -> str:
     base = f"pil_{now:%Y%m%d}_"
     slug = _slug(label)
@@ -271,11 +312,15 @@ def authorize(
         if not accept_no_go:
             raise PilotError("no_go_requires_acceptance")
         thesis = f"[NO-GO autorizado explicitamente por el humano] {thesis}"[:1500]
-    detail = niche_detail(connection, niche_label, format, now, timezone)
-    if detail is None:
-        raise PilotError("not_found")
+    frozen = request["evidence"]
+    from_subniche = frozen.get("source") == "subniche"
+    detail = None
+    if not from_subniche:
+        detail = niche_detail(connection, niche_label, format, now, timezone)
+        if detail is None:
+            raise PilotError("not_found")
     failures = authorization_reasons(
-        dossier, request["evidence"]["niche"], gates or gate_rules.DEFAULT_GATES
+        dossier, frozen.get("niche"), gates or gate_rules.DEFAULT_GATES
     )
     if failures:
         if not accept_gate_failure:
@@ -293,7 +338,7 @@ def authorize(
             raise PilotError("not_found")
         if previous["status"] not in ("autorizado", "entregado"):
             raise PilotError("bad_transition")
-    pilot_id = _new_pilot_id(connection, niche_label, now)
+    pilot_id = _new_pilot_id(connection, niche_label.removeprefix(SUBNICHE_PREFIX), now)
     body: dict[str, Any] = {
         "contract": "pilot-package-v1",
         "pilot_id": pilot_id,
@@ -302,7 +347,7 @@ def authorize(
         "authorized_at": now.isoformat(),
         "valid_until": (now + timedelta(days=valid_days)).isoformat(),
         "niche": {"label": niche_label, "format": format, "language": language},
-        "evidence": _evidence(detail, now),
+        "evidence": _subniche_evidence(frozen) if detail is None else _evidence(detail, now),
         "dossier": {
             "request_id": str(dossier_request_id),
             "schema": dossier["schema_version"],
