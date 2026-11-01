@@ -5,7 +5,7 @@ un agente con búsqueda web y está incluida **completa** más abajo, sin recort
 competidores vienen casi todas de agregadores de terceros (OutlierKit y similares), no de YouTube directo; los propios
 informes las marcan como `[T]` (tercero), `[V]` (verificado en una fuente leída) o `[E]` (estimación).
 
-> **Corrección (2026-11-02):** en las cifras de ingreso de este informe, «ingreso mensual estimado» es la **mediana mensual
+> **Corrección (2026-11-01):** en las cifras de ingreso de este informe, «ingreso mensual estimado» es la **mediana mensual
 > estimada por canal estable** del subnicho (con el RPM heredado del nicho padre), no un agregado de todo el subnicho ni
 > ingresos verificados. Es un techo de referencia para un canal que ya funciona, no lo que ganaría uno nuevo. Las versiones
 > anteriores de este informe y de los cuatro informes individuales lo llamaban «agregado».
