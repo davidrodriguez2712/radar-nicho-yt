@@ -109,6 +109,9 @@ const subnicheDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:040f4d
 const subnicheImportBackend = 'davidrodriguez2712/nicheradar-backend@sha256:cfd899a9a862dd550d7f660e40b79d8d366ec84ec1d690870bce5bec2a4d31d5';
 const subnicheImportWorker = 'davidrodriguez2712/nicheradar-worker@sha256:4a72783013a4fc82003ab13b95807ceb357237f833e7e4f809f46bd5fbd022e7';
 const subnicheImportDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:a2b80567b1ddd69ebe64810b1650dbde3766ee62b8b4fb636970caca623f64c7';
+const subnicheQuotaDayBackend = 'davidrodriguez2712/nicheradar-backend@sha256:6962d141a4938f2f1f517a360570abb36129030728f5c2d8a8f2a8cb0b338ab5';
+const subnicheQuotaDayWorker = 'davidrodriguez2712/nicheradar-worker@sha256:f31d59eb6fb3e6013bd534b9c1f8a4d37cf4725991afa4c1e8383a638628b7ef';
+const subnicheQuotaDayDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:8e5b8c0e5a9ba0b2d24433fe5b39f944286833b784927166151d80b0911c432e';
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
 const resources = (cpu) => ({memoryLimit:512,memoryReservation:128,cpuLimit:cpu,cpuReservation:0.1});
@@ -698,6 +701,26 @@ try {
        env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
       throw new Error('Subniche import release preconditions failed');
     const image=isDashboard?subnicheImportDashboard:name==='nicheradar-worker'?subnicheImportWorker:subnicheImportBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='deploy-subniche-quota-day-code') {
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?subnicheImportDashboard:name==='nicheradar-worker'?subnicheImportWorker:subnicheImportBackend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Subniche quota-day release preconditions failed');
+    const image=isDashboard?subnicheQuotaDayDashboard:name==='nicheradar-worker'?subnicheQuotaDayWorker:subnicheQuotaDayBackend;
     cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
     const after=cli(['app','inspect',`${project}/${name}`]);
     for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
