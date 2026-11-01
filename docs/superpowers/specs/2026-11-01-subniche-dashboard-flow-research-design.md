@@ -49,8 +49,8 @@ Elegibilidad: la hipótesis debe estar `active` y tener al menos una medición (
 - Siguen aplicando, al entregar el dossier, la de **minutos de régimen**, la de **horas de calibración** y la de
   **derechos** (contrato `dossier-v3`), con el tope vigente al enviar y la misma excepción registrada
   (`gate_override`) creada con el encargo.
-- La autorización del piloto desde un dossier de subnicho **queda fuera de este spec** (hoy `authorization_reasons`
-  exige el nicho del backlog): se decide después, cuando se elija el primer piloto.
+- La autorización del piloto desde un dossier de subnicho **entra en este spec** (decisión del propietario,
+  2026-11-01): ver §7.
 
 ### 4. API
 
@@ -70,6 +70,25 @@ Página nueva **Subnichos** en el selector lateral (junto a Mercado):
   **Iniciar investigación de flujo** (con confirmación del idioma, igual que Mercado). Reutiliza `render_dossier`.
 - El dossier `dossier-v3` muestra calibración, régimen y su evidencia (ya implementado en el panel de Mercado).
 
+### 7. Autorización del piloto desde un subnicho
+
+Hoy `pilots.service.authorize` exige el nicho del backlog (`niche_detail`) para armar la evidencia del paquete y pasa
+`request["evidence"]["niche"]` a `authorization_reasons`. Cambios:
+- **Evidencia del paquete** (`pilot-package-v1`, sin versión nueva): para un encargo con `evidence.source = "subniche"`,
+  `_evidence` se arma desde la evidencia congelada, mapeada a la forma existente:
+  `scores` todo `null` (no hay score de backlog; no se inventan), `listings_with_income` = 0 (no hay fichas de
+  vendedores), `language_mix` = `[{language: <de la hipótesis>, share_pct: 100}]`, `figures` con origen `estimate`
+  (`income_estimate_low` y `income_estimate_high` en `usd_per_month`, `traction_channels`, `stable_channels`,
+  `large_channels`, `volatile_channels` en `channels`), y `confidence` derivada del tamaño de la muestra
+  (`low` si hay menos de 10 canales incluidos; `medium` desde 10; `high` no se usa: no hay verificación independiente).
+- **Compuertas al autorizar:** `authorization_reasons(dossier, niche, gates)` recibe `niche = None` para subnichos y
+  omite la compuerta de nicho (automatización del backlog y riesgo de política), pero repite minutos de régimen,
+  horas de calibración y derechos del dossier guardado. `accept_gate_failure` funciona igual y queda registrado.
+- **`niche_label` del piloto:** `subniche:<slug>`; el `pilot_id` se genera con el slug (sin el prefijo) y el panel de
+  pilotos muestra la etiqueta de la hipótesis. `niche_mismatch` sigue comprobando `(niche_label, format)` del encargo.
+- **Qué NO cambia:** el contrato `pilot-package-v1`, las reglas de parada por defecto y la entrega al canal.
+  Un consumidor del paquete ve `scores` nulos y cifras con origen `estimate`: es la forma ya permitida.
+
 ### 6. Catálogo de herramientas
 
 El spec no incluye cambios al catálogo (`docs/investigacion-herramientas/`): la skill `flow-research` ya lo cita como
@@ -77,7 +96,7 @@ fuente de herramientas por etapa. Mostrar el catálogo en el dashboard queda com
 
 ## Fuera de alcance
 
-- Autorizar un piloto desde un dossier de subnicho (decisión posterior).
+- Un contrato `pilot-package` nuevo o campos nuevos en él (se reutiliza la forma v1).
 - Editar, aprobar o pausar hipótesis desde el dashboard (siguen en `scripts/subniche.py`).
 - Cambiar las mediciones o el descubrimiento.
 - Mostrar el catálogo de herramientas en el dashboard.
@@ -97,8 +116,15 @@ fuente de herramientas por etapa. Mostrar el catálogo en el dashboard queda com
 6. Texto de canales o consultas hostil (`**x**`, HTML, enlaces) se muestra como texto plano.
 7. Un dossier entregado para un encargo de subnicho debe corresponder al `niche_label`, `format` y `language` del
    encargo, como hoy.
+8. Autorizar un piloto de subnicho: el paquete valida contra `pilot-package-v1` con `scores` nulos, cifras `estimate`
+   y `confidence` `low` con menos de 10 canales; autorizar un dossier cuyo régimen o calibración falla las compuertas
+   da `gate_failed` y solo pasa con `accept_gate_failure` registrado.
+9. Un encargo de subnicho cuya hipótesis ya no está `active` al autorizar: se autoriza igual (la evidencia está
+   congelada), pero el paquete indica `measured_at` de la medición usada.
 
-## Decisiones pendientes del propietario
+## Decisiones del propietario y supuestos (2026-11-01)
 
-1. ¿Autorizar el piloto desde un dossier de subnicho entra en un spec propio después (recomendado) o se incluye ahora?
-2. ¿Quieres que la lista muestre también las hipótesis archivadas y pausadas, o solo activas y propuestas?
+1. **Autorizar el piloto desde un subnicho entra en este spec** (decisión del propietario): ver §7.
+2. **La lista de la página Subnichos** muestra por defecto las hipótesis `active` y `proposed`; una casilla «Mostrar
+   pausadas y archivadas» las incluye (mismo patrón que «Mostrar descartados» en Mercado). Supuesto de bajo impacto,
+   reversible; hoy las 60 están `active`.
