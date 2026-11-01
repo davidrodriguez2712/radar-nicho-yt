@@ -16,6 +16,9 @@ from nicheradar.flow_research_dashboard import STATUS_LABELS, language_name, ren
 
 ApiRequest = Callable[..., dict[str, Any]]
 ALL = "Todas"
+ALL_STATUSES = "Todos"
+RESEARCH_LABELS = {key: value.split(":")[0] for key, value in STATUS_LABELS.items()}
+NOT_READY = "La hipótesis debe estar activa y tener al menos una medición."
 
 
 def _yes(value: bool) -> str:
@@ -43,7 +46,12 @@ def subniche_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "Tracción": None if measurement is None else measurement["traction_channels"],
                 "Estables": None if measurement is None else measurement["stable_channels"],
                 "Grandes": None if measurement is None else measurement["large_channels"],
-                "Investigación": research["status"] if research else "sin investigar",
+                "Exclusiones por idioma": None
+                if measurement is None
+                else measurement["excluded"].get("language", 0),
+                "Investigación": RESEARCH_LABELS[research["status"]]
+                if research
+                else "sin investigar",
             }
         )
     return rows
@@ -78,7 +86,10 @@ def _render_research(
     active = research is not None and research["status"] in ("pendiente", "en_curso")
     if research is not None:
         st.caption("Última investigación: " + STATUS_LABELS[research["status"]])
-    if st.button("Iniciar investigación de flujo", disabled=active):
+    not_active = hypothesis["status"] != "active"
+    if not_active:
+        st.text(NOT_READY)
+    if st.button("Iniciar investigación de flujo", disabled=active or not_active):
         api(
             config,
             "POST",
@@ -114,14 +125,17 @@ def render_subniches(config: Settings, api: ApiRequest) -> None:
     if not items:
         st.info("Todavía no hay hipótesis. Cárgalas con scripts/subniche.py import.")
         return
-    filters = st.columns(2)
+    filters = st.columns(3)
     families = [ALL, *sorted({entry["family"] for entry in items})]
     family = filters[0].selectbox("Familia", families)
-    only_finalists = filters[1].checkbox("Solo finalistas")
+    statuses = [ALL_STATUSES, *sorted({entry["status"] for entry in items})]
+    status = filters[1].selectbox("Estado", statuses)
+    only_finalists = filters[2].checkbox("Solo finalistas")
     shown = [
         entry
         for entry in items
         if (family == ALL or entry["family"] == family)
+        and (status == ALL_STATUSES or entry["status"] == status)
         and (not only_finalists or entry["finalist"])
     ]
     st.dataframe(subniche_rows(shown), hide_index=True, width="stretch")
@@ -141,11 +155,19 @@ def render_subniches(config: Settings, api: ApiRequest) -> None:
     if measurement is None:
         st.info("Esta hipótesis todavía no tiene una medición.")
     else:
+        from nicheradar.dashboard import local_time  # lazy: dashboard imports this module
+
         st.text(
-            f"Medida el {measurement['measured_at']}: {measurement['included']} canales incluidos, "
+            f"Medida el {local_time(str(measurement['measured_at']), config.timezone)}: "
+            f"{measurement['included']} canales incluidos, "
             f"{measurement['stable_channels']} estables, {measurement['volatile_channels']} "
             f"volátiles, tracción {measurement['traction_channels']}, grandes "
             f"{measurement['large_channels']}. RPM: {measurement['rpm_source']}"
+        )
+        excluded = measurement["excluded"]
+        st.text(
+            "Excluidos: "
+            + (", ".join(f"{key} {value}" for key, value in excluded.items()) or "ninguno")
         )
     st.markdown("**Canales relevantes**")
     if card["channels_available"]:

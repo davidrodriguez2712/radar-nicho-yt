@@ -1,6 +1,7 @@
 # tests/test_subniche_dashboard.py
 from typing import Any
 
+import pytest
 from streamlit.testing.v1 import AppTest
 
 from nicheradar.subniche_dashboard import channel_rows, subniche_rows
@@ -43,12 +44,27 @@ def test_rows_show_income_range_counts_and_research_status() -> None:
     assert row["Ingreso por canal (US$)"] == "884.67 – 2022.10"
     assert row["Tracción"] == 5 and row["Estables"] == 9 and row["Grandes"] == 11
     assert row["Investigación"] == "listo"
+    assert row["Exclusiones por idioma"] == 8
+
+
+def test_research_status_is_shown_with_its_human_label() -> None:
+    def label(status: str) -> str:
+        research = {"id": "r1", "status": status, "language": "en", "created_at": "x"}
+        return str(subniche_rows([item(research=research)])[0]["Investigación"])
+
+    assert [label(s) for s in ("pendiente", "en_curso", "listo", "rechazado")] == [
+        "pendiente",
+        "en curso",
+        "listo",
+        "rechazado",
+    ]
 
 
 def test_rows_of_an_unmeasured_hypothesis_have_blanks_and_no_research() -> None:
     row = subniche_rows([item(measurement=None, research=None, finalist=False)])[0]
     assert row["Ingreso por canal (US$)"] == "" and row["Tracción"] is None
     assert row["Finalista"] == "no" and row["Investigación"] == "sin investigar"
+    assert row["Exclusiones por idioma"] is None
 
 
 def test_channel_rows_keep_hostile_text_as_plain_values() -> None:
@@ -157,3 +173,64 @@ def test_hostile_text_reaches_the_page_only_as_plain_text() -> None:
     assert any(HOSTILE in value and "RPM" in value for value in texts)
     rendering = [*app.markdown, *app.caption, *app.info, *app.warning]
     assert not any("<script>" in block.value for block in rendering)
+
+
+def _card(hyp: dict[str, Any], research: dict[str, Any] | None, **over: Any) -> dict[str, Any]:
+    card: dict[str, Any] = {
+        "hypothesis": hyp | {"research": research},
+        "measurement": hyp["measurement"],
+        "channels": [],
+        "channels_available": False,
+        "research": research,
+    }
+    return card | over
+
+
+def _start_button(hyp: dict[str, Any], research: dict[str, Any] | None) -> Any:
+    app = AppTest.from_function(
+        _render, kwargs={"listing": {"items": [hyp]}, "card": _card(hyp, research)}
+    ).run()
+    assert not app.exception
+    return next(b for b in app.button if b.label == "Iniciar investigación de flujo"), app
+
+
+def test_the_start_button_is_enabled_for_an_active_hypothesis_without_pending_research() -> None:
+    button, _ = _start_button(item(), None)
+    assert button.disabled is False
+
+
+@pytest.mark.parametrize("status", ["pendiente", "en_curso"])
+def test_the_start_button_is_disabled_while_a_research_is_open(status: str) -> None:
+    research = {"id": "r1", "status": status, "language": "en", "created_at": "x"}
+    button, _ = _start_button(item(), research)
+    assert button.disabled is True
+
+
+@pytest.mark.parametrize("status", ["proposed", "paused", "archived"])
+def test_the_start_button_is_disabled_with_an_explanation_when_not_active(status: str) -> None:
+    button, app = _start_button(item(status=status), None)
+    assert button.disabled is True
+    assert any(
+        block.value == "La hipótesis debe estar activa y tener al menos una medición."
+        for block in app.text
+    )
+
+
+def test_the_card_shows_language_exclusions_and_other_reasons_as_plain_text() -> None:
+    hyp = item()
+    hyp["measurement"] = hyp["measurement"] | {"excluded": {"language": 13, "no_recent_videos": 2}}
+    _, app = _start_button(hyp, None)
+    assert any("Excluidos: language 13, no_recent_videos 2" in block.value for block in app.text)
+    assert any("Medida el 31/10/2026 07:00 -05" in block.value for block in app.text)
+
+
+def test_the_list_filters_by_status() -> None:
+    items = [item(), item(slug="b", label="B", status="paused", finalist=False)]
+    app = AppTest.from_function(
+        _render, kwargs={"listing": {"items": items}, "card": _card(items[0], None)}
+    ).run()
+    status = next(box for box in app.selectbox if box.label == "Estado")
+    assert list(status.options) == ["Todos", "active", "paused"]
+    status.set_value("paused").run()
+    assert not app.exception
+    assert [row["Subnicho"] for row in app.dataframe[0].value.to_dict("records")] == ["B"]

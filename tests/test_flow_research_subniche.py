@@ -175,3 +175,14 @@ def test_a_dossier_for_another_label_does_not_answer_the_order(db: Connection) -
     result = submit_dossier(db, request["id"], owner, payload, NOW, OPEN)
     assert result["accepted"] is False
     assert any(p["path"] == "niche_label" for p in result["problems"])
+
+
+def test_a_frozen_override_skips_the_minutes_and_calibration_gates_of_the_dossier(
+    db: Connection,
+) -> None:
+    measured_hypothesis(db, hits=10)
+    override = {"reason": "Experimento barato decidido por el propietario", "by": "david"}
+    request, _ = order(db, gate_override=override)
+    assert request["evidence"]["gate_override"]["by"] == "david"
+    tight = Gates(70, 40, True, 10)  # la muestra: 55 minutos de régimen y 17,5 horas
+    assert submit(db, request, tight)["accepted"] is True

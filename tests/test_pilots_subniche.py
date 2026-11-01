@@ -1,6 +1,7 @@
 # tests/test_pilots_subniche.py
 """Piloto autorizado desde un dossier de subnicho."""
 
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -8,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
+from nicheradar.pilots.contracts import validate_package
 from nicheradar.subniche_discovery.aggregate import build_profile
 from nicheradar.subniche_discovery.persist import save_measurement
 from nicheradar.subniche_discovery.store import approve, create_proposed
@@ -86,6 +88,21 @@ def test_a_pilot_is_authorized_from_a_subniche_with_the_v1_package_shape(
     assert figures["income_estimate_high"]["value"] == 900
     assert figures["income_estimate_high"]["origin"] == "estimate"
     assert figures["traction_channels"]["value"] == 1
+
+
+def test_the_package_dates_the_evidence_with_the_measurement_not_the_authorization(
+    isolated_engine: Engine,
+) -> None:
+    seed(isolated_engine)
+    api = client(isolated_engine)
+    request_id = ready_subniche(api)
+    created = api.post(PILOTS, json=authorize_body(request_id, niche_label=LABEL), headers=AUTH)
+    assert created.status_code == 201, created.text
+    package = created.json()["package"]
+    captured = datetime.fromisoformat(package["evidence"]["captured_at"])
+    authorized = datetime.fromisoformat(package["authorized_at"])
+    assert captured == MEASURED and captured != authorized
+    assert validate_package(package, authorized)[0] is not None
 
 
 def test_low_confidence_subniche_evidence_maps_to_low(isolated_engine: Engine) -> None:

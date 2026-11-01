@@ -218,7 +218,7 @@ def _evidence(detail: dict[str, Any], now: datetime) -> dict[str, Any]:
 SUBNICHE_PREFIX = "subniche:"
 
 
-def _subniche_evidence(evidence: dict[str, Any], now: datetime) -> dict[str, Any]:
+def _subniche_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
     """Map a frozen sub-niche measurement to the existing pilot-package-v1 evidence shape."""
     measurement = evidence["measurement"]
     figures: list[dict[str, Any]] = []
@@ -244,8 +244,10 @@ def _subniche_evidence(evidence: dict[str, Any], now: datetime) -> dict[str, Any
                 "origin": "estimate",
             }
         )
+    measured_at = measurement["measured_at"]
     return {
-        "captured_at": now.isoformat(),
+        # The evidence is as old as the measurement, not as new as the authorization.
+        "captured_at": measured_at if isinstance(measured_at, str) else measured_at.isoformat(),
         "scores": {"opportunity": None, "automation": None, "creator_fit": None, "market": None},
         "confidence": CONFIDENCE[evidence["confidence"]],
         "listings_with_income": 0,
@@ -345,7 +347,7 @@ def authorize(
         "authorized_at": now.isoformat(),
         "valid_until": (now + timedelta(days=valid_days)).isoformat(),
         "niche": {"label": niche_label, "format": format, "language": language},
-        "evidence": _subniche_evidence(frozen, now) if detail is None else _evidence(detail, now),
+        "evidence": _subniche_evidence(frozen) if detail is None else _evidence(detail, now),
         "dossier": {
             "request_id": str(dossier_request_id),
             "schema": dossier["schema_version"],

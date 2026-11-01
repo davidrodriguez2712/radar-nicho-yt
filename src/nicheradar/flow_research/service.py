@@ -159,6 +159,13 @@ def _create_subniche(
     gates: Gates | None,
     gate_override: dict[str, str] | None,
 ) -> tuple[dict[str, Any], bool]:
+    """Order a research from a measured, active sub-niche hypothesis.
+
+    Unlike the backlog (which freezes ``gate_override`` only when a niche gate actually fails),
+    here a ``gate_override`` passed at creation is always frozen. When present it skips the
+    regime-minutes and calibration-hours gates at dossier submission; authorization still
+    re-checks everything and needs ``accept_gate_failure``.
+    """
     detail = subniche_detail(connection, niche_label.removeprefix(PREFIX), now)
     if detail is None:
         raise FlowResearchError("not_found")
