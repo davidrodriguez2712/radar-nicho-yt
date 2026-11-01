@@ -58,6 +58,7 @@ from nicheradar.services.scoring import (
     latest_configuration,
     save_configuration,
 )
+from nicheradar.subniche_api import subniche_router
 from nicheradar.workers.queue import QUEUE_LOCK, create_schedule, enqueue, schedule_attention
 
 
@@ -893,4 +894,5 @@ def create_app(
         flow_research_router(authenticate=authenticate, db=db, config=config, clock=clock)
     )
     app.include_router(pilots_router(db=db, config=config, clock=clock))
+    app.include_router(subniche_router(authenticate=authenticate, db=db, clock=clock))
     return app
