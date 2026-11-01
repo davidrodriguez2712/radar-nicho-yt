@@ -10,7 +10,7 @@ No es asesoría legal ni financiera.
 
 Razones:
 - El tema tiene demanda visible en la cima: Serious History (820 K suscriptores) tiene "Extreme Vigilante Justice in History" con 6,4 M de vistas y "Extreme Stories of Revenge from History" (fuente s9, estadísticas de terceros). Hay 5 canales pequeños con un video largo >=5x sus suscriptores (medido por NicheRadar).
-- Pero es de los subnichos más flojos medidos: 13 de 22 videos con pico reciente (señal de moda, no de demanda estable), 11 canales grandes, ingreso mensual agregado estimado US$885–2.022 para todo el subnicho (RPM heredado, estimación). Un ingreso agregado tan bajo no sostiene a un canal nuevo en el tema; sirve solo como gancho dentro de un formato más amplio.
+- Pero es de los subnichos más flojos medidos: 13 de 22 videos con pico reciente (señal de moda, no de demanda estable), 11 canales grandes, ingreso mensual estimado por canal estable (mediana) US$885–2.022 (RPM heredado, estimación). Un ingreso por canal tan bajo no sostiene a un canal nuevo en el tema; sirve solo como gancho dentro de un formato más amplio.
 - **Cambio de reglas que altera el plan:** la página oficial del YPP anuncia que desde el **2027-02-01** los creadores nuevos necesitarán **1.000 suscriptores + 8.000 horas** (en vez de 4.000) o 20 M de vistas de Shorts en 90 días (s2). El canal no está en el YPP, así que muy probablemente le aplica si solicita después de esa fecha. A 3 meses vista (hoy 2026-11-01) no es realista llegar a 4.000 h salvo en el escenario optimista, de modo que la meta realista es **8.000 horas**.
 - Compuertas de NicheRadar (dossier-v2): mi estimación de minutos humanos por video (130) supera `NR_GATE_MAX_HUMAN_MINUTES` = 60, y la automatización (aprox. 55 %) queda bajo `NR_GATE_MIN_AUTOMATION` = 90. Un `go_with_conditions` real **requiere `gate_override` explícito del propietario**; sin él, el servicio lo rechazaría. La verificación de hechos es lo que no conviene automatizar.
 
@@ -146,7 +146,7 @@ Supuestos de costo: sin sueldo del propietario. Precios verificados: solo Eleven
 - RPM supuesto US$2–6 (no verificado; el RPM de NicheRadar es heredado). Escenario base: 4 videos/mes x 3.000 vistas = 12.000 vistas nuevas/mes, más catálogo aprox. 18.000 vistas/mes; a RPM US$4, aprox. US$72/mes.
 - Con costo recurrente de aprox. US$25/mes (probable), margen aprox. US$47/mes: recuperar los US$152 del semestre toma aprox. 3–4 meses **después** de monetizar. Monetizar en base cae hacia el mes 6–8 (8.000 h más retraso), así que el equilibrio llega alrededor del mes 10–12 (nota: el cálculo es sensible al RPM; con RPM 2 se duplica).
 - Escenario pesimista: no se alcanza el umbral en 12 meses; el equilibrio no llega.
-- El escenario alto (US$2.165) no se justifica con un ingreso agregado de subnicho de US$885–2.022/mes.
+- El escenario alto (US$2.165) no se justifica con un ingreso mensual estimado por canal estable (mediana) de US$885–2.022/mes.
 
 ## 7. Plan por fases con criterios de salida y reglas de parada
 

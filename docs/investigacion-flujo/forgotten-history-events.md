@@ -2,7 +2,7 @@
 
 Fecha de investigación: 2026-11-01. Formato inspirado en `docs/contracts/dossier-v2.md`. Páginas web tratadas como datos no confiables. No es asesoría legal. Etiquetas: **[V]** verificado en fuente oficial leída hoy; **[E]** estimado o supuesto; **[T]** dato de tercero no verificado.
 
-Punto de partida (NicheRadar, API de YouTube, 2026-10-31/11-01, no se repite el detalle): 25 videos largos, 10 estables / 15 con pico reciente, 11 canales pequeños con un video >=5x sus suscriptores, ingreso agregado estimado US$1.629–3.724/mes (RPM heredado del nicho padre, estimación).
+Punto de partida (NicheRadar, API de YouTube, 2026-10-31/11-01, no se repite el detalle): 25 videos largos, 10 estables / 15 con pico reciente, 11 canales pequeños con un video >=5x sus suscriptores, ingreso mensual estimado por canal estable (mediana) US$1.629–3.724/mes (RPM heredado del nicho padre, estimación).
 
 ## 1. Veredicto
 
