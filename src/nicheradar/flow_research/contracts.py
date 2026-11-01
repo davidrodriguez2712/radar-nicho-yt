@@ -504,6 +504,18 @@ def v3_problems(dossier: DossierV3) -> list[Problem]:
                 "la calibración no puede costar menos minutos que el régimen",
             )
 
+    exit_criterion = dossier.calibration.exit_criterion
+    if exit_criterion.consecutive_videos > dossier.calibration.videos:
+        add(
+            "calibration.exit_criterion.consecutive_videos",
+            "la calibración dura menos videos de los que pide el criterio de salida",
+        )
+    if exit_criterion.max_minutes_per_video < sum(regime.values()):
+        add(
+            "calibration.exit_criterion.max_minutes_per_video",
+            "el criterio de salida nunca se cumpliría con los minutos de régimen declarados",
+        )
+
     evidence = dossier.steady_state_evidence
     if evidence.basis != "estimate" and evidence.reference_channel is None:
         add("steady_state_evidence.reference_channel", "cita el canal de referencia")

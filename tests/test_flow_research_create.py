@@ -81,6 +81,7 @@ def test_the_skill_asks_for_v3_calibration_and_the_plan_and_forbids_overrides() 
         "automation_plan",
         "evidence.gate",
         "max_human_minutes",
+        "max_calibration_hours",
         "no_go",
         "gate_override",
         "production_flow",

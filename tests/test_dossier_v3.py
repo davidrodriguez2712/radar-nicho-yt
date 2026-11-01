@@ -144,3 +144,18 @@ def test_go_with_conditions_must_list_conditions_whatever_the_basis() -> None:
     payload = sample()
     payload["verdict"]["conditions"] = []
     assert "verdict.conditions" in paths(payload)
+
+
+def test_the_exit_criterion_must_fit_inside_the_calibration() -> None:
+    payload = sample()
+    payload["calibration"]["videos"] = 2  # el criterio pide 3 videos seguidos
+    assert "calibration.exit_criterion.consecutive_videos" in paths(payload)
+
+
+def test_the_exit_criterion_must_be_reachable_with_the_declared_regime() -> None:
+    payload = sample()
+    payload["calibration"]["exit_criterion"]["max_minutes_per_video"] = 54  # régimen: 55
+    assert "calibration.exit_criterion.max_minutes_per_video" in paths(payload)
+    payload["calibration"]["exit_criterion"]["max_minutes_per_video"] = 55
+    ok, problems = validate_dossier(payload, NOW)
+    assert problems == [] and ok is not None

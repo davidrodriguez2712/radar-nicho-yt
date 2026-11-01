@@ -24,7 +24,7 @@ raíz del repo.
 ## Compuertas de selección (qué te exigen)
 
 Cada encargo trae en `evidence.gate` los umbrales vigentes y lo que el nicho obtuvo:
-`min_automation`, `max_human_minutes`, `automation_value`, `policy_risk_level` y `reasons`.
+`min_automation`, `max_human_minutes`, `max_calibration_hours`, `automation_value`, `policy_risk_level` y `reasons`.
 Si trae `evidence.gate_override`, el propietario decidió investigarlo pese a una compuerta:
 sigue adelante, pero anótalo en `verdict.thesis`.
 
@@ -33,6 +33,8 @@ El dossier se **rechaza** si recomienda `go` o `go_with_conditions` y:
 - `rights.verdict` es `blocked` (nunca se puede forzar), o
 - los minutos humanos por video (la suma de `production_flow`) superan
   `evidence.gate.max_human_minutes`, o
+- las horas de calibración (derivadas: `setup_hours + videos × Σ minutes_by_step / 60`) superan
+  `evidence.gate.max_calibration_hours`, o
 - la automatización del nicho es menor que `min_automation` o su riesgo de política es alto
   (si no hay `gate_override`).
 
@@ -96,7 +98,8 @@ Evidencia del régimen (`steady_state_evidence`):
 3. `estimate`: nadie lo ha hecho. Entonces **no recomiendes `go`**: usa `go_with_conditions` y copia
    literalmente `exit_criterion.statement` entre `verdict.conditions`, o `no_go`.
 
-Reglas: `verdict.conditions` es obligatorio (lista; no vacía con `go_with_conditions`). Un formato distinto al
+Además `exit_criterion.consecutive_videos` no puede superar `videos` y `exit_criterion.max_minutes_per_video`
+no puede ser menor que la suma del régimen. Reglas: `verdict.conditions` es obligatorio (lista; no vacía con `go_with_conditions`). Un formato distinto al
 canal de referencia (otras visuales, otro idioma) no es régimen medido: decláralo en `format_match` y baja a
 `estimate`. El tiempo de máquina no cuenta como minutos humanos. No presupuestes régimen sin base.
 
