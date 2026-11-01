@@ -26,10 +26,12 @@ from nicheradar.flow_research.gates import (
     minutes_reasons,
     niche_reasons,
 )
+from nicheradar.flow_research.subniche_evidence import build_subniche_evidence
 from nicheradar.market_intel.ingest import LISTING_RETENTION
 from nicheradar.market_intel.niches import niche_detail
 from nicheradar.repositories.schema import flow_research_dossiers as dossiers
 from nicheradar.repositories.schema import flow_research_requests as requests
+from nicheradar.subniche_discovery.catalog import PREFIX, subniche_detail
 
 LEASE = timedelta(minutes=60)
 MAX_REJECTIONS = 2
@@ -53,6 +55,9 @@ MESSAGES = REASONS | {
     "gate_failed": "El nicho no pasa las compuertas de selección.",
     "not_found": "Encargo o nicho no encontrado.",
     "not_claimable": "El encargo no está pendiente.",
+    "subniche_not_ready": "La hipótesis debe estar activa y tener al menos una medición.",
+    "format_mismatch": "El formato no coincide con el de la hipótesis.",
+    "language_mismatch": "El idioma no coincide con el de la hipótesis.",
     "lease_lost": "El encargo ya no está reclamado por este investigador.",
 }
 
@@ -114,6 +119,9 @@ def create_request(
 
     The key is niche + format + language: the same niche researched in two languages is two
     markets, each with its own competitors, prices and tools.
+
+    A ``niche_label`` with the ``subniche:`` prefix orders research from a sub-niche hypothesis
+    instead of a backlog niche.
     """
     if not LANGUAGE.fullmatch(language):
         raise FlowResearchError("invalid_language")
@@ -121,6 +129,10 @@ def create_request(
     existing = _active(connection, niche_label, format, language)
     if existing is not None:
         return _stored(connection, existing), False
+    if niche_label.startswith(PREFIX):
+        return _create_subniche(
+            connection, niche_label, format, language, now, gates, gate_override
+        )
     detail = niche_detail(connection, niche_label, format, now, timezone)
     if detail is None:
         raise FlowResearchError("not_found")
@@ -134,6 +146,42 @@ def create_request(
     override = None
     if failing and gate_override is not None:
         override = {**gate_override, "at": now.isoformat()}
+    evidence = build_evidence(detail, language, gates, override)
+    return _insert_request(connection, niche_label, format, language, evidence, now)
+
+
+def _create_subniche(
+    connection: Connection,
+    niche_label: str,
+    format: str,
+    language: str,
+    now: datetime,
+    gates: Gates | None,
+    gate_override: dict[str, str] | None,
+) -> tuple[dict[str, Any], bool]:
+    detail = subniche_detail(connection, niche_label.removeprefix(PREFIX), now)
+    if detail is None:
+        raise FlowResearchError("not_found")
+    hypothesis = detail["hypothesis"]
+    if hypothesis["status"] != "active" or detail["measurement"] is None:
+        raise FlowResearchError("subniche_not_ready")
+    if format != hypothesis["format"]:
+        raise FlowResearchError("format_mismatch")
+    if language != hypothesis["language"]:
+        raise FlowResearchError("language_mismatch")
+    override = None if gate_override is None else {**gate_override, "at": now.isoformat()}
+    evidence = build_subniche_evidence(detail, gates or gate_rules.DEFAULT_GATES, override)
+    return _insert_request(connection, niche_label, format, language, evidence, now)
+
+
+def _insert_request(
+    connection: Connection,
+    niche_label: str,
+    format: str,
+    language: str,
+    evidence: dict[str, Any],
+    now: datetime,
+) -> tuple[dict[str, Any], bool]:
     request_id = uuid4()
     try:
         with connection.begin_nested():
@@ -144,7 +192,7 @@ def create_request(
                     format=format,
                     language=language,
                     status="pendiente",
-                    evidence=build_evidence(detail, language, gates, override),
+                    evidence=evidence,
                     attempts=0,
                     created_at=now,
                     updated_at=now,
@@ -246,7 +294,9 @@ def _gate_problems(dossier: DossierV3, row: Any, gates: Gates) -> list[Problem]:
     evidence = row["evidence"]
     reasons: list[GateReason] = []
     if "gate_override" not in evidence:
-        reasons += niche_reasons(evidence["niche"], gates)
+        niche = evidence.get("niche")
+        if niche is not None:
+            reasons += niche_reasons(niche, gates)
         reasons += minutes_reasons(human_minutes_per_video(dossier), gates)
         reasons += calibration_reasons(dossier.calibration_hours, gates)
     if not reasons:
@@ -270,7 +320,9 @@ def _request_problems(dossier: DossierV3, row: Any, gates: Gates) -> list[Proble
         problems.append({"path": "format", "message": "no corresponde al formato del encargo"})
     if dossier.language != row["language"]:
         problems.append({"path": "language", "message": "no corresponde al idioma del encargo"})
-    if row["evidence"]["niche"].get("confidence") == "baja" and not dossier.verdict.unknowns:
+    niche = row["evidence"].get("niche")
+    confidence = niche.get("confidence") if niche is not None else row["evidence"].get("confidence")
+    if confidence == "baja" and not dossier.verdict.unknowns:
         problems.append(
             {
                 "path": "verdict.unknowns",
