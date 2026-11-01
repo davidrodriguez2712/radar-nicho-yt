@@ -1,5 +1,8 @@
 # dossier-v2
 
+> **Legado:** `dossier-v2` solo se conserva para leer dossiers guardados. Los encargos nuevos usan
+> [`dossier-v3`](dossier-v3.md).
+
 Estado: **implementado en la rama `feat/niche-gates-dossier-v2`, sin desplegar** (2026-10-26).
 Dirección: **investigador (Claude Code) → NicheRadar**. Contexto operativo y compuertas:
 [`../flow-research.md`](../flow-research.md). Código: `src/nicheradar/flow_research/contracts.py`,

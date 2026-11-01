@@ -2,7 +2,7 @@
 
 Desde un nicho `tentativo` del backlog de Mercado, el botón **Iniciar investigación de
 flujo** crea un encargo. Claude Code lo atiende con búsqueda web (con la membresía del
-propietario, sin gasto de API) y entrega un dossier `dossier-v2` (derechos del material y plan de automatización incluidos) que
+propietario, sin gasto de API) y entrega un dossier `dossier-v3` (derechos del material y plan de automatización incluidos) que
 la app valida y guarda. `dossier-v1` solo se conserva para leer dossiers guardados antes.
 
 ## Cómo se opera
@@ -26,12 +26,12 @@ la app valida y guarda. `dossier-v1` solo se conserva para leer dossiers guardad
 
 ## Qué valida la app
 
-Solo URLs `https`; el `schema_version` debe ser `dossier-v2`; precios con `price_checked_on` de máximo 90 días; totales recalculados
+Solo URLs `https`; el `schema_version` debe ser `dossier-v3`; precios con `price_checked_on` de máximo 90 días; totales recalculados
 (`subtotal = unitario × cantidad`, costo de fase = suma de sus partidas,
 `totals.likely` = suma de subtotales); fuentes, herramientas y fases citadas deben existir;
 cada fase con criterios de salida; el dossier debe corresponder al encargo. Si la confianza
 del nicho es `baja`, `verdict.unknowns` no puede ir vacío. Contrato completo de v2:
-[`contracts/dossier-v2.md`](contracts/dossier-v2.md).
+[`contracts/dossier-v3.md`](contracts/dossier-v3.md).
 
 ## Qué no garantiza
 
