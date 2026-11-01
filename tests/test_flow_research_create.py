@@ -36,7 +36,7 @@ def test_the_schema_command_prints_the_v2_sections(capsys: pytest.CaptureFixture
     assert main(["schema"]) == 0
     properties = json.loads(capsys.readouterr().out)["properties"]
     assert {"rights", "automation_plan"} <= set(properties)
-    assert properties["schema_version"]["const"] == "dossier-v2"
+    assert properties["schema_version"]["const"] == "dossier-v3"
 
 
 def test_create_orders_research_without_an_override_by_default() -> None:
