@@ -69,7 +69,10 @@ Cómo usarlo, sin cambiar el contrato `dossier-v2`:
    que no pudiste contrastar con una fuente web va también en `verdict.unknowns`.
 7. **Una etapa sin stack se investiga como siempre.** Hoy guion e investigación, imágenes o
    animación, edición y publicación no tienen stack: no inventes que lo tienen.
-8. **Si un stack y la web se contradicen**, no elijas en silencio: presupuesta con el valor más
+8. **Si esas carpetas no existen en esta máquina** (por ejemplo, otra computadora sin los
+   Foundries), no falla nada: investiga como siempre y anótalo en `assumptions` («sin stacks del
+   Foundry disponibles»). No inventes su contenido.
+9. **Si un stack y la web se contradicen**, no elijas en silencio: presupuesta con el valor más
    conservador y deja la diferencia en `assumptions`.
 
 ## Pasos
