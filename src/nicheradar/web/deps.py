@@ -1,6 +1,9 @@
 # src/nicheradar/web/deps.py
 """Request helpers: session guard, safe redirects and template rendering."""
 
+import functools
+import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlsplit
@@ -90,3 +93,39 @@ def render(
     data.update(context or {})
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(request, name, data, status_code=status_code)
+
+
+SHAPE_ERRORS = (KeyError, IndexError, TypeError, AttributeError, ValueError, ArithmeticError)
+SHAPE_MESSAGE = (
+    "La API devolvió datos con un formato inesperado, así que no se puede mostrar esta pantalla. "
+    "Intenta de nuevo o revisa la API."
+)
+_log = logging.getLogger(__name__)
+
+
+def shape_guard(handler: Callable[..., Response]) -> Callable[..., Response]:
+    """A malformed API payload is a 503 with a Spanish message, never an unhandled 500.
+
+    It only wraps view building of GET screens: API failures keep their own, more specific messages.
+    """
+
+    @functools.wraps(handler)
+    def guarded(*args: Any, **kwargs: Any) -> Response:
+        try:
+            return handler(*args, **kwargs)
+        except SHAPE_ERRORS:
+            _log.exception("unexpected API payload shape on %s", handler.__name__)
+            request: Request = kwargs["request"]
+            fragment = bool(request.headers.get("hx-request")) and not request.headers.get(
+                "hx-history-restore-request"
+            )
+            return render(
+                request,
+                "error.html",
+                {"message": SHAPE_MESSAGE},
+                status_code=200 if fragment else 503,
+                session=kwargs.get("session"),
+                with_radar=False,
+            )
+
+    return guarded

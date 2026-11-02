@@ -148,3 +148,9 @@ def test_the_radar_badge_reflects_the_api_state_and_is_cached() -> None:
 def test_a_status_failure_hides_the_badge_instead_of_breaking_the_page() -> None:
     web = make_client(Api())  # /status answers 404
     assert radar_state(request_of(web)) is None
+
+
+def test_radios_use_the_brand_colour_and_row_labels_keep_a_minimum_width() -> None:
+    css = (ROOT / "static/css/app.css").read_text()
+    assert "input[type=radio]" in css and "accent-color:var(--primary)" in css
+    assert ".row__label{" in css and "min-width:5.5em" in css

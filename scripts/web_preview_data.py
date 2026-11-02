@@ -159,3 +159,586 @@ CARD: dict[str, Any] = {
     "channels_available": True,
     "research": _PREHISTORIC["research"],
 }
+
+
+# --- Corte 1 (resto): Hoy, Nichos, Investigar, Informe v3 y Autorizar ---
+
+NICHES: list[dict[str, Any]] = [
+    {
+        "niche_label": "historia militar explicada",
+        "format": "long",
+        "opportunity": {
+            "version": "v1",
+            "value": 84.0,
+            "state": "scored",
+            "components": {},
+            "components_used": [],
+        },
+        "automation": {
+            "version": "v1",
+            "value": 64.0,
+            "components": {"trait": 64.0},
+            "policy_risk": {"mean": 0.2, "level": "bajo"},
+        },
+        "confidence": "media",
+        "metrics": {"n_listings": 12, "n_active": 10, "n_income": 6, "income_median": 900.0},
+        "rpm_mid": 2.5,
+        "rpm_state": "calibrated",
+        "decision": {"decision": "nuevo", "note": None, "decided_at": None},
+        "trend": 3.0,
+    },
+    {
+        "niche_label": "finanzas personales para jóvenes",
+        "format": "long",
+        "opportunity": {
+            "version": "v1",
+            "value": 76.0,
+            "state": "scored",
+            "components": {},
+            "components_used": [],
+        },
+        "automation": {
+            "version": "v1",
+            "value": 64.0,
+            "components": {"trait": 64.0},
+            "policy_risk": {"mean": 0.2, "level": "bajo"},
+        },
+        "confidence": "media",
+        "metrics": {"n_listings": 12, "n_active": 10, "n_income": 6, "income_median": 900.0},
+        "rpm_mid": 2.5,
+        "rpm_state": "calibrated",
+        "decision": {"decision": "tentativo", "note": None, "decided_at": None},
+        "trend": 3.0,
+    },
+    {
+        "niche_label": "misterios del océano profundo",
+        "format": "long",
+        "opportunity": {
+            "version": "v1",
+            "value": 69.0,
+            "state": "scored",
+            "components": {},
+            "components_used": [],
+        },
+        "automation": {
+            "version": "v1",
+            "value": 64.0,
+            "components": {"trait": 64.0},
+            "policy_risk": {"mean": 0.2, "level": "bajo"},
+        },
+        "confidence": "media",
+        "metrics": {"n_listings": 12, "n_active": 10, "n_income": 6, "income_median": 900.0},
+        "rpm_mid": 2.5,
+        "rpm_state": "calibrated",
+        "decision": {"decision": "nuevo", "note": None, "decided_at": None},
+        "trend": 3.0,
+    },
+    {
+        "niche_label": "recetas rápidas de cocina",
+        "format": "long",
+        "opportunity": {
+            "version": "v1",
+            "value": 58.0,
+            "state": "scored",
+            "components": {},
+            "components_used": [],
+        },
+        "automation": {
+            "version": "v1",
+            "value": 64.0,
+            "components": {"trait": 64.0},
+            "policy_risk": {"mean": 0.2, "level": "bajo"},
+        },
+        "confidence": "media",
+        "metrics": {"n_listings": 12, "n_active": 10, "n_income": 6, "income_median": 900.0},
+        "rpm_mid": 2.5,
+        "rpm_state": "calibrated",
+        "decision": {"decision": "descartado", "note": None, "decided_at": None},
+        "trend": 3.0,
+    },
+]
+
+NICHE_DETAIL: dict[str, Any] = {
+    "niche": {
+        "niche_label": "historia militar explicada",
+        "format": "long",
+        "opportunity": {
+            "version": "v1",
+            "value": 84.0,
+            "state": "scored",
+            "components": {},
+            "components_used": [],
+        },
+        "automation": {
+            "version": "v1",
+            "value": 64.0,
+            "components": {"trait": 64.0},
+            "policy_risk": {"mean": 0.2, "level": "bajo"},
+        },
+        "confidence": "media",
+        "metrics": {"n_listings": 12, "n_active": 10, "n_income": 6, "income_median": 900.0},
+        "rpm_mid": 2.5,
+        "rpm_state": "calibrated",
+        "decision": {"decision": "nuevo", "note": None, "decided_at": None},
+        "trend": 3.0,
+    },
+    "listings": [],
+    "language_mix": [
+        {"language": "en", "share_pct": 80.0},
+        {"language": "es", "share_pct": 15.0},
+        {"language": "unknown", "share_pct": 5.0},
+    ],
+    "history": [],
+}
+
+FLOWS: list[dict[str, Any]] = [
+    {
+        "id": "f0c90924-295a-4136-a0fb-d3fb2c3eacc6",
+        "niche_label": "historia militar explicada",
+        "format": "long",
+        "language": "en",
+        "status": "listo",
+        "attempts": 1,
+        "lease_until": None,
+        "rejection": None,
+        "created_at": "2026-11-02T02:05:45Z",
+        "updated_at": "2026-11-02T03:00:00Z",
+    },
+    {
+        "id": "a1b2c3d4-0000-4000-8000-000000000001",
+        "niche_label": "finanzas personales para jóvenes",
+        "format": "long",
+        "language": "en",
+        "status": "en_curso",
+        "attempts": 1,
+        "lease_until": None,
+        "rejection": None,
+        "created_at": "2026-11-02T02:05:45Z",
+        "updated_at": "2026-11-02T03:00:00Z",
+    },
+]
+
+REPORT: dict[str, Any] = {
+    "id": "f0c90924-295a-4136-a0fb-d3fb2c3eacc6",
+    "niche_label": "historia militar explicada",
+    "format": "long",
+    "language": "en",
+    "status": "listo",
+    "attempts": 1,
+    "lease_until": None,
+    "rejection": None,
+    "created_at": "2026-11-02T02:05:45Z",
+    "updated_at": "2026-11-02T03:00:00Z",
+    "evidence": {
+        "source": "niche",
+        "confidence": "media",
+        "language_mix": [
+            {"language": "en", "share_pct": 80.0},
+            {"language": "es", "share_pct": 15.0},
+            {"language": "unknown", "share_pct": 5.0},
+        ],
+        "gate": {
+            "min_automation": 90,
+            "max_human_minutes": 60,
+            "max_calibration_hours": 40,
+            "block_high_policy_risk": True,
+            "passed": True,
+            "reasons": [],
+        },
+    },
+    "dossier": {
+        "schema_version": "dossier-v3",
+        "request_id": "f0c90924-295a-4136-a0fb-d3fb2c3eacc6",
+        "niche_label": "personal_finance",
+        "format": "long",
+        "language": "en",
+        "horizon": "short",
+        "generated_at": "2026-11-02T03:00:00+00:00",
+        "verdict": {
+            "recommendation": "go_with_conditions",
+            "confidence": "medium",
+            "thesis": "Nicho con demanda estable y producción parcialmente automatizable.",
+            "main_risks": ["Dependencia de voz sintética aceptada por la plataforma"],
+            "unknowns": ["RPM real del nicho en el país objetivo"],
+            "conditions": ["Pasar a régimen tras 3 videos seguidos bajo 60 minutos humanos"],
+        },
+        "competitors": [
+            {
+                "name": "Canal A",
+                "channel_url": "https://www.youtube.com/@canal-a",
+                "subscribers": 120000,
+                "cadence": "3 videos por semana",
+                "format": "long",
+                "production_style": "Voz en off con material de archivo",
+                "evidence_kind": "researched",
+                "source_id": "s1",
+            },
+            {
+                "name": "Canal B",
+                "channel_url": "https://www.youtube.com/@canal-b",
+                "subscribers": 120000,
+                "cadence": "3 videos por semana",
+                "format": "long",
+                "production_style": "Voz en off con material de archivo",
+                "evidence_kind": "researched",
+                "source_id": "s2",
+            },
+            {
+                "name": "Canal C",
+                "channel_url": "https://www.youtube.com/@canal-c",
+                "subscribers": 120000,
+                "cadence": "3 videos por semana",
+                "format": "long",
+                "production_style": "Voz en off con material de archivo",
+                "evidence_kind": "researched",
+                "source_id": "s3",
+            },
+        ],
+        "production_flow": [
+            {
+                "order": 1,
+                "name": "Guion",
+                "human_minutes_per_video": 20,
+                "automation": "semi",
+                "tools": ["Voz sintética"],
+                "stays_human": "Revisión de hechos",
+            },
+            {
+                "order": 2,
+                "name": "Voz",
+                "human_minutes_per_video": 5,
+                "automation": "auto",
+                "tools": ["Voz sintética"],
+            },
+            {
+                "order": 3,
+                "name": "Edición",
+                "human_minutes_per_video": 30,
+                "automation": "semi",
+                "tools": ["Editor de video"],
+                "stays_human": "Ritmo y cortes",
+            },
+        ],
+        "roadmap": [
+            {
+                "name": "Preparación",
+                "weeks": 2,
+                "objective": "Definir identidad del canal y flujo de producción",
+                "deliverables": ["Guía de estilo", "Plantilla de edición"],
+                "tasks": ["Elegir nombre", "Configurar herramientas"],
+                "exit_criteria": ["Un video de prueba editado de punta a punta"],
+                "cost_usd": 49.0,
+            },
+            {
+                "name": "Producción piloto",
+                "weeks": 6,
+                "objective": "Publicar los primeros videos y medir retención",
+                "deliverables": ["8 videos publicados"],
+                "tasks": ["Producir 2 videos por semana"],
+                "exit_criteria": ["Retención media superior al 35 %"],
+                "cost_usd": 84.0,
+            },
+        ],
+        "budget": {
+            "lines": [
+                {
+                    "phase": "Preparación",
+                    "tool": "Editor de video",
+                    "description": "Suscripción del editor durante la preparación",
+                    "unit_cost_usd": 20.0,
+                    "quantity": 2,
+                    "recurrence": "monthly",
+                    "subtotal_usd": 40.0,
+                    "price_checked_on": "2026-10-23",
+                    "source_id": "s1",
+                    "evidence_kind": "researched",
+                },
+                {
+                    "phase": "Preparación",
+                    "tool": "Banco de música",
+                    "description": "Licencia mensual de música libre de derechos",
+                    "unit_cost_usd": 9.0,
+                    "quantity": 1,
+                    "recurrence": "monthly",
+                    "subtotal_usd": 9.0,
+                    "price_checked_on": "2026-10-23",
+                    "source_id": "s2",
+                    "evidence_kind": "researched",
+                },
+                {
+                    "phase": "Producción piloto",
+                    "tool": "Voz sintética",
+                    "description": "Plan mensual de voz sintética",
+                    "unit_cost_usd": 22.0,
+                    "quantity": 2,
+                    "recurrence": "monthly",
+                    "subtotal_usd": 44.0,
+                    "price_checked_on": "2026-10-23",
+                    "source_id": "s2",
+                    "evidence_kind": "researched",
+                },
+                {
+                    "phase": "Producción piloto",
+                    "tool": "Editor de video",
+                    "description": "Suscripción del editor durante la producción",
+                    "unit_cost_usd": 20.0,
+                    "quantity": 2,
+                    "recurrence": "monthly",
+                    "subtotal_usd": 40.0,
+                    "price_checked_on": "2026-10-23",
+                    "source_id": "s1",
+                    "evidence_kind": "researched",
+                },
+            ],
+            "totals": {"low": 100.0, "likely": 133.0, "high": 180.0},
+            "assumptions": ["Precios de lista sin descuentos", "Dos meses por fase"],
+        },
+        "tools": [
+            {
+                "name": "Editor de video",
+                "phase": "Preparación",
+                "purpose": "Edición y exportación",
+                "pricing": "US$20 al mes",
+                "cheaper_alternative": "Editor gratuito con marca de agua",
+                "automation": "semi",
+                "source_id": "s1",
+            },
+            {
+                "name": "Banco de música",
+                "phase": "Preparación",
+                "purpose": "Música sin reclamos de derechos",
+                "pricing": "US$9 al mes",
+                "automation": "manual",
+                "source_id": "s2",
+            },
+            {
+                "name": "Voz sintética",
+                "phase": "Producción piloto",
+                "purpose": "Narración",
+                "pricing": "US$22 al mes",
+                "automation": "auto",
+                "source_id": "s2",
+            },
+        ],
+        "automation_map": [
+            {
+                "step": "Voz",
+                "automated_today": "Narración completa con voz sintética",
+                "semi_automated": "Guion asistido por un modelo con revisión humana",
+                "dependency_risk": "Cambios de política sobre voces sintéticas",
+                "manual_fallback": "Contratar un locutor por video",
+            }
+        ],
+        "policy_risk": {
+            "level": "medio",
+            "summary": "El contenido repetitivo masivo puede limitar la monetización.",
+            "mitigations": ["Aportar análisis propio en cada video"],
+            "source_ids": ["s3"],
+        },
+        "break_even": {
+            "evidence_kind": "estimate",
+            "assumptions": ["RPM de referencia del backlog", "Crecimiento lineal"],
+            "monthly_income_usd": {"low": 50.0, "likely": 200.0, "high": 500.0},
+            "months_to_recover": {"low": None, "likely": 8, "high": 4},
+        },
+        "rights": {
+            "verdict": "cleared",
+            "summary": "Material propio generado o con licencia comercial vigente.",
+            "materials": [
+                {
+                    "kind": "visual",
+                    "description": "Gráficos y capturas generados por el propio pipeline",
+                    "origin": "own_generation",
+                    "license_or_policy": "Producción propia, sin material de terceros",
+                    "requires_permission": False,
+                },
+                {
+                    "kind": "audio",
+                    "description": "Música de banco con licencia comercial",
+                    "origin": "licensed",
+                    "license_or_policy": "Licencia mensual que cubre uso comercial en YouTube",
+                    "source_id": "s2",
+                    "requires_permission": False,
+                },
+                {
+                    "kind": "voice",
+                    "description": "Narración sintética del plan de voz",
+                    "origin": "licensed",
+                    "license_or_policy": "El plan incluye licencia comercial de la voz",
+                    "source_id": "s2",
+                    "requires_permission": False,
+                },
+            ],
+            "conditions": [],
+        },
+        "automation_plan": {
+            "summary": "El guion lo redacta un modelo con datos "
+            "verificados por una persona, la voz se sintetiza "
+            "sin intervención y el montaje parte de una "
+            "plantilla con cortes ajustados a mano; la "
+            "revisión final siempre es humana.",
+            "stages": [
+                {
+                    "step": "Guion",
+                    "mode": "semi",
+                    "approach": "Un modelo de lenguaje redacta el "
+                    "borrador a partir de una ficha de "
+                    "datos con fuentes citadas; una "
+                    "persona verifica cada cifra y "
+                    "reescribe el análisis propio antes "
+                    "de pasar a la voz. Se guarda la "
+                    "ficha.",
+                    "tools": [
+                        {"name": "Voz sintética", "interface": "API", "cost_usd_per_video": 0.5}
+                    ],
+                    "inputs": "Ficha de datos con fuentes",
+                    "outputs": "Guion final aprobado",
+                    "quality_gate": "Cada cifra tiene fuente y fue revisada por una persona",
+                    "failure_mode": "El modelo inventa una cifra",
+                    "retry_policy": "Regenerar el borrador con la ficha corregida, máximo 2 veces",
+                    "human_minutes_per_video": 20,
+                    "stays_human": "Verificar los hechos y escribir el análisis original",
+                },
+                {
+                    "step": "Voz",
+                    "mode": "auto",
+                    "approach": "El guion aprobado se envía por API "
+                    "al servicio de voz sintética con una "
+                    "voz fija; se transcribe el resultado "
+                    "y se compara con el guion para "
+                    "detectar omisiones o repeticiones "
+                    "antes de continuar al montaje.",
+                    "tools": [
+                        {"name": "Voz sintética", "interface": "API", "cost_usd_per_video": 1.0}
+                    ],
+                    "inputs": "Guion final aprobado",
+                    "outputs": "Audio narrado y su transcripción",
+                    "quality_gate": "El error de palabras no supera el umbral configurado",
+                    "failure_mode": "El servicio repite o recorta una frase",
+                    "retry_policy": "Resintetizar solo el fragmento fallido, máximo 3 veces",
+                    "human_minutes_per_video": 5,
+                    "stays_human": "Escuchar el resultado final",
+                },
+                {
+                    "step": "Edición",
+                    "mode": "semi",
+                    "approach": "Una plantilla de proyecto coloca "
+                    "audio, subtítulos y gráficos de "
+                    "forma automática; una persona ajusta "
+                    "cortes y ritmo y aprueba el render. "
+                    "La plantilla varía entre videos para "
+                    "no repetir la estructura.",
+                    "tools": [
+                        {
+                            "name": "Editor de video",
+                            "interface": "Aplicación de escritorio",
+                            "cost_usd_per_video": 0,
+                        }
+                    ],
+                    "inputs": "Audio, subtítulos y gráficos",
+                    "outputs": "Video renderizado",
+                    "quality_gate": "Duración, volumen y subtítulos pasan la revisión numérica",
+                    "failure_mode": "El render sale con subtítulos desfasados",
+                    "retry_policy": "Volver a renderizar tras corregir la plantilla",
+                    "human_minutes_per_video": 30,
+                    "stays_human": "Ritmo y cortes",
+                },
+            ],
+            "milestones": [
+                {
+                    "order": 1,
+                    "name": "Voz y guion automatizados",
+                    "description": "Se automatiza la cadena de "
+                    "guion asistido y voz "
+                    "sintética con sus controles "
+                    "de calidad, y se mide cuántos "
+                    "minutos humanos exige cada "
+                    "video de prueba durante la "
+                    "preparación del canal.",
+                    "acceptance_criteria": ["Un video de prueba con voz sin edición manual"],
+                    "depends_on": [],
+                },
+                {
+                    "order": 2,
+                    "name": "Montaje con plantilla",
+                    "description": "Se construye la plantilla de "
+                    "montaje que ensambla audio, "
+                    "subtítulos y gráficos, de "
+                    "modo que la persona solo "
+                    "ajuste cortes y apruebe el "
+                    "render final de cada video "
+                    "del piloto.",
+                    "acceptance_criteria": ["Un video completo en menos de 30 minutos humanos"],
+                    "depends_on": [1],
+                },
+            ],
+        },
+        "sources": [
+            {
+                "id": "s1",
+                "url": "https://example.com/fuente-1",
+                "title": "Fuente 1",
+                "accessed_on": "2026-10-23",
+            },
+            {
+                "id": "s2",
+                "url": "https://example.com/fuente-2",
+                "title": "Fuente 2",
+                "accessed_on": "2026-10-23",
+            },
+            {
+                "id": "s3",
+                "url": "https://example.com/fuente-3",
+                "title": "Fuente 3",
+                "accessed_on": "2026-10-23",
+            },
+        ],
+        "calibration": {
+            "videos": 6,
+            "setup_hours": 8.0,
+            "exit_criterion": {
+                "max_minutes_per_video": 60,
+                "consecutive_videos": 3,
+                "statement": "Pasar a régimen tras 3 videos seguidos bajo 60 minutos humanos",
+            },
+            "minutes_by_step": [
+                {"step": "Guion", "minutes_per_video": 40},
+                {"step": "Voz", "minutes_per_video": 10},
+                {"step": "Edición", "minutes_per_video": 45},
+            ],
+        },
+        "steady_state_evidence": {
+            "basis": "measured",
+            "reference_channel": "canal-historias",
+            "reference_minutes_per_video": 20,
+            "reference_sample_videos": 10,
+            "format_match": "Mismo formato (narración larga sin rostro) e idioma (inglés)",
+        },
+    },
+    "dossier_created_at": "2026-11-02T03:00:00Z",
+}
+
+PILOTS: list[dict[str, Any]] = [
+    {
+        "pilot_id": "pil_20261102_historia",
+        "status": "autorizado",
+        "niche_label": "historia militar explicada",
+        "format": "long",
+        "target_channel": "canal-historias",
+        "authorized_at": "2026-11-02T03:00:00Z",
+        "last_report_at": None,
+        "channel_last_contact_at": None,
+        "totals": {
+            "videos": 0,
+            "published": 0,
+            "measured": 0,
+            "by_stage": {},
+            "spent_usd": 0,
+            "equivalent_usd": 0,
+            "machine_minutes": 0,
+            "machine_minutes_complete": True,
+        },
+        "proposal": {"action": "sin_datos_suficientes", "reason": "x"},
+        "needs_decision": True,
+    }
+]

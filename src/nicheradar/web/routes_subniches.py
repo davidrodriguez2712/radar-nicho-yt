@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from starlette.responses import RedirectResponse, Response
 
 from nicheradar.web.client import ApiError
-from nicheradar.web.deps import current_session, render
+from nicheradar.web.deps import current_session, render, shape_guard
 from nicheradar.web.security import Session
 from nicheradar.web.subniches import AVISOS, detail_view, list_view, parse_filters
 
@@ -21,6 +21,7 @@ MISSING = "No se encontró lo que buscabas."
 
 
 @router.get("/subnichos")
+@shape_guard
 def subniche_list(
     request: Request, session: Annotated[Session, Depends(current_session)]
 ) -> Response:
@@ -59,6 +60,7 @@ def subniche_list(
 
 
 @router.get("/subnichos/{slug}")
+@shape_guard
 def subniche_card(
     request: Request,
     slug: str,

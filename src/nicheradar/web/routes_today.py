@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request
 from starlette.responses import Response
 
 from nicheradar.web.client import ApiClient, ApiError
-from nicheradar.web.deps import current_session, render
+from nicheradar.web.deps import current_session, render, shape_guard
 from nicheradar.web.format import spanish_date
 from nicheradar.web.security import Session
 from nicheradar.web.today import PAGE, today_view
@@ -30,6 +30,7 @@ def _items(api: ApiClient, path: str, params: dict[str, str] | None = None) -> l
 
 
 @router.get("/")
+@shape_guard
 def today(request: Request, session: Annotated[Session, Depends(current_session)]) -> Response:
     api: ApiClient = request.app.state.api
     # The topbar badge already reads /status (cached); the timezone is the configured one.

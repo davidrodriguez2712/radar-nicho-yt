@@ -1,6 +1,7 @@
 # src/nicheradar/web/format.py
 """Spanish number, money and date formatting for the mobile web."""
 
+import math
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -22,11 +23,16 @@ MONTHS = (
 
 
 def es_int(value: float) -> str:
+    """Whole number with '.' thousands; NaN and infinity (a malformed API) read as missing."""
+    if not math.isfinite(value):
+        return "—"
     return f"{round(value):,}".replace(",", ".")
 
 
 def usd_range(low: str | None, high: str | None) -> str | None:
     if low is None or high is None:
+        return None
+    if not (math.isfinite(float(low)) and math.isfinite(float(high))):
         return None
     return f"US$ {es_int(float(low))} – {es_int(float(high))}"
 
@@ -48,11 +54,13 @@ def local_datetime(value: str, timezone: str) -> str:
 
 
 def usd(value: float | str | None) -> str:
-    return "—" if value is None else f"US$ {es_int(float(value))}"
+    if value is None or not math.isfinite(float(value)):
+        return "—"
+    return f"US$ {es_int(float(value))}"
 
 
 def pct(value: float | None) -> str:
-    return "—" if value is None else f"{round(value)}%"
+    return "—" if value is None or not math.isfinite(value) else f"{round(value)}%"
 
 
 def spanish_date(moment: datetime, timezone: str) -> str:

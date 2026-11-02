@@ -1,6 +1,7 @@
 # src/nicheradar/web/niches.py
 """View models for the niche list (M2): what the template shows, never raw API payloads."""
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -62,7 +63,9 @@ def research_index(items: list[dict[str, Any]]) -> dict[tuple[str, str], dict[st
 
 def _score(block: dict[str, Any] | None) -> int | None:
     value = (block or {}).get("value")
-    return None if value is None else round(value)
+    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
+        return None
+    return round(value)
 
 
 def card(item: dict[str, Any], research: dict[str, Any] | None, rank: int) -> dict[str, Any]:

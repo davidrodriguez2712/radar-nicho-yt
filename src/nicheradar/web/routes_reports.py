@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request
 from starlette.responses import Response
 
 from nicheradar.web.client import ApiError
-from nicheradar.web.deps import current_session, render
+from nicheradar.web.deps import current_session, render, shape_guard
 from nicheradar.web.report import notice, report_view, status_view
 from nicheradar.web.research import UUID_RE
 from nicheradar.web.security import Session
@@ -29,6 +29,7 @@ def _error(request: Request, session: Session, message: str, status: int) -> Res
 
 
 @router.get("/informes/{report_id}")
+@shape_guard
 def report(
     request: Request,
     report_id: str,

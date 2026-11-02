@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from starlette.responses import RedirectResponse, Response
 
 from nicheradar.web.client import ApiError
-from nicheradar.web.deps import current_session, render
+from nicheradar.web.deps import current_session, render, shape_guard
 from nicheradar.web.format import local_datetime
 from nicheradar.web.niches import CONFIDENCE, FORMATS
 from nicheradar.web.pilots_form import (
@@ -166,6 +166,7 @@ def _page(
 
 
 @router.get("/pilotos/autorizar")
+@shape_guard
 def form(
     request: Request,
     session: Annotated[Session, Depends(current_session)],

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from starlette.responses import RedirectResponse, Response
 
 from nicheradar.web.client import ApiError
-from nicheradar.web.deps import current_session, render
+from nicheradar.web.deps import current_session, render, shape_guard
 from nicheradar.web.niches import AVISOS_NICHOS, list_view, parse_filters
 from nicheradar.web.security import Session
 
@@ -38,6 +38,7 @@ def _back(volver: str, aviso: str) -> str:
 
 
 @router.get("/nichos")
+@shape_guard
 def niche_list(request: Request, session: Annotated[Session, Depends(current_session)]) -> Response:
     filters = parse_filters(request.query_params)
     htmx = _fragment(request)

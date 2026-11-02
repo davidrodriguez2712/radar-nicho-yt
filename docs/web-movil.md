@@ -36,11 +36,43 @@ HTMX 2.0.4 e Inter 4.0 (con su licencia) viven en `src/nicheradar/web/static/`; 
 Manifiesto, iconos y un service worker que solo guarda los estáticos (nunca páginas con datos); hay una
 página sin conexión.
 
-## Pantallas de este corte
+## Pantallas del corte 1
 
-Hechas: M9 (lista de subnichos, `/subnichos`) y M10 (ficha del subnicho con inicio de la investigación).
-Faltan: Hoy, Nichos con decisiones, iniciar investigación de un nicho, informe y autorizar piloto (resto del
-corte 1), y los cortes 2 y 3. La barra inferior muestra «Pilotos» y «Más» desactivados hasta que existan.
+| Pantalla | Ruta | API que usa |
+|---|---|---|
+| Hoy (M1, M14 parcial) | `/` | `/market/niches`, `/flow-research`, `/pilots`, `/subniches`; cada tarjeta degrada sola si su fuente falla |
+| Nichos (M2) y decisión | `/nichos`, `POST /nichos/decidir` | `/market/niches` (hasta 200), `/flow-research` (últimos 100), `/market/niches/{etiqueta}/decisions` |
+| Iniciar investigación (M8) | `/nichos/investigar?etiqueta=&formato=`, `POST` | `/market/niches/{etiqueta}`, `POST /flow-research` |
+| Informe (M3, M11) | `/informes/{id}` | `/flow-research/{id}` (dossier v1, v2 y v3; v1/v2 con aviso; subnicho con aviso de confianza y fecha) |
+| Autorizar piloto (M4, M12) | `/pilotos/autorizar?informe=`, `POST` | `/flow-research/{id}`, `/pilots` (canales ocupados), `POST /pilots` |
+| Subnichos (M9, M10) | `/subnichos`, `/subnichos/{slug}`, `POST /subnichos/{slug}/investigar` | `/subniches`, `/subniches/{slug}`, `POST /flow-research` |
+
+Todas las pantallas de datos son `GET` protegidos por sesión; todo `POST` exige CSRF (salvo `/login`).
+
+### Rulings del plan
+
+1. La etiqueta del nicho viaja por query (`?etiqueta=`), no por ruta, porque la API de mercado no admite etiquetas con `/`.
+2. «Descartar» solo aparece para nichos de backlog (no subnichos).
+3. Autorizar un piloto no pide cadencia, preparación ni receta.
+4. `authorized_by` es un valor fijo.
+5. «Ver pilotos» está desactivado hasta el corte 2; la pestaña Pilotos y «Más» también.
+
+### Límites conocidos
+
+- `/market/niches`, `/flow-research` y `/pilots` se leen con tope de 100 a 200 registros y sin paginar: con más, la web ve los más recientes y lo avisa (por ejemplo, «Puede haber investigaciones más antiguas que no se ven; el botón Investigar podría repetir una»).
+- Etiquetas con `/` en el nombre del nicho: la API de mercado las rechaza (limitación de su ruta); la web no las puede abrir.
+- Un cuerpo de la API con forma inesperada (campos que faltan, `NaN`, tipos incorrectos) muestra un 503 en español («formato inesperado»), nunca un 500; las cifras no finitas se ven como «—».
+- Si la API cae, cada pantalla muestra su mensaje en español con 503 (o 200 en fragmentos HTMX).
+
+### Lo que no se muestra a propósito
+
+Porque la API no entrega el dato o el diseño lo difiere: Fit, Demanda y Volumen de un nicho; el idioma en la lista de nichos (y su filtro); Cadencia, Preparación y Receta al autorizar; la barra de proporción por etapa del informe; «Descartar» en subnichos; la pestaña Pilotos y «Más» (corte 2 y 3). No se inventa ningún valor para estos huecos.
+
+### Pruebas transversales
+
+`tests/test_web_smoke_screens.py` recorre las siete rutas con texto hostil en todas las cadenas, con la API caída, con cuerpos mal formados (cada campo reemplazado por `null`, texto, número, `NaN`, infinito, listas y objetos vacíos), con fechas sin zona horaria, y comprueba que no haya orígenes de terceros, código en línea, CSP distinto entre rutas ni `POST` sin CSRF que toque la API.
+
+Faltan el corte 2 (lista y panel de pilotos, preparación) y el corte 3 (paridad con Streamlit y retiro).
 
 ## Comprobación visual contra el Figma
 
@@ -48,9 +80,10 @@ corte 1), y los cortes 2 y 3. La barra inferior muestra «Pilotos» y «Más» d
 uv run python scripts/web_preview.py --out /tmp/web-preview
 ```
 
-Renderiza `/subnichos` y la ficha con datos de ejemplo (`scripts/web_preview_data.py`, sin API real) y guarda
-`lista.html`, `ficha.html` y, si hay Chrome (`--chrome RUTA`), `lista.png` y `ficha.png` a 390 px de ancho con
-escala 2. Compárense con el Figma M9 (`29:2`) y M10 (`30:2`). Los estados de investigación de la lista son
+Renderiza Subnichos (lista y ficha), Hoy, Nichos, Investigar, Informe v3 y Autorizar con datos de ejemplo
+(`scripts/web_preview_data.py`, sin API real) y guarda `lista`, `ficha`, `hoy`, `nichos`, `investigar`,
+`informe` y `autorizar` como `.html` y, si hay Chrome (`--chrome RUTA`), como `.png` a 390 px de ancho con
+escala 2. Compárense con el Figma M9 (`29:2`) y M10 (`30:2`) y los demás marcos del archivo. Los estados de investigación de la lista son
 ilustrativos, como en el Figma. Las rutas `file://` solo existen en esta vista previa. Chrome headless no
 baja de 500 px de ventana, por eso la página se mide dentro de un `iframe` de 390 px y se recorta con `sips`
 (macOS).
