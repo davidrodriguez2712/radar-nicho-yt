@@ -73,6 +73,8 @@ class ApiClient:
             try:
                 body_json = response.json()
                 detail = body_json.get("detail") if isinstance(body_json, dict) else None
+                if detail is None and isinstance(body_json, dict) and "problems" in body_json:
+                    detail = body_json  # the API's `{accepted: false, problems: [...]}` 422
             except ValueError:
                 detail = None
             raise ApiError(_kind(response.status_code), response.status_code, detail)

@@ -255,3 +255,29 @@ def report_detail(
         "dossier_created_at": "2026-11-02T03:00:00Z" if status == "listo" else None,
     }
     return base | over
+
+
+def pilot_item(pilot_id: str = "pil_20261102_historia", **over: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "pilot_id": pilot_id,
+        "status": "autorizado",
+        "niche_label": "historia militar explicada",
+        "format": "long",
+        "target_channel": "canal-historias",
+        "authorized_at": "2026-11-02T03:00:00Z",
+        "last_report_at": None,
+        "channel_last_contact_at": None,
+        "totals": {
+            "videos": 0,
+            "published": 0,
+            "measured": 0,
+            "by_stage": {},
+            "spent_usd": 0,
+            "equivalent_usd": 0,
+            "machine_minutes": 0,
+            "machine_minutes_complete": True,
+        },
+        "proposal": {"action": "sin_datos_suficientes", "reason": "x"},
+        "needs_decision": False,
+    }
+    return base | over
