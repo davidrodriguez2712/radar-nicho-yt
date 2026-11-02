@@ -260,7 +260,7 @@ solicitudes, no como dólares.
 - En un encargo de subnicho, el `gate_override` indicado al crearlo se congela siempre (el backlog solo lo congela si
   una compuerta falla) y, si existe, el dossier omite las compuertas de minutos de régimen y horas de calibración al
   entregarse; la autorización del piloto vuelve a comprobar todo y exige `accept_gate_failure`.
-- Autorizar el piloto: `scripts/pilots.py lanzar --niche-label subniche:<slug> --dossier-id ...` (resto de opciones
+- Autorizar el piloto: `scripts/pilots.py authorize --niche-label subniche:<slug> --dossier-id ...` (resto de opciones
   como en cualquier piloto).
 - En el paquete del piloto, la evidencia trae `scores` nulos, cifras con origen `estimate` y `confidence` `low` con
   menos de 10 canales incluidos (`medium` desde 10). `captured_at` es la fecha de la medición, no la de la autorización.
