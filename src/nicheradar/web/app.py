@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from nicheradar.config import Settings
-from nicheradar.web import routes_auth, routes_subniches
+from nicheradar.web import routes_auth, routes_niches, routes_subniches
 from nicheradar.web.client import ApiClient
 from nicheradar.web.deps import make_templates, render
 from nicheradar.web.security import LoginLimiter, SessionSigner
@@ -74,5 +74,6 @@ def create_app(
         return render(request, "offline.html")
 
     app.include_router(routes_auth.router)
+    app.include_router(routes_niches.router)
     app.include_router(routes_subniches.router)
     return app

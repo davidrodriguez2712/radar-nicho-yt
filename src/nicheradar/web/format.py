@@ -29,3 +29,11 @@ def compact(value: float | int | None) -> str:
 def local_datetime(value: str, timezone: str) -> str:
     moment = datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(ZoneInfo(timezone))
     return moment.strftime("%d/%m/%Y %H:%M")
+
+
+def usd(value: float | str | None) -> str:
+    return "—" if value is None else f"US$ {es_int(float(value))}"
+
+
+def pct(value: float | None) -> str:
+    return "—" if value is None else f"{round(value)}%"

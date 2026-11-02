@@ -1,7 +1,7 @@
 # tests/test_web_format.py
 import pytest
 
-from nicheradar.web.format import compact, es_int, local_datetime, usd_range
+from nicheradar.web.format import compact, es_int, local_datetime, pct, usd, usd_range
 
 
 @pytest.mark.parametrize(
@@ -27,3 +27,12 @@ def test_compact_abbreviates_counts_in_spanish(value: float | None, text: str) -
 def test_local_datetime_converts_to_the_configured_timezone() -> None:
     assert local_datetime("2026-10-31T12:00:00Z", "America/Lima") == "31/10/2026 07:00"
     assert local_datetime("2026-10-31T12:00:00+00:00", "UTC") == "31/10/2026 12:00"
+
+
+def test_usd_and_pct_format_for_spanish_readers() -> None:
+    assert usd(1234.4) == "US$ 1.234"
+    assert usd("19.0") == "US$ 19"
+    assert usd(None) == "—"
+    assert pct(80.0) == "80%"
+    assert pct(66.6) == "67%"
+    assert pct(None) == "—"

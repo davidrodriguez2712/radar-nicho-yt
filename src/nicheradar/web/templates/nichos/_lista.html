@@ -1,0 +1,32 @@
+{% from "components.html" import chip %}
+{% if error %}
+<div class="note note--rose" role="alert"><span class="note__title">No se pudo cargar</span>{{ error }}</div>
+{% else %}
+{% if notice %}<div class="note note--{{ notice[1] }}" role="status">{{ notice[0] }}</div>{% endif %}
+{% if warning %}<div class="note note--amber">{{ warning }}</div>{% endif %}
+{% if not view.total %}
+<p class="lead">Todavía no hay nichos. Los crea el radar de mercado.</p>
+{% else %}
+<div class="countline"><span><strong>{{ view.shown }}</strong> nichos</span><span>{% if filtros.orden == "automation" %}Automatización ↓{% else %}Opportunity ↓{% endif %}</span></div>
+{% for c in view.cards %}
+<article class="card">
+  <div class="card__title"><span class="rank">{{ c.rank }}</span><span class="card__name">{{ c.label }}</span></div>
+  <div class="tags">{{ chip(c.format_text, "neutral") }}{{ chip(c.decision_text, c.decision_kind) }}{% if c.research_text %}{{ chip(c.research_text, c.research_kind) }}{% endif %}</div>
+  <dl class="stats">{% for label, value in c.scores %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
+  {% if c.action.kind == "link" %}<a class="btn btn--{{ c.action.style }}" href="{{ c.action.href }}">{{ c.action.label }}</a>
+  {% elif c.action.kind == "decide" %}
+  <form method="post" action="/nichos/decidir">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="hidden" name="etiqueta" value="{{ c.label }}">
+    <input type="hidden" name="formato" value="{{ c.format }}">
+    <input type="hidden" name="decision" value="tentativo">
+    <input type="hidden" name="volver" value="/nichos">
+    <button class="btn btn--secondary" type="submit">{{ c.action.label }}</button>
+  </form>
+  {% else %}<button class="btn btn--secondary" type="button" disabled>{{ c.action.label }}</button>{% endif %}
+</article>
+{% else %}
+<p class="lead">Ningún nicho coincide con los filtros.</p>
+{% endfor %}
+{% endif %}
+{% endif %}

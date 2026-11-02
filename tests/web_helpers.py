@@ -143,3 +143,48 @@ def subniche_card(slug: str = "prehistoric_creatures", **over: object) -> dict[s
         "research": None,
     }
     return base | over
+
+
+def niche_item(
+    label: str = "historia militar explicada", fmt: str = "long", **over: object
+) -> dict[str, object]:
+    base: dict[str, object] = {
+        "niche_label": label,
+        "format": fmt,
+        "opportunity": {
+            "version": "v1",
+            "value": 78.0,
+            "state": "scored",
+            "components": {},
+            "components_used": [],
+        },
+        "automation": {
+            "version": "v1",
+            "value": 64.0,
+            "components": {"trait": 64.0},
+            "policy_risk": {"mean": 0.2, "level": "bajo"},
+        },
+        "confidence": "media",
+        "metrics": {"n_listings": 12, "n_active": 10, "n_income": 6, "income_median": 900.0},
+        "rpm_mid": 2.5,
+        "rpm_state": "calibrated",
+        "decision": {"decision": "nuevo", "note": None, "decided_at": None},
+        "trend": 3.0,
+    }
+    return base | over
+
+
+def flow_item(status: str = "listo", **over: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "id": "f0c90924-295a-4136-a0fb-d3fb2c3eacc6",
+        "niche_label": "historia militar explicada",
+        "format": "long",
+        "language": "en",
+        "status": status,
+        "attempts": 1,
+        "lease_until": None,
+        "rejection": None,
+        "created_at": "2026-11-02T02:05:45Z",
+        "updated_at": "2026-11-02T03:00:00Z",
+    }
+    return base | over
