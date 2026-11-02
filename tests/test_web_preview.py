@@ -19,3 +19,18 @@ def test_the_preview_renders_the_list_and_the_card_with_local_assets(tmp_path: P
 def test_the_preview_refuses_a_missing_output_directory_argument() -> None:
     with pytest.raises(SystemExit):
         web_preview.main([])
+
+
+def test_the_preview_renders_the_corte_1_screens_with_local_assets(tmp_path: Path) -> None:
+    assert web_preview.main(["--out", str(tmp_path), "--no-screenshots"]) == 0
+    expected = {
+        "hoy": "nichos que merecen tu atención",
+        "nichos": "historia militar explicada",
+        "investigar": "Iniciar investigación en inglés",
+        "informe": "Qué tan firme es",
+        "autorizar": "Autorizar piloto",
+    }
+    for name, text in expected.items():
+        html = (tmp_path / f"{name}.html").read_text()
+        assert text in html, name
+        assert "file://" in html and 'href="/static/' not in html, name

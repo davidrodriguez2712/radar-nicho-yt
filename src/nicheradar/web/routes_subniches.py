@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from starlette.responses import RedirectResponse, Response
 
 from nicheradar.web.client import ApiError
-from nicheradar.web.deps import current_session, render
+from nicheradar.web.deps import current_session, is_fragment, render, shape_guard
 from nicheradar.web.security import Session
 from nicheradar.web.subniches import AVISOS, detail_view, list_view, parse_filters
 
@@ -21,14 +21,13 @@ MISSING = "No se encontró lo que buscabas."
 
 
 @router.get("/subnichos")
+@shape_guard
 def subniche_list(
     request: Request, session: Annotated[Session, Depends(current_session)]
 ) -> Response:
     filters = parse_filters(request.query_params)
     # A history restore asks for the whole page even though htmx sets hx-request.
-    htmx = bool(request.headers.get("hx-request")) and not request.headers.get(
-        "hx-history-restore-request"
-    )
+    htmx = is_fragment(request)
     template = "subnichos/_lista.html" if htmx else "subnichos/lista.html"
     # Choosing paused/archived is explicit intent: the API hides them unless asked.
     inactive = filters.inactivos or filters.estado in INACTIVE_STATES
@@ -59,6 +58,7 @@ def subniche_list(
 
 
 @router.get("/subnichos/{slug}")
+@shape_guard
 def subniche_card(
     request: Request,
     slug: str,

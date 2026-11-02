@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "components.html" import segmented %}
+{% block title %}Nichos · NicheRadar{% endblock %}
+{% block content %}
+{{ segmented([("Nichos", "/nichos", True, None), ("Subnichos", "/subnichos", False, None)]) }}
+<h1 class="h1">Nichos</h1>
+<p class="caption">De mayor a menor por Opportunity (0 a 100).</p>
+<form class="filters" method="get" action="/nichos"
+      hx-get="/nichos" hx-trigger="change" hx-target="#contenido" hx-swap="innerHTML" hx-push-url="true">
+  <label class="pill"><input type="radio" name="formato" value=""{% if not filtros.formato %} checked{% endif %}>Todos{% if view %} {{ view.api_total }}{% endif %}</label>
+  <label class="pill"><input type="radio" name="formato" value="long"{% if filtros.formato == "long" %} checked{% endif %}>Largos{% if view %} {{ view.counts.long }}{% endif %}</label>
+  <label class="pill"><input type="radio" name="formato" value="shorts"{% if filtros.formato == "shorts" %} checked{% endif %}>Shorts{% if view %} {{ view.counts.shorts }}{% endif %}</label>
+  <label class="pill"><input type="checkbox" name="alta" value="1"{% if filtros.alta %} checked{% endif %}>Confianza alta</label>
+  <label class="pill"><input type="checkbox" name="ingresos" value="1"{% if filtros.ingresos %} checked{% endif %}>Con ingresos</label>
+  <label class="pill"><input type="checkbox" name="orden" value="automation"{% if filtros.orden == "automation" %} checked{% endif %}>Más automatizables</label>
+  <noscript><button class="btn btn--secondary" type="submit">Aplicar</button></noscript>
+</form>
+<div id="contenido" class="stack">
+{% include "nichos/_lista.html" %}
+</div>
+{% endblock %}

@@ -1,8 +1,12 @@
 # tests/web_helpers.py
 """Shared helpers for the mobile web tests."""
 
+import copy
 import re
 from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
+from uuid import UUID
 
 import httpx
 from fastapi.testclient import TestClient
@@ -10,6 +14,7 @@ from pydantic import SecretStr
 
 from nicheradar.config import Settings
 from nicheradar.web.app import create_app
+from tests.flow_research_samples import valid_dossier, valid_dossier_v2
 
 TOKEN = "t" * 32
 PASSWORD = "p" * 32
@@ -141,5 +146,138 @@ def subniche_card(slug: str = "prehistoric_creatures", **over: object) -> dict[s
         ],
         "channels_available": True,
         "research": None,
+    }
+    return base | over
+
+
+def niche_item(
+    label: str = "historia militar explicada", fmt: str = "long", **over: object
+) -> dict[str, object]:
+    base: dict[str, object] = {
+        "niche_label": label,
+        "format": fmt,
+        "opportunity": {
+            "version": "v1",
+            "value": 78.0,
+            "state": "scored",
+            "components": {},
+            "components_used": [],
+        },
+        "automation": {
+            "version": "v1",
+            "value": 64.0,
+            "components": {"trait": 64.0},
+            "policy_risk": {"mean": 0.2, "level": "bajo"},
+        },
+        "confidence": "media",
+        "metrics": {"n_listings": 12, "n_active": 10, "n_income": 6, "income_median": 900.0},
+        "rpm_mid": 2.5,
+        "rpm_state": "calibrated",
+        "decision": {"decision": "nuevo", "note": None, "decided_at": None},
+        "trend": 3.0,
+    }
+    return base | over
+
+
+def flow_item(status: str = "listo", **over: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "id": "f0c90924-295a-4136-a0fb-d3fb2c3eacc6",
+        "niche_label": "historia militar explicada",
+        "format": "long",
+        "language": "en",
+        "status": status,
+        "attempts": 1,
+        "lease_until": None,
+        "rejection": None,
+        "created_at": "2026-11-02T02:05:45Z",
+        "updated_at": "2026-11-02T03:00:00Z",
+    }
+    return base | over
+
+
+def niche_detail(
+    label: str = "historia militar explicada",
+    fmt: str = "long",
+    mix: list[tuple[str, float]] | None = None,
+) -> dict[str, object]:
+    mix = mix if mix is not None else [("en", 80.0), ("es", 15.0), ("unknown", 5.0)]
+    return {
+        "niche": niche_item(label, fmt),
+        "listings": [],
+        "language_mix": [{"language": code, "share_pct": share} for code, share in mix],
+        "history": [],
+    }
+
+
+REPORT_ID = "f0c90924-295a-4136-a0fb-d3fb2c3eacc6"
+
+
+def dossier_v3(**over: Any) -> dict[str, Any]:
+    """A valid dossier-v3 (the flow-research sample, deep-copied so tests can mutate it)."""
+    now = datetime(2026, 11, 2, 3, 0, tzinfo=UTC)
+    return copy.deepcopy(valid_dossier(UUID(REPORT_ID), now)) | over
+
+
+def dossier_v2() -> dict[str, Any]:
+    return copy.deepcopy(valid_dossier_v2(UUID(REPORT_ID), datetime(2026, 11, 2, 3, 0, tzinfo=UTC)))
+
+
+def dossier_v1() -> dict[str, Any]:
+    old = dossier_v2()
+    old["schema_version"] = "dossier-v1"
+    del old["rights"], old["automation_plan"]
+    return old
+
+
+def report_detail(
+    status: str = "listo", dossier: dict[str, Any] | None = None, **over: Any
+) -> dict[str, Any]:
+    """A flow-research order as the API returns it, with the frozen evidence and the dossier."""
+    base: dict[str, Any] = flow_item(status) | {
+        "evidence": {
+            "source": "niche",
+            "confidence": "media",
+            "language_mix": [
+                {"language": "en", "share_pct": 80.0},
+                {"language": "es", "share_pct": 15.0},
+                {"language": "unknown", "share_pct": 5.0},
+            ],
+            "gate": {
+                "min_automation": 90,
+                "max_human_minutes": 60,
+                "max_calibration_hours": 40,
+                "block_high_policy_risk": True,
+                "passed": True,
+                "reasons": [],
+            },
+        },
+        "dossier": dossier if status == "listo" else None,
+        "dossier_created_at": "2026-11-02T03:00:00Z" if status == "listo" else None,
+    }
+    return base | over
+
+
+def pilot_item(pilot_id: str = "pil_20261102_historia", **over: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "pilot_id": pilot_id,
+        "status": "autorizado",
+        "niche_label": "historia militar explicada",
+        "format": "long",
+        "target_channel": "canal-historias",
+        "authorized_at": "2026-11-02T03:00:00Z",
+        "last_report_at": None,
+        "channel_last_contact_at": None,
+        "totals": {
+            "videos": 0,
+            "published": 0,
+            "measured": 0,
+            "by_stage": {},
+            "spent_usd": 0,
+            "equivalent_usd": 0,
+            "machine_minutes": 0,
+            "machine_minutes_complete": True,
+        },
+        "proposal": {"action": "sin_datos_suficientes", "reason": "x"},
+        "needs_decision": False,
     }
     return base | over

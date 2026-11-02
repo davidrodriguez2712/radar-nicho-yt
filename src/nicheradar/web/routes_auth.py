@@ -1,5 +1,5 @@
 # src/nicheradar/web/routes_auth.py
-"""Login, logout and the home redirect."""
+"""Login and logout."""
 
 import hmac
 from typing import Annotated
@@ -99,9 +99,3 @@ def logout(
     response = RedirectResponse("/login", status_code=303)
     response.delete_cookie(SESSION_COOKIE, path="/")
     return response
-
-
-@router.get("/")
-def home(_session: Annotated[Session, Depends(current_session)]) -> Response:
-    # The mobile "Hoy" screen arrives in the next slice; until then the list is the landing page.
-    return RedirectResponse("/subnichos", status_code=303)

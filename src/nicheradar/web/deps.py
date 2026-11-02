@@ -1,6 +1,9 @@
 # src/nicheradar/web/deps.py
 """Request helpers: session guard, safe redirects and template rendering."""
 
+import functools
+import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlsplit
@@ -90,3 +93,54 @@ def render(
     data.update(context or {})
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(request, name, data, status_code=status_code)
+
+
+def is_fragment(request: Request) -> bool:
+    """An htmx partial request; a history restore needs the whole page."""
+    return bool(request.headers.get("hx-request")) and not request.headers.get(
+        "hx-history-restore-request"
+    )
+
+
+SHAPE_ERRORS = (KeyError, IndexError, TypeError, AttributeError, ValueError, ArithmeticError)
+SHAPE_MESSAGE = (
+    "La API devolvió datos con un formato inesperado, así que no se puede mostrar esta pantalla. "
+    "Intenta de nuevo o revisa la API."
+)
+_log = logging.getLogger(__name__)
+
+
+def shape_guard(handler: Callable[..., Response]) -> Callable[..., Response]:
+    """A malformed API payload is a 503 with a Spanish message, never an unhandled 500.
+
+    It only wraps view building of GET screens: API failures keep their own, more specific messages.
+    """
+
+    @functools.wraps(handler)
+    def guarded(*args: Any, **kwargs: Any) -> Response:
+        try:
+            return handler(*args, **kwargs)
+        except SHAPE_ERRORS:
+            _log.exception("unexpected API payload shape on %s", handler.__name__)
+            request: Request = kwargs["request"]
+            if is_fragment(request):
+                # htmx does not swap 5xx and the full page would nest inside #contenido.
+                response = render(
+                    request,
+                    "_aviso_error.html",
+                    {"message": SHAPE_MESSAGE},
+                    session=kwargs.get("session"),
+                    with_radar=False,
+                )
+                response.headers["Vary"] = "HX-Request, HX-History-Restore-Request"
+                return response
+            return render(
+                request,
+                "error.html",
+                {"message": SHAPE_MESSAGE},
+                status_code=503,
+                session=kwargs.get("session"),
+                with_radar=False,
+            )
+
+    return guarded

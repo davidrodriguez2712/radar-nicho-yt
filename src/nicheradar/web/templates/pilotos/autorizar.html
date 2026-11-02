@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "informes/_resumen.html" import tiempo, compuertas %}
+{% block title %}Autorizar piloto · NicheRadar{% endblock %}
+{% macro field_error(name) -%}
+{%- if errors.get(name) %}<span class="caption" id="error-{{ name }}" role="alert">{{ errors[name] }}</span>{% endif -%}
+{%- endmacro %}
+{% block content %}
+<p class="eyebrow">AUTORIZAR PILOTO</p>
+<h1 class="h1 h1--md">Antes de lanzar, fija las reglas</h1>
+<p class="lead">Lo que fijes aquí no cambia después.</p>
+{% if error %}<div class="note note--rose" id="error" role="alert">{{ error }}{% if reasons %}<ul>{% for r in reasons %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}</div>{% endif %}
+{% if busy_warning %}<div class="note note--amber" role="status">{{ busy_warning }}</div>{% endif %}
+<section class="card" id="nicho">
+  <h2 class="h2">Nicho</h2>
+  <p>{{ title_label }} · {{ format_text }}</p>
+  <p class="caption">Se toma del informe listo.</p>
+</section>
+{% if subniche %}
+<section class="card" id="evidencia-subnicho">
+  <h2 class="h2">Evidencia de un subnicho</h2>
+  <p>Viene de la medición de YouTube{% if subniche.date %} del {{ subniche.date }}{% if subniche.ago is not none %} (hace {{ subniche.ago }} días){% endif %}{% endif %}{% if subniche.confidence %}, con confianza {{ subniche.confidence }}{% endif %}.
+  No hay puntajes de Opportunity ni de automatización, así que esa compuerta no aplica. Las de tiempo y derechos sí.</p>
+</section>
+{% endif %}
+<section class="card" id="idioma">
+  <h2 class="h2">Idioma (fijado en la investigación)</h2>
+  <p>{{ language }}</p>
+</section>
+{{ tiempo(v) }}
+{{ compuertas(v) }}
+<form class="stack" method="post" action="/pilotos/autorizar" id="autorizar">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <input type="hidden" name="informe" value="{{ report_id }}">
+  {% set existing = values.canal_modo == "existente" or (values.canal and values.canal_modo != "nuevo") %}
+  <section class="card" id="canal">
+    <h2 class="h2">Canal destino</h2>
+    <label class="row"><span><input type="radio" name="canal_modo" value="nuevo"{% if not existing %} checked{% endif %}> Canal nuevo (sin nombre todavía; se ignora el nombre de abajo)</span></label>
+    <label class="row"><span><input type="radio" name="canal_modo" value="existente"{% if existing %} checked{% endif %}> Usar el canal que escribo abajo</span></label>
+    <div class="field">
+      <label for="canal-texto">Nombre del canal</label>
+      <input id="canal-texto" type="text" name="canal" value="{{ values.canal }}" placeholder="canal-nombre" autocomplete="off">
+      {{ field_error("canal") }}
+    </div>
+    {% for c in busy %}
+    <div class="row"><span>{{ c }}</span><span class="row__value">Ocupado: ya tiene un piloto activo</span></div>
+    {% endfor %}
+  </section>
+  <section class="card">
+    <div class="field">
+      <label for="max_videos">Tope de videos</label>
+      <input id="max_videos" type="number" inputmode="numeric" name="max_videos" value="{{ values.max_videos }}" min="1" max="50">
+      <span class="caption">1 a 50</span>{{ field_error("max_videos") }}
+    </div>
+    <div class="field">
+      <label for="valid_days">Vigencia (días)</label>
+      <input id="valid_days" type="number" inputmode="numeric" name="valid_days" value="{{ values.valid_days }}" min="1" max="60">
+      <span class="caption">Editable ahora</span>{{ field_error("valid_days") }}
+    </div>
+    <div class="field">
+      <label for="close_after">Hitos fallidos para cerrar</label>
+      <input id="close_after" type="number" inputmode="numeric" name="close_after" value="{{ values.close_after }}" min="1" max="5">
+      <span class="caption">1 a 5. Solo se elige ahora.</span>{{ field_error("close_after") }}
+    </div>
+  </section>
+  <section class="card" id="presupuesto">
+    <h2 class="h2">Presupuesto del informe (tope: {{ values.max_videos }} videos)</h2>
+    <div class="rows">{% for label, value in v.budget %}<div class="row"><span class="row__label">{{ label }}</span><span class="row__value">{{ value }}</span></div>{% endfor %}</div>
+    <p class="caption">Cifras del informe; no incluyen tu tiempo y no cambian con el tope de videos.</p>
+  </section>
+  <section class="card" id="reglas">
+    <h2 class="h2">Reglas de parada</h2>
+    <p class="muted">Se usan las reglas por defecto del formato: retención, exploración e ingresos. Las que se pueden medir se comparan solas.</p>
+  </section>
+  {% if needs_no_go %}<label class="note note--amber"><input type="checkbox" name="accept_no_go" value="1"{% if accepted[0] %} checked{% endif %}> Acepto lanzarlo aunque el informe recomienda no avanzar.</label>{% endif %}
+  {% if needs_gate %}<label class="note note--amber"><input type="checkbox" name="accept_gate_failure" value="1"{% if accepted[1] %} checked{% endif %}> Acepto lanzarlo aunque no pasa una compuerta de selección.</label>{% endif %}
+  <button class="btn btn--primary" type="submit">Autorizar piloto</button>
+  <a class="btn btn--secondary" href="/informes/{{ report_id }}">Cancelar</a>
+</form>
+{% endblock %}

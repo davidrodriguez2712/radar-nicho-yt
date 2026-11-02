@@ -79,8 +79,9 @@ def test_the_count_line_and_the_segmented_selector() -> None:
     api = api_with(subniche_item("a_one"), subniche_item("b_two", finalist=False))
     text = make_client(api).get("/subnichos").text
     assert "1</strong> finalistas de 2" in text
-    assert "Nichos" in text
+    assert '<a class="segmented__item" href="/nichos">Nichos</a>' in text
     assert re.search(r'<a[^>]*aria-current="page"[^>]*>Subnichos', text)
+    assert '<a class="tab tab--on" href="/nichos" aria-current="page">' in text
 
 
 def test_filters_narrow_the_cards_in_the_web_layer() -> None:

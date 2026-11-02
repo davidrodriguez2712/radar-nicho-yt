@@ -5,6 +5,7 @@ import argparse
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 from fastapi.testclient import TestClient
@@ -17,7 +18,15 @@ from nicheradar.web.app import create_app
 if __package__ in (None, ""):  # run as `python scripts/web_preview.py`
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.web_preview_data import CARD, ITEMS  # noqa: E402
+from scripts.web_preview_data import (  # noqa: E402
+    CARD,
+    FLOWS,
+    ITEMS,
+    NICHE_DETAIL,
+    NICHES,
+    PILOTS,
+    REPORT,
+)
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 PASSWORD = "p" * 32
@@ -29,13 +38,26 @@ MAX_HEIGHT = 8000
 
 def _api(request: httpx.Request) -> httpx.Response:
     path = request.url.path
+    body: object
     if path == "/api/v1/subniches":
-        return httpx.Response(200, json={"items": ITEMS})
-    if path.startswith("/api/v1/subniches/"):
-        return httpx.Response(200, json=CARD)
-    if path == "/api/v1/status":
-        return httpx.Response(200, json={"radar_paused": True})
-    return httpx.Response(404, json={"detail": "not found"})
+        body = {"items": ITEMS}
+    elif path.startswith("/api/v1/subniches/"):
+        body = CARD
+    elif path == "/api/v1/status":
+        body = {"radar_paused": True, "timezone": "America/Lima"}
+    elif path == "/api/v1/market/niches":
+        body = {"items": NICHES, "total": len(NICHES), "limit": 200, "offset": 0}
+    elif path.startswith("/api/v1/market/niches/"):
+        body = NICHE_DETAIL
+    elif path == "/api/v1/flow-research":
+        body = {"items": FLOWS}
+    elif path.startswith("/api/v1/flow-research/"):
+        body = REPORT
+    elif path == "/api/v1/pilots":
+        body = {"items": PILOTS}
+    else:
+        return httpx.Response(404, json={"detail": "not found"})
+    return httpx.Response(200, json=body)
 
 
 def _local(html: str) -> str:
@@ -54,7 +76,16 @@ def render_pages(out: Path) -> dict[str, Path]:
     web = TestClient(app, follow_redirects=False)
     assert web.post("/login", data={"password": PASSWORD}).status_code == 303
     slug = CARD["hypothesis"]["slug"]
-    pages = {"lista": "/subnichos", "ficha": f"/subnichos/{slug}"}
+    label = quote(NICHES[0]["niche_label"], safe="")
+    pages = {
+        "lista": "/subnichos",
+        "ficha": f"/subnichos/{slug}",
+        "hoy": "/",
+        "nichos": "/nichos",
+        "investigar": f"/nichos/investigar?etiqueta={label}&formato=long",
+        "informe": f"/informes/{REPORT['id']}",
+        "autorizar": f"/pilotos/autorizar?informe={REPORT['id']}",
+    }
     written: dict[str, Path] = {}
     for name, path in pages.items():
         target = out / f"{name}.html"

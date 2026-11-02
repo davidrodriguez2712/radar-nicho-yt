@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Iniciar investigación · NicheRadar{% endblock %}
+{% block content %}
+<p class="eyebrow">Iniciar investigación de flujo</p>
+<h1 class="h1 h1--md">{{ label }} · {{ format_text }}</h1>
+<p class="lead">Elige el idioma de la investigación. La competencia, los precios y las herramientas cambian por idioma, y un dossier en el idioma equivocado cuesta una investigación entera.</p>
+{% if error %}<div class="note note--rose" role="alert">{{ error }}{% if reasons %}<ul>{% for r in reasons %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}</div>{% endif %}
+<form class="stack" method="post" action="/nichos/investigar">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <input type="hidden" name="etiqueta" value="{{ label }}">
+  <input type="hidden" name="formato" value="{{ format }}">
+  <section class="card">
+    <h2 class="h2">Idioma de las fichas del nicho</h2>
+    {% for o in lang.options %}
+    <label class="row"><span><input type="radio" name="idioma" value="{{ o.code }}"{% if chosen == o.code %} checked{% endif %}> {{ o.name }}{% if o.suggested %} <span class="chip chip--green">Sugerido</span>{% endif %}</span><span class="row__value">{{ o.share }}%</span></label>
+    {% endfor %}
+    {% if lang.unknown_share is not none %}<div class="row"><span class="row__label">Sin dato</span><span class="row__value">{{ lang.unknown_share }}% · no se puede elegir como idioma</span></div>{% endif %}
+    <p class="caption">Si hay empate o predomina «sin dato», no se preselecciona nada y debes elegir tú. Si el nicho tiene fichas en dos idiomas relevantes, inicia una investigación por cada uno.</p>
+  </section>
+  <section class="card">
+    <h2 class="h2">Qué pasa al iniciar</h2>
+    <p class="muted">Se crea un encargo con clave nicho + formato + idioma. Claude Code lo reclama (60 min) e investiga en ese idioma. El dossier y el piloto heredan el idioma; no se cambia después. Cambiar de idioma exige una investigación nueva.</p>
+  </section>
+  {% if lang.no_choice %}<div class="note note--amber">Este nicho no tiene fichas con idioma conocido: no se puede iniciar la investigación todavía.</div>
+  {% elif not chosen %}<div class="note note--amber">Elige un idioma para continuar.</div>{% endif %}
+  <button class="btn btn--primary" type="submit"{% if lang.no_choice %} disabled{% endif %}>Iniciar investigación{% if chosen %} en {{ lang.options | selectattr("code", "equalto", chosen) | map(attribute="name") | first | default(chosen) | lower }}{% endif %}</button>
+  <a class="btn btn--secondary" href="/nichos">Cancelar</a>
+</form>
+{% endblock %}

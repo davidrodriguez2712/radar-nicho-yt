@@ -61,7 +61,8 @@ h2,.h2{margin:0;font-size:18px;line-height:24px;font-weight:700}
 .countline strong{color:var(--ink)}
 .rows{display:flex;flex-direction:column;gap:8px}
 .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;background:var(--pale);border-radius:10px}
-.row__label{font-size:13px;color:var(--muted)}
+.row__label{font-size:13px;color:var(--muted);min-width:5.5em}
+input[type=radio],input[type=checkbox]{accent-color:var(--primary)}
 .row__value{font-size:15px;font-weight:700}
 .list{display:flex;flex-direction:column}
 .list__item{display:flex;flex-direction:column;gap:4px;padding:10px 0;border-bottom:1px solid var(--line)}

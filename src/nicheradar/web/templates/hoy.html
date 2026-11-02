@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "components.html" import chip %}
+{% block title %}Hoy · NicheRadar{% endblock %}
+{% block content %}
+<h1 class="h1">Hoy</h1>
+<p class="caption">{{ today }}</p>
+
+<section class="card" id="hoy-pilotos">
+  {% if not v.pilots.ok %}
+  <div class="note note--amber">Pilotos: no disponible ahora</div>
+  {% else %}
+  <h2 class="h2">{% if v.pilots.count == 0 %}Ningún piloto necesita algo de ti{% elif v.pilots.count == 1 %}1 piloto necesita algo de ti{% else %}{{ v.pilots.count }} pilotos necesitan algo de ti{% endif %}</h2>
+  {% if v.pilots.truncated %}<div class="note note--amber">Puede haber registros más antiguos que no se ven.</div>{% endif %}
+  <div class="list">
+    {% for p in v.pilots.cards %}
+    <div class="list__item"><span class="list__name">{{ p.label }}</span><span class="muted">{{ p.channel }}</span>{{ chip(p.text, "amber") }}</div>
+    {% endfor %}
+  </div>
+  <button class="btn btn--secondary" type="button" disabled>Ver pilotos</button>
+  <p class="caption">Próximamente</p>
+  {% endif %}
+</section>
+
+<section class="card" id="hoy-informes">
+  <h2 class="h2">Informes listos</h2>
+  {% if not v.reports.ok %}
+  <div class="note note--amber">Informes listos: no disponible ahora</div>
+  {% else %}
+  {% if v.reports.unchecked %}<div class="note note--amber">No se pudo comprobar si ya tienen piloto.</div>{% endif %}
+  {% if v.reports.truncated %}<div class="note note--amber">Puede haber registros más antiguos que no se ven.</div>{% endif %}
+  <div class="list">
+    {% for r in v.reports.cards %}
+    <div class="list__item"><a class="list__name" href="{{ r.href }}">{{ r.label }}</a><span class="tags">{{ chip(r.format_text, "neutral") }}{{ chip("Dossier listo", "green") }}</span></div>
+    {% else %}
+    <p class="lead">Ningún informe listo espera un piloto.</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+<section class="card" id="hoy-nichos">
+  <h2 class="h2">3 nichos que merecen tu atención</h2>
+  {% if not v.niches.ok %}
+  <div class="note note--amber">Nichos: no disponible ahora</div>
+  {% else %}
+  {% if v.niches.unchecked %}<div class="note note--amber">No se pudo leer el estado de las investigaciones: el botón Investigar podría repetir una.</div>{% endif %}
+  {% if v.niches.truncated %}<div class="note note--amber">Puede haber registros más antiguos que no se ven; el botón Investigar podría repetir una investigación.</div>{% endif %}
+  <div class="list">
+    {% for c in v.niches.cards %}
+    <div class="list__item">
+      <span class="list__name"><span class="rank">{{ c.rank }}</span>{{ c.label }}</span>
+      <div class="tags">{{ chip(c.format_text, "neutral") }}{{ chip(c.decision_text, c.decision_kind) }}{% if c.research_text %}{{ chip(c.research_text, c.research_kind) }}{% endif %}</div>
+      <dl class="stats">{% for label, value in c.scores %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
+      {% if c.action.kind == "link" %}<a class="btn btn--{{ c.action.style }}" href="{{ c.action.href }}">{{ c.action.label }}</a>
+      {% elif c.action.kind == "decide" %}
+      <form method="post" action="/nichos/decidir">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}">
+        <input type="hidden" name="etiqueta" value="{{ c.label }}">
+        <input type="hidden" name="formato" value="{{ c.format }}">
+        <input type="hidden" name="decision" value="tentativo">
+        <input type="hidden" name="volver" value="/nichos">
+        <button class="btn btn--secondary" type="submit">{{ c.action.label }}</button>
+      </form>
+      {% else %}<button class="btn btn--secondary" type="button" disabled>{{ c.action.label }}</button>{% endif %}
+    </div>
+    {% else %}
+    <p class="lead">Todavía no hay nichos con puntaje.</p>
+    {% endfor %}
+  </div>
+  <a class="btn btn--secondary" href="/nichos">Ver todos los nichos</a>
+  {% endif %}
+</section>
+
+<section class="card" id="hoy-subnichos">
+  <h2 class="h2">Subnichos medidos</h2>
+  {% if not v.subniches.ok %}
+  <div class="note note--amber">Subnichos: no disponible ahora</div>
+  {% else %}
+  <div class="list">
+    {% for c in v.subniches.cards %}
+    <div class="list__item">
+      <span class="list__name"><span class="rank">{{ c.rank }}</span><a href="{{ c.href }}">{{ c.label }}</a></span>
+      {% if c.income %}
+      <div class="income"><span class="income__label">Ingreso típico por canal al mes</span><span class="income__value">{{ c.income }}</span></div>
+      <dl class="stats">{% for label, value in c.stats %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
+      {% else %}<p class="muted">Todavía sin medición.</p>{% endif %}
+    </div>
+    {% else %}
+    <p class="lead">Todavía no hay subnichos finalistas.</p>
+    {% endfor %}
+  </div>
+  <a class="btn btn--secondary" href="/subnichos">Ver subnichos</a>
+  {% endif %}
+</section>
+{% endblock %}
