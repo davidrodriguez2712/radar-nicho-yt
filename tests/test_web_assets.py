@@ -65,6 +65,24 @@ def test_the_service_worker_is_served_at_the_root_scope_and_caches_only_static_f
     assert "/api/" not in body  # never caches API data
 
 
+def test_the_service_worker_revalidates_static_files_so_a_redeploy_is_not_stale() -> None:
+    body = anonymous().get("/sw.js").text
+    branch = body.split('startsWith("/static/")', 1)[1].split('request.mode === "navigate"', 1)[0]
+    assert "cache.put" in branch and "fetch(request)" in branch
+    assert "/api/" not in body
+    assert body.count("cache.put") == 1  # the only write outside install is the /static/ branch
+
+
+def test_the_manifest_icons_are_not_declared_maskable() -> None:
+    manifest = json.loads(anonymous().get("/static/manifest.webmanifest").text)
+    assert {icon["purpose"] for icon in manifest["icons"]} == {"any"}
+
+
+def test_the_segmented_control_is_not_declared_as_tabs() -> None:
+    text = (ROOT / "templates/components.html").read_text()
+    assert "tablist" not in text
+
+
 def test_the_offline_page_is_public() -> None:
     response = anonymous().get("/sin-conexión")
     assert response.status_code == 200 and "Sin conexión" in response.text

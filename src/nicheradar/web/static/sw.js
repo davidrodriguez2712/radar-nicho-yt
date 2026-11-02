@@ -26,7 +26,22 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/static/")) {
-    event.respondWith(caches.match(request).then((hit) => hit || fetch(request)));
+    // Stale-while-revalidate: answer from the cache, refresh it in the background.
+    event.respondWith(
+      caches.open(CACHE).then((cache) =>
+        cache.match(request).then((hit) => {
+          const fresh = fetch(request).then((response) => {
+            if (response.ok) cache.put(request, response.clone());
+            return response;
+          });
+          if (hit) {
+            fresh.catch(() => {});
+            return hit;
+          }
+          return fresh;
+        })
+      )
+    );
     return;
   }
   if (request.mode === "navigate") {

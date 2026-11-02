@@ -31,7 +31,7 @@
 {%- endmacro %}
 
 {% macro segmented(options) -%}
-<div class="segmented" role="tablist">
+<div class="segmented">
   {% for label, href, selected, count in options %}
   {% if href %}<a class="segmented__item{% if selected %} segmented__item--on{% endif %}" href="{{ href }}"{% if selected %} aria-current="page"{% endif %}>{{ label }}{% if count is not none %} <span class="segmented__count">{{ count }}</span>{% endif %}</a>
   {% else %}<span class="segmented__item" aria-disabled="true" title="Próximamente">{{ label }}</span>{% endif %}
