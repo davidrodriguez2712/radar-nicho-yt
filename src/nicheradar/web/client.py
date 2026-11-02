@@ -65,15 +65,21 @@ class ApiClient:
                 headers={"Authorization": f"Bearer {token.get_secret_value()}"},
             ) as client:
                 response = client.request(method, "/api/v1" + path, params=params, json=body)
-        except httpx.HTTPError as error:
+        except (httpx.HTTPError, httpx.InvalidURL) as error:
             raise ApiError("unavailable") from error
         if response.status_code >= 400:
             try:
-                detail = response.json().get("detail")
-            except (ValueError, AttributeError):
+                body_json = response.json()
+                detail = body_json.get("detail") if isinstance(body_json, dict) else None
+            except ValueError:
                 detail = None
             raise ApiError(_kind(response.status_code), response.status_code, detail)
         if response.status_code == 204 or not response.content:
             return {}
-        result: dict[str, Any] = response.json()
+        try:
+            result = response.json()
+        except ValueError as error:
+            raise ApiError("error", response.status_code) from error
+        if not isinstance(result, dict):
+            raise ApiError("error", response.status_code)
         return result

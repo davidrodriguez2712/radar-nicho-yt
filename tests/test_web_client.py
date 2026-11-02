@@ -87,3 +87,33 @@ def test_a_missing_service_token_is_reported_without_calling_the_api() -> None:
     with pytest.raises(ApiError) as error:
         client.request("GET", "/x")
     assert error.value.kind == "not_configured" and api.calls == []
+
+
+def test_a_2xx_with_a_non_json_body_is_a_typed_error() -> None:
+    api = Api({("GET", "/api/v1/x"): lambda request: httpx.Response(200, text="<html>hi</html>")})
+    with pytest.raises(ApiError) as error:
+        client_for(api).request("GET", "/x")
+    assert error.value.kind == "error" and error.value.status == 200
+
+
+def test_a_2xx_with_a_json_list_is_a_typed_error() -> None:
+    api = Api({("GET", "/api/v1/x"): (200, [1, 2])})
+    with pytest.raises(ApiError) as error:
+        client_for(api).request("GET", "/x")
+    assert error.value.kind == "error" and error.value.status == 200
+
+
+def test_an_error_status_with_a_json_list_body_keeps_its_kind_and_has_no_detail() -> None:
+    api = Api({("GET", "/api/v1/x"): (409, [1])})
+    with pytest.raises(ApiError) as error:
+        client_for(api).request("GET", "/x")
+    assert error.value.kind == "conflict" and error.value.detail is None
+
+
+def test_an_invalid_api_url_is_unavailable() -> None:
+    def bad(request: httpx.Request) -> httpx.Response:
+        raise httpx.InvalidURL("bad")
+
+    with pytest.raises(ApiError) as error:
+        client_for(Api({("GET", "/api/v1/x"): bad})).request("GET", "/x")
+    assert error.value.kind == "unavailable"
