@@ -10,6 +10,8 @@ propietario; el detalle de cada release está en `docs/release-*.md`.
 | `uv run pytest` | Suite completa (necesita Postgres local para los tests de base de datos) |
 | `uv run ruff check . && uv run mypy` | Lint y tipos (los mismos que corre CI) |
 | `uv run python scripts/smoke_compose.py` | Prueba de humo aislada: construye imágenes y levanta compose |
+| `uv run python scripts/web_preview.py --out DIR` | Capturas de la web móvil (lista y ficha, 390 px) con datos de ejemplo; ver `docs/web-movil.md` |
+| `NR_DASHBOARD_UI=streamlit\|web` | Variable del dashboard: interfaz que sirve (por defecto `streamlit`); ver `docs/web-movil.md` |
 
 ## Release (imágenes)
 
