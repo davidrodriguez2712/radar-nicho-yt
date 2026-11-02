@@ -5,7 +5,7 @@
 <p class="eyebrow">NicheRadar</p>
 <h1 class="h1">Entrar</h1>
 {% if pending %}
-<div class="note note--amber"><span class="note__title">Acceso pendiente</span>Configura NR_DASHBOARD_PASSWORD para abrir el observatorio.</div>
+<div class="note note--amber"><span class="note__title">Acceso pendiente</span>{{ pending_message or "Configura NR_DASHBOARD_PASSWORD para abrir el observatorio." }}</div>
 {% else %}
 <form class="page" method="post" action="/login">
   <div class="field"><label for="password">Contraseña de acceso</label>

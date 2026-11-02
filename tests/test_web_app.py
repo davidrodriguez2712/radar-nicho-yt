@@ -61,6 +61,10 @@ def test_the_health_endpoint_answers_without_a_session() -> None:
     assert response.status_code == 200 and response.text == "ok"
 
 
+def test_the_health_endpoint_also_answers_head() -> None:
+    assert TestClient(create_app(settings())).head("/_stcore/health").status_code == 200
+
+
 def test_every_response_carries_the_security_headers() -> None:
     response = TestClient(create_app(settings())).get("/_stcore/health")
     policy = response.headers["content-security-policy"]

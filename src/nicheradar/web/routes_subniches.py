@@ -44,6 +44,7 @@ def subniche_list(
             {"active_tab": "nichos", "error": error.message, "view": None, "filtros": filters},
             status_code=200 if htmx else 503,
             session=session,
+            with_radar=False,
         )
     else:
         view = list_view(data["items"], filters)
@@ -75,6 +76,7 @@ def subniche_card(
             {"message": MISSING if missing else error.message, "active_tab": "nichos"},
             status_code=404 if missing else 503,
             session=session,
+            with_radar=False,
         )
     return render(
         request,

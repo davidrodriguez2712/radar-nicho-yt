@@ -56,7 +56,7 @@ def create_app(
             response.headers["Cache-Control"] = "no-store"
         return response
 
-    @app.get("/_stcore/health", response_class=PlainTextResponse)
+    @app.api_route("/_stcore/health", methods=["GET", "HEAD"], response_class=PlainTextResponse)
     def health() -> str:
         # Same path Streamlit exposes: compose, the smoke test and the proxy probe rely on it.
         return "ok"

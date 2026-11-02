@@ -19,10 +19,28 @@ def _secure(request: Request) -> bool:
     return request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https"
 
 
+PENDING_PASSWORD = "Configura NR_DASHBOARD_PASSWORD para abrir el observatorio."
+PENDING_TOKEN = "Falta configurar NR_SERVICE_TOKEN para abrir el observatorio."
+
+
+def _pending(request: Request) -> Response | None:
+    """The access cannot work until both the password and the service token exist."""
+    config = request.app.state.config
+    if config.dashboard_password is None:
+        message = PENDING_PASSWORD
+    elif config.service_token is None or request.app.state.signer is None:
+        message = PENDING_TOKEN
+    else:
+        return None
+    return render(
+        request, "login.html", {"pending": True, "pending_message": message}, status_code=503
+    )
+
+
 @router.get("/login")
 def login_form(request: Request, next: str = "/") -> Response:
-    if request.app.state.config.dashboard_password is None:
-        return render(request, "login.html", {"pending": True}, status_code=503)
+    if (pending := _pending(request)) is not None:
+        return pending
     return render(request, "login.html", {"next": safe_next(next)})
 
 
@@ -34,8 +52,9 @@ def login(
 ) -> Response:
     config = request.app.state.config
     signer = request.app.state.signer
-    if config.dashboard_password is None or signer is None:
-        return render(request, "login.html", {"pending": True}, status_code=503)
+    if (pending := _pending(request)) is not None:
+        return pending
+    assert config.dashboard_password is not None and signer is not None  # _pending guarantees it
     limiter = request.app.state.limiter
     if limiter.blocked(LIMIT_KEY):
         return render(

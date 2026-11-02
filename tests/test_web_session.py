@@ -94,6 +94,22 @@ def test_a_missing_password_means_the_access_is_pending() -> None:
     assert response.status_code == 503 and "Acceso pendiente" in response.text
 
 
+def test_pending_note_covers_each_missing_piece() -> None:
+    from pydantic import SecretStr
+
+    no_token = client(service_token=None)
+    page = no_token.get("/login")
+    assert page.status_code == 503 and "Acceso pendiente" in page.text
+    posted = login(no_token)
+    assert posted.status_code == 503  # type: ignore[attr-defined]
+    assert "Falta configurar NR_SERVICE_TOKEN" in posted.text  # type: ignore[attr-defined]
+    assert "NR_DASHBOARD_PASSWORD" not in posted.text  # type: ignore[attr-defined]
+    no_password = client(dashboard_password=None, service_token=SecretStr(TOKEN))
+    posted = login(no_password)
+    assert "Configura NR_DASHBOARD_PASSWORD" in posted.text  # type: ignore[attr-defined]
+    assert "Acceso pendiente" in client(service_token=None).get("/login").text
+
+
 def test_a_correct_password_sets_a_safe_cookie_and_redirects() -> None:
     web = client()
     response = login(web)
@@ -134,6 +150,25 @@ def test_a_protected_page_redirects_to_login_and_remembers_the_destination() -> 
 def test_an_htmx_request_without_a_session_gets_an_hx_redirect() -> None:
     response = client().get("/", headers={"hx-request": "true"})
     assert response.status_code == 401 and response.headers["hx-redirect"] == "/login"
+
+
+def test_the_htmx_redirect_remembers_a_same_origin_destination() -> None:
+    web = client()
+    current = {"hx-request": "true", "hx-current-url": "http://testserver/subnichos?estado=paused"}
+    response = web.get("/", headers=current)
+    assert response.headers["hx-redirect"] == "/login?next=%2Fsubnichos%3Festado%3Dpaused"
+    for hostile in (
+        "https://evil.test/subnichos",
+        "//evil.test/x",
+        "javascript:alert(1)",
+        "http://testserver.evil.test/subnichos",
+    ):
+        response = web.get("/", headers={"hx-request": "true", "hx-current-url": hostile})
+        assert response.status_code == 401 and response.headers["hx-redirect"] == "/login"
+    response = web.get(
+        "/", headers={"hx-request": "true", "hx-current-url": "http://testserver//evil.test"}
+    )
+    assert response.headers["hx-redirect"] == "/login"
 
 
 def test_after_login_the_home_redirects_to_the_subniche_list() -> None:

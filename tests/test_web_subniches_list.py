@@ -197,3 +197,51 @@ def test_an_htmx_request_with_the_api_down_gets_a_swappable_200_fragment() -> No
     assert response.status_code == 200 and "API no disponible" in response.text
     assert "<html" not in response.text
     assert response.headers["vary"] == "HX-Request, HX-History-Restore-Request"
+
+
+def test_a_failing_page_does_not_add_a_status_call_and_status_uses_a_short_timeout() -> None:
+    import httpx
+
+    seen: list[str] = []
+
+    def down(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        raise httpx.ConnectError("down")
+
+    api = Api({LIST: down})
+    web = make_client(api)
+    response = web.get("/subnichos")
+    assert response.status_code == 503
+    assert api.count("GET", "/api/v1/status") == 0
+
+    from nicheradar.web.client import STATUS_TIMEOUT_SECONDS, TIMEOUT_SECONDS
+
+    assert STATUS_TIMEOUT_SECONDS == 3 and TIMEOUT_SECONDS == 15
+    timeouts: list[object] = []
+
+    def record(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.extensions["timeout"])
+        return httpx.Response(200, json={"radar_paused": False})
+
+    from nicheradar.web.app import create_app
+    from tests.web_helpers import settings
+
+    app = create_app(settings(), transport=httpx.MockTransport(record))
+    app.state.api.request("GET", "/status", timeout=STATUS_TIMEOUT_SECONDS)
+    assert timeouts[0]["read"] == 3  # type: ignore[index]
+    app.state.api.request("GET", "/status")
+    assert timeouts[1]["read"] == 15  # type: ignore[index]
+
+
+def test_the_status_call_made_by_a_page_uses_the_short_timeout() -> None:
+    import httpx
+
+    timeouts: list[float] = []
+
+    def status(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.extensions["timeout"]["read"])
+        return httpx.Response(200, json={"radar_paused": False})
+
+    api = Api({LIST: (200, {"items": []}), ("GET", "/api/v1/status"): status})
+    assert make_client(api).get("/subnichos").status_code == 200
+    assert timeouts == [3]

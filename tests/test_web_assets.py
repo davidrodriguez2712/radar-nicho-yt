@@ -125,6 +125,11 @@ def test_an_authenticated_page_uses_the_base_with_the_bar_the_nav_and_the_pwa_li
     assert 'rel="manifest"' in page.text and 'name="theme-color"' in page.text
     assert "/static/css/app.css" in page.text and "/static/js/htmx.min.js" in page.text
     assert "htmx-config" in page.text and "includeIndicatorStyles" in page.text
+    meta = re.search(r'<meta name="htmx-config" content=\'([^\']+)\'', page.text)
+    assert meta is not None
+    config = json.loads(meta.group(1))
+    # Offline promise: htmx must not keep page copies (data, CSRF token) in localStorage.
+    assert config["historyCacheSize"] == 0
 
 
 def test_the_radar_badge_reflects_the_api_state_and_is_cached() -> None:

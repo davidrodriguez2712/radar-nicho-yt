@@ -92,7 +92,6 @@ def card(item: dict[str, Any], rank: int) -> dict[str, Any]:
     else:
         button = ("Ver subnicho", "secondary")
     return {
-        "slug": item["slug"],
         "label": item["label"],
         "rank": rank,
         "finalist": item["finalist"],
@@ -171,7 +170,6 @@ def detail_view(card: dict[str, Any], timezone: str) -> dict[str, Any]:
         for reason, count in ((measured or {}).get("excluded") or {}).items()
     ]
     return {
-        "slug": hypothesis["slug"],
         "post_href": f"/subnichos/{quote(hypothesis['slug'], safe='')}/investigar",
         "label": hypothesis["label"],
         "finalist": hypothesis["finalist"],
