@@ -112,6 +112,8 @@ de siete días. No elimines estos controles ni presentes evidencia caducada como
 - `[ESQUEMA]` `src/nicheradar/repositories/schema_v1.py` y `migrations/`: esquema y migraciones.
 - `[API]` `src/nicheradar/api.py`: API privada autenticada y controles operativos.
 - `[DASHBOARD]` `src/nicheradar/dashboard.py`: interfaz privada en español.
+- `[WEB MÓVIL]` `src/nicheradar/web/` y `docs/web-movil.md`: interfaz móvil (FastAPI + HTMX) que
+  sustituye al dashboard con `NR_DASHBOARD_UI=web`; vista previa en `scripts/web_preview.py`.
 - `[ACTIVACIÓN]` `scripts/activate_live.py`: políticas y preflight live; conserva la pausa.
 - `[EASYPANEL]` `scripts/easypanel_stage.mjs`: inspección, despliegue, probes y activaciones
   acotadas. No imprimir respuestas crudas que puedan contener secretos.

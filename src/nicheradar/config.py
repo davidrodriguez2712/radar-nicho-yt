@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000, ge=1024, le=65535)
     dashboard_host: str = "127.0.0.1"
     dashboard_port: int = Field(default=8501, ge=1024, le=65535)
+    dashboard_ui: Literal["streamlit", "web"] = "streamlit"
     worker_poll_seconds: int = Field(default=30, ge=1, le=3600)
     worker_maximum_attempts: int = Field(default=3, ge=1, le=10)
     external_concurrency: int = Field(default=1, ge=1, le=4)

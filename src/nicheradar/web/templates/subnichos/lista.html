@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "components.html" import segmented %}
+{% block title %}Subnichos · NicheRadar{% endblock %}
+{% block content %}
+{{ segmented([("Nichos", None, False, None), ("Subnichos", "/subnichos", True, view.total if view else None)]) }}
+<h1 class="h1">Subnichos</h1>
+<p class="caption">Ideas de nicho que medimos en YouTube. El ingreso es una estimación de un canal típico, no lo que ganarías.</p>
+<form class="filters" id="filtros" method="get" action="/subnichos"
+      hx-get="/subnichos" hx-trigger="change" hx-target="#contenido" hx-swap="innerHTML" hx-push-url="true">
+  <label class="pill"><input type="checkbox" name="finalistas" value="1"{% if filtros.finalistas %} checked{% endif %}>Finalistas</label>
+  <select class="pill pill--select" name="familia" aria-label="Familia">
+    <option value="">Familia ▾</option>
+    {% if view %}{% for key, label in view.familias %}<option value="{{ key }}"{% if filtros.familia == key %} selected{% endif %}>{{ label }}</option>{% endfor %}{% endif %}
+  </select>
+  <select class="pill pill--select" name="estado" aria-label="Estado">
+    <option value="">Estado ▾</option>
+    {% if view %}{% for key, label in view.estados %}<option value="{{ key }}"{% if filtros.estado == key %} selected{% endif %}>{{ label }}</option>{% endfor %}{% endif %}
+  </select>
+  <label class="pill"><input type="checkbox" name="inactivos" value="1"{% if filtros.inactivos %} checked{% endif %}>Ver pausados y archivados</label>
+  <noscript><button class="btn btn--secondary" type="submit">Aplicar</button></noscript>
+</form>
+<div id="contenido" class="page">
+{% include "subnichos/_lista.html" %}
+</div>
+{% endblock %}

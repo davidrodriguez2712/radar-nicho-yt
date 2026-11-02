@@ -1,0 +1,40 @@
+{% macro chip(text, kind="neutral") -%}
+<span class="chip chip--{{ kind }}">{{ text }}</span>
+{%- endmacro %}
+
+{% macro button(label, kind="primary", href=None, disabled=False, type="button") -%}
+{% if href and not disabled %}<a class="btn btn--{{ kind }}" href="{{ href }}">{{ label }}</a>
+{% else %}<button class="btn btn--{{ kind }}" type="{{ type }}"{% if disabled %} disabled{% endif %}>{{ label }}</button>{% endif %}
+{%- endmacro %}
+
+{% macro topbar(radar_state, csrf_token) -%}
+<header class="topbar">
+  <a class="brand" href="/">NicheRadar</a>
+  <span class="spacer"></span>
+  {% if radar_state == "paused" %}{{ chip("Radar pausado", "amber") }}{% elif radar_state == "active" %}{{ chip("Radar activo", "green") }}{% endif %}
+  {% if csrf_token %}
+  <form method="post" action="/salir"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="btn btn--secondary" type="submit">Salir</button></form>
+  {% endif %}
+</header>
+{%- endmacro %}
+
+{% macro bottomnav(active) -%}
+<nav class="bottomnav" aria-label="Principal">
+  {% for key, icon, label, href in [("hoy", "◉", "Hoy", "/"), ("nichos", "▦", "Nichos", "/subnichos"), ("pilotos", "◫", "Pilotos", None), ("mas", "⋯", "Más", None)] %}
+  {% if href %}
+  <a class="tab{% if key == active %} tab--on{% endif %}" href="{{ href }}"{% if key == active %} aria-current="page"{% endif %}><span class="tab__icon" aria-hidden="true">{{ icon }}</span><span class="tab__label">{{ label }}</span></a>
+  {% else %}
+  <span class="tab tab--soon" aria-disabled="true" title="Próximamente"><span class="tab__icon" aria-hidden="true">{{ icon }}</span><span class="tab__label">{{ label }}</span></span>
+  {% endif %}
+  {% endfor %}
+</nav>
+{%- endmacro %}
+
+{% macro segmented(options) -%}
+<div class="segmented">
+  {% for label, href, selected, count in options %}
+  {% if href %}<a class="segmented__item{% if selected %} segmented__item--on{% endif %}" href="{{ href }}"{% if selected %} aria-current="page"{% endif %}>{{ label }}{% if count is not none %} <span class="segmented__count">{{ count }}</span>{% endif %}</a>
+  {% else %}<span class="segmented__item" aria-disabled="true" title="Próximamente">{{ label }}</span>{% endif %}
+  {% endfor %}
+</div>
+{%- endmacro %}

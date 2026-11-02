@@ -20,6 +20,15 @@ def api() -> None:
 
 def dashboard() -> None:
     config = Settings()
+    if config.dashboard_ui == "web":
+        uvicorn.run(
+            "nicheradar.web.app:create_app",
+            factory=True,
+            host=config.dashboard_host,
+            port=config.dashboard_port,
+            access_log=False,
+        )
+        return
     script = str(files("nicheradar").joinpath("dashboard.py"))
     raise SystemExit(
         subprocess.call(
