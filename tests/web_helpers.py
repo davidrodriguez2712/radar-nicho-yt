@@ -110,3 +110,36 @@ def subniche_item(slug: str = "prehistoric_creatures", **over: object) -> dict[s
         "research": None,
     }
     return base | over
+
+
+def channel(title: str | None = "WUFO TV", **over: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "channel_id": "UC" + "a" * 22,
+        "title": title,
+        "subscribers": 39600,
+        "monthly_long_views": 5580483,
+        "income_low": "11160.97",
+        "income_high": "27902.42",
+        "traction": True,
+        "flags": [],
+    }
+    return base | over
+
+
+def hypothesis_of(item: dict[str, object]) -> dict[str, object]:
+    return {k: item[k] for k in item if k not in ("measurement", "research")}
+
+
+def subniche_card(slug: str = "prehistoric_creatures", **over: object) -> dict[str, object]:
+    item = subniche_item(slug)
+    base: dict[str, object] = {
+        "hypothesis": hypothesis_of(item),
+        "measurement": item["measurement"],
+        "channels": [
+            channel(),
+            channel("Curious Fing", subscribers=16800, monthly_long_views=1376974, traction=False),
+        ],
+        "channels_available": True,
+        "research": None,
+    }
+    return base | over

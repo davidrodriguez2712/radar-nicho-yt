@@ -1,21 +1,23 @@
 # src/nicheradar/web/routes_subniches.py
-"""Sub-niche screens: M9 list (this task) and M10 card (next task)."""
+"""Sub-niche screens: M9 list and M10 card with the start-research action."""
 
 from typing import Annotated
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Request
-from starlette.responses import Response
+from fastapi import APIRouter, Depends, Form, Request
+from starlette.responses import RedirectResponse, Response
 
 from nicheradar.web.client import ApiError
 from nicheradar.web.deps import current_session, render
 from nicheradar.web.security import Session
-from nicheradar.web.subniches import list_view, parse_filters
+from nicheradar.web.subniches import AVISOS, detail_view, list_view, parse_filters
 
 router = APIRouter()
 
 
 VARY = "HX-Request, HX-History-Restore-Request"
 INACTIVE_STATES = ("paused", "archived")
+MISSING = "No se encontró lo que buscabas."
 
 
 @router.get("/subnichos")
@@ -53,3 +55,70 @@ def subniche_list(
         )
     response.headers["Vary"] = VARY
     return response
+
+
+@router.get("/subnichos/{slug}")
+def subniche_card(
+    request: Request,
+    slug: str,
+    session: Annotated[Session, Depends(current_session)],
+    aviso: str = "",
+) -> Response:
+    try:
+        card = request.app.state.api.request("GET", f"/subniches/{quote(slug, safe='')}")
+    except ApiError as error:
+        # The API answers 422 for a slug it cannot even look up (too long): same as unknown.
+        missing = error.kind in ("not_found", "invalid")
+        return render(
+            request,
+            "error.html",
+            {"message": MISSING if missing else error.message, "active_tab": "nichos"},
+            status_code=404 if missing else 503,
+            session=session,
+        )
+    return render(
+        request,
+        "subnichos/ficha.html",
+        {
+            "active_tab": "nichos",
+            "v": detail_view(card, request.app.state.config.timezone),
+            "notice": AVISOS.get(aviso),
+        },
+        session=session,
+    )
+
+
+@router.post("/subnichos/{slug}/investigar")
+def start_research(
+    request: Request,
+    slug: str,
+    session: Annotated[Session, Depends(current_session)],
+    csrf: Annotated[str, Form()] = "",
+) -> Response:
+    if not request.app.state.signer.csrf_valid(session, csrf):
+        return render(
+            request,
+            "error.html",
+            {"message": "La solicitud no es válida."},
+            status_code=403,
+            session=session,
+        )
+    api = request.app.state.api
+    target = f"/subnichos/{quote(slug, safe='')}"
+    try:
+        hypothesis = api.request("GET", f"/subniches/{quote(slug, safe='')}")["hypothesis"]
+        # Format and language come from the hypothesis, never from the form.
+        result = api.request(
+            "POST",
+            "/flow-research",
+            body={
+                "niche_label": f"subniche:{hypothesis['slug']}",
+                "format": hypothesis["format"],
+                "language": hypothesis["language"],
+            },
+        )
+    except ApiError as error:
+        aviso = "no-lista" if error.kind == "conflict" else "error"
+        return RedirectResponse(f"{target}?aviso={aviso}", status_code=303)
+    aviso = "creada" if result.get("created") else "existente"
+    return RedirectResponse(f"{target}?aviso={aviso}", status_code=303)
