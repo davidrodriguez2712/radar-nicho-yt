@@ -10,6 +10,7 @@ from fastapi.responses import PlainTextResponse
 
 from nicheradar.config import Settings
 from nicheradar.web import routes_auth
+from nicheradar.web.client import ApiClient
 from nicheradar.web.deps import make_templates
 from nicheradar.web.security import LoginLimiter, SessionSigner
 
@@ -31,6 +32,7 @@ def create_app(
     app.state.config = config
     app.state.transport = transport
     app.state.clock = clock
+    app.state.api = ApiClient(config, transport=transport)
     app.state.signer = SessionSigner.from_settings(config, clock)
     app.state.limiter = LoginLimiter(clock)
     app.state.templates = make_templates()
