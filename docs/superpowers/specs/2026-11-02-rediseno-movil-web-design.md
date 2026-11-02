@@ -100,9 +100,9 @@ Reglas de datos de este corte:
 M5 Lista de pilotos (`GET /pilots`), M6 Panel del piloto (`GET /pilots/{id}`), M7 Preparación del canal y M13 Panel del
 piloto en calibración, M14 completo. **Hueco de datos conocido:** el reporte de canal (`channel-report-v1` y `v2`)
 trae `machine_minutes` pero **no los minutos humanos por video**, que es lo que M13 necesita para la racha de
-calibración. Opciones: (a) añadir un campo opcional de minutos humanos por video al reporte de canal (contrato nuevo,
-`channel-report-v3`), o (b) que el propietario los registre a mano en el panel del piloto. Hasta decidirlo, M13 muestra
-solo lo que la API ya entrega.
+calibración. Decisión: añadir el campo de minutos humanos por video al reporte de canal (contrato nuevo, `channel-report-v3`), enviado
+automáticamente por el pipeline del canal; el propietario no los registra a mano (ver «Decisiones del propietario»).
+Hasta que exista, M13 muestra solo lo que la API ya entrega.
 
 ### 7. Corte 3: paridad con Streamlit
 
@@ -135,10 +135,12 @@ Operación, Escenarios, Configuración, Análisis de canal y el detalle de oport
 7. `NR_DASHBOARD_UI=streamlit` sigue funcionando sin cambios y `web` no importa Streamlit.
 8. La web no hace ninguna petición externa (revisión de la política de contenido y de las pruebas).
 
-## Decisiones pendientes del propietario
+## Decisiones del propietario (2026-11-02, spec aprobado)
 
-1. **Orden de los cortes:** ¿el corte 1 (trabajo diario) primero, como propongo, o prefieres otro orden?
-2. **Hueco de M13:** ¿añadimos los minutos humanos por video al reporte de canal (contrato nuevo) o los registras a mano
-   en el panel del piloto?
-3. **Fuente Inter:** se incluye en el paquete (unos cientos de KB) para que la web no dependa de terceros; si prefieres
-   la fuente del sistema, se omite y pierde algo de fidelidad con el Figma.
+1. **Orden de los cortes:** el propuesto: corte 1 (trabajo diario), corte 2 (pilotos y preparación), corte 3 (paridad).
+2. **Hueco de M13:** el propietario **no registra nada a mano**. Por tanto el reporte de canal incorpora los minutos
+   humanos por video de forma automática: un contrato nuevo, `channel-report-v3`, con un campo opcional de minutos
+   humanos por video que el pipeline del canal calcula y envía (el propietario no lo teclea). Es un cambio aparte, con
+   su propio spec y plan, y es **requisito del corte 2** (M13); el corte 1 no depende de él. Hasta entonces M13 muestra
+   solo lo que la API ya entrega.
+3. **Fuente Inter:** incluida en el paquete, para que la web no dependa de terceros.
