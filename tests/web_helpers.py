@@ -188,3 +188,17 @@ def flow_item(status: str = "listo", **over: object) -> dict[str, object]:
         "updated_at": "2026-11-02T03:00:00Z",
     }
     return base | over
+
+
+def niche_detail(
+    label: str = "historia militar explicada",
+    fmt: str = "long",
+    mix: list[tuple[str, float]] | None = None,
+) -> dict[str, object]:
+    mix = mix if mix is not None else [("en", 80.0), ("es", 15.0), ("unknown", 5.0)]
+    return {
+        "niche": niche_item(label, fmt),
+        "listings": [],
+        "language_mix": [{"language": code, "share_pct": share} for code, share in mix],
+        "history": [],
+    }
