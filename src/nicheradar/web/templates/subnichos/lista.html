@@ -19,7 +19,7 @@
   <label class="pill"><input type="checkbox" name="inactivos" value="1"{% if filtros.inactivos %} checked{% endif %}>Ver pausados y archivados</label>
   <noscript><button class="btn btn--secondary" type="submit">Aplicar</button></noscript>
 </form>
-<div id="contenido" class="page">
+<div id="contenido" class="stack">
 {% include "subnichos/_lista.html" %}
 </div>
 {% endblock %}

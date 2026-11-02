@@ -7,7 +7,7 @@
 {% if pending %}
 <div class="note note--amber"><span class="note__title">Acceso pendiente</span>{{ pending_message or "Configura NR_DASHBOARD_PASSWORD para abrir el observatorio." }}</div>
 {% else %}
-<form class="page" method="post" action="/login">
+<form class="stack" method="post" action="/login">
   <div class="field"><label for="password">Contraseña de acceso</label>
   <input id="password" name="password" type="password" autocomplete="current-password" required></div>
   <input type="hidden" name="next" value="{{ next }}">
