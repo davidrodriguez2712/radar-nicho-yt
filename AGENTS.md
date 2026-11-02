@@ -145,6 +145,13 @@ de siete días. No elimines estos controles ni presentes evidencia caducada como
   decisiones propias, consumo USD y créditos incluidos, y scores frente a confianza.
 - No liberes reservas inciertas sin evidencia de no cobro. No repitas solicitudes externas
   después de un fallo ambiguo.
+- **Diseño (Figma):** el diseño de NicheRadar vive en un solo archivo, «NicheRadar · Rediseño total (5
+  propuestas)» (<https://www.figma.com/design/JmBvlfNURrV226WOZLuCEz/NicheRadar-%C2%B7-Redise%C3%B1o-total--5-propuestas->,
+  `fileKey` `JmBvlfNURrV226WOZLuCEz`). Las pantallas móviles están en la página «M · Móvil» (M1 a M12; M9 a M12 son
+  Subnichos: lista, ficha, informe con calibración y régimen, y autorizar piloto desde un subnicho). **El diseño es
+  móvil**, en español llano, con la paleta granate `#be123c` sobre fondo `#fff8f5` y Inter. Todo trabajo de diseño va en
+  ese archivo y reutiliza su estilo: no crees archivos de Figma nuevos ni pantallas de escritorio sin preguntar al
+  propietario. El dashboard actual de producción sigue siendo Streamlit; el Figma es la propuesta de rediseño.
 - Antes de editar OpenSpec, usa el flujo correspondiente en `.agents/skills/`. Al implementar
   el cambio activo, sigue `.agents/skills/openspec-apply-change/SKILL.md`.
 
