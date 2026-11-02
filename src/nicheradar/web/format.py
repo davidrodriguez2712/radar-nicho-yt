@@ -4,6 +4,22 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+DAYS = ("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
+MONTHS = (
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+)
+
 
 def es_int(value: float) -> str:
     return f"{round(value):,}".replace(",", ".")
@@ -37,3 +53,11 @@ def usd(value: float | str | None) -> str:
 
 def pct(value: float | None) -> str:
     return "—" if value is None else f"{round(value)}%"
+
+
+def spanish_date(moment: datetime, timezone: str) -> str:
+    """'Domingo 1 de noviembre' in the given timezone; a naive moment is taken as UTC."""
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=ZoneInfo("UTC"))
+    local = moment.astimezone(ZoneInfo(timezone))
+    return f"{DAYS[local.weekday()]} {local.day} de {MONTHS[local.month - 1]}"

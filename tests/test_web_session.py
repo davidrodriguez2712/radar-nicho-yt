@@ -171,11 +171,11 @@ def test_the_htmx_redirect_remembers_a_same_origin_destination() -> None:
     assert response.headers["hx-redirect"] == "/login"
 
 
-def test_after_login_the_home_redirects_to_the_subniche_list() -> None:
-    web = client()
-    login(web)
-    response = web.get("/")
-    assert response.status_code == 303 and response.headers["location"] == "/subnichos"
+def test_after_login_the_home_is_the_today_page_even_if_every_source_fails() -> None:
+    from tests.web_helpers import Api, make_client
+
+    response = make_client(Api({})).get("/")  # the fake API answers 404 to everything
+    assert response.status_code == 200 and ">Hoy<" in response.text
 
 
 @pytest.mark.parametrize("target", ["//evil.test", "https://evil.test", "/\\evil.test", "evil"])
