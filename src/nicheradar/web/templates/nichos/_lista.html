@@ -3,11 +3,11 @@
 <div class="note note--rose" role="alert"><span class="note__title">No se pudo cargar</span>{{ error }}</div>
 {% else %}
 {% if notice %}<div class="note note--{{ notice[1] }}" role="status">{{ notice[0] }}</div>{% endif %}
-{% if warning %}<div class="note note--amber">{{ warning }}</div>{% endif %}
+{% for w in warnings %}<div class="note note--amber">{{ w }}</div>{% endfor %}
 {% if not view.total %}
 <p class="lead">Todavía no hay nichos. Los crea el radar de mercado.</p>
 {% else %}
-<div class="countline"><span><strong>{{ view.shown }}</strong> nichos</span><span>{% if filtros.orden == "automation" %}Automatización ↓{% else %}Opportunity ↓{% endif %}</span></div>
+<div class="countline"><span><strong>{{ view.shown }}</strong>{% if view.truncated and not filtros.formato and not filtros.alta and not filtros.ingresos %} de {{ view.api_total }}{% endif %} nichos</span><span>{% if filtros.orden == "automation" %}Automatización ↓{% else %}Opportunity ↓{% endif %}</span></div>
 {% for c in view.cards %}
 <article class="card">
   <div class="card__title"><span class="rank">{{ c.rank }}</span><span class="card__name">{{ c.label }}</span></div>

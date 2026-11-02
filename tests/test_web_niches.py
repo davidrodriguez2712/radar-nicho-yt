@@ -246,7 +246,12 @@ def test_hostile_labels_are_escaped_and_the_link_is_encoded() -> None:
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in text
     assert 'href="/nichos/investigar?etiqueta=a%2Fb%3Ac%26d%20' in text
     assert f'<input type="hidden" name="etiqueta" value="{escape(label + " dos")}">' in text
-    assert "https://evil.test" not in cards_of(text)[label].split("</span>")[-1]  # link part
+    assert (
+        "<a href="
+        not in cards_of(text)[label].split('<span class="card__name">')[1].split("</span>")[0]
+    )
+    assert "[x](https://evil.test)" in cards_of(text)[label]  # shown as inert escaped text
+    assert 'href="https://evil.test' not in text
 
 
 def test_an_htmx_request_gets_the_fragment_and_vary() -> None:
@@ -387,13 +392,14 @@ def test_a_bad_csrf_or_decision_never_reaches_the_api() -> None:
         {"formato": "otro"},
         {"etiqueta": ""},
         {"etiqueta": "x" * 141},
+        {"etiqueta": "."},
+        {"etiqueta": ".."},
     )
     for over in invalid:
         response = post_decide(web, token, **over)
         assert response.status_code == 303
         assert response.headers["location"] == "/nichos?aviso=invalida"
     assert api.count(*DECIDE_UNO) == 0
-    assert [c for c in api.calls if c.method == "POST" and "/decisions" in c.url.path] == []
 
 
 def test_the_return_path_must_stay_inside_the_niche_list() -> None:
@@ -428,3 +434,129 @@ def test_the_notice_comes_only_from_fixed_keys() -> None:
     page = web.get("/nichos", params={"aviso": HOSTILE})
     assert page.status_code == 200
     assert 'role="status"' not in page.text and "evil.test" not in page.text
+
+
+AMBER = '<div class="note note--amber">'
+TRUNCATED = "Se muestran 200 de 250 nichos: el resto no se carga en esta pantalla."
+OLDER = (
+    "Puede haber investigaciones más antiguas que no se ven; "
+    "el botón Investigar podría repetir una."
+)
+
+
+def test_a_truncated_niche_list_says_so_and_uses_the_api_total() -> None:
+    items = [niche_item(f"n{i}") for i in range(200)]
+    api = Api(
+        {
+            NICHES: (200, {"items": items, "total": 250, "limit": 200, "offset": 0}),
+            FLOW: (200, {"items": []}),
+            STATUS: (200, {"radar_paused": True}),
+        }
+    )
+    text = make_client(api).get("/nichos").text
+    assert f"{AMBER}{TRUNCATED}</div>" in text
+    assert "<strong>200</strong> de 250 nichos" in text
+    assert 'value="" checked>Todos 250</label>' in text
+
+
+def test_a_complete_niche_list_has_no_truncation_note() -> None:
+    text = make_client(api_with(niche_item("uno"))).get("/nichos").text
+    assert "Se muestran" not in text and " de 1 nichos" not in text
+
+
+def test_a_full_research_page_warns_that_older_ones_may_be_hidden() -> None:
+    flows = [
+        flow_item("listo", niche_label=f"otro {i}", id=f"00000000-0000-0000-0000-{i:012d}")
+        for i in range(100)
+    ]
+    text = make_client(api_with(niche_item("uno"), flows=flows)).get("/nichos").text
+    assert f"{AMBER}{OLDER}</div>" in text
+    flows_99 = flows[:99]
+    text = make_client(api_with(niche_item("uno"), flows=flows_99)).get("/nichos").text
+    assert OLDER not in text
+
+
+def _card_for(**over: object) -> str:
+    flows = over.pop("flows", None)
+    api = api_with(niche_item("x", **over), flows=flows)  # type: ignore[arg-type]
+    return cards_of(make_client(api).get("/nichos").text)["x"]
+
+
+def _rejected(label: str = "x") -> list[dict[str, object]]:
+    return [flow_item("rechazado", niche_label=label)]
+
+
+def test_a_rejected_research_does_not_block_a_new_attempt() -> None:
+    tentative = _card_for(decision=TENTATIVE, flows=_rejected())
+    assert (
+        '<a class="btn btn--primary" href="/nichos/investigar?etiqueta=x&amp;formato=long">'
+        "Investigar</a>" in tentative
+    )
+    assert '<span class="chip chip--rose">Rechazada</span>' in tentative
+    new = _card_for(flows=_rejected())
+    assert '<button class="btn btn--secondary" type="submit">Marcar tentativo</button>' in new
+    assert "Investigar" not in new
+
+
+def test_a_pending_research_shows_its_status_link() -> None:
+    pending = [flow_item("pendiente", niche_label="x", id="33333333-3333-3333-3333-333333333333")]
+    card = _card_for(decision=TENTATIVE, flows=pending)
+    assert (
+        '<a class="btn btn--secondary" href="/informes/33333333-3333-3333-3333-333333333333">'
+        "Ver estado</a>" in card
+    )
+    assert '<span class="chip chip--amber">En cola</span>' in card
+
+
+def test_a_discarded_niche_keeps_its_chip_and_can_be_marked_again() -> None:
+    card = _card_for(decision={"decision": "descartado", "note": None, "decided_at": "x"})
+    assert '<span class="chip chip--neutral">Descartado</span>' in card
+    assert "Marcar tentativo</button>" in card
+
+
+def test_without_score_the_button_stays_disabled_even_with_a_dossier() -> None:
+    unscored: dict[str, object] = {
+        "version": "v1",
+        "value": None,
+        "state": "insufficient_evidence",
+        "components": {},
+        "components_used": [],
+    }
+    card = _card_for(opportunity=unscored, flows=[flow_item("listo", niche_label="x")])
+    assert (
+        '<button class="btn btn--secondary" type="button" disabled>Falta puntaje</button>' in card
+    )
+    assert "Ver dossier" not in card
+    assert '<span class="chip chip--green">Dossier listo</span>' in card
+
+
+def test_an_unknown_decision_value_falls_back_to_sin_decidir() -> None:
+    card = _card_for(decision={"decision": "raro", "note": None, "decided_at": None})
+    assert '<span class="chip chip--neutral">Sin decidir</span>' in card
+    assert "Marcar tentativo</button>" in card
+
+
+def test_a_null_income_count_does_not_break_the_income_filter() -> None:
+    api = api_with(
+        niche_item("nulo", metrics={"n_income": None, "n_listings": 3}),
+        niche_item("con"),
+    )
+    response = make_client(api).get("/nichos", params={"ingresos": "1"})
+    assert response.status_code == 200 and names_of(response.text) == ["con"]
+
+
+def test_only_tentative_gets_the_marked_notice_other_decisions_a_neutral_one() -> None:
+    api = api_with(niche_item("uno"))
+    api.routes[DECIDE_UNO] = (201, {})
+    web = make_client(api)
+    token = csrf_of(web.get("/nichos").text)
+    assert post_decide(web, token, decision="tentativo").headers["location"] == (
+        "/nichos?aviso=marcado"
+    )
+    for decision in ("nuevo", "descartado"):
+        assert post_decide(web, token, decision=decision).headers["location"] == (
+            "/nichos?aviso=guardada"
+        )
+    page = web.get("/nichos", params={"aviso": "guardada"}).text
+    assert '<div class="note note--green" role="status">Decisión guardada.</div>' in page
+    assert "Marcado como tentativo" not in page

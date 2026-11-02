@@ -22,6 +22,7 @@ FORMATS = {"long": "Largos", "shorts": "Shorts"}
 ORDERS = ("opportunity", "automation")
 AVISOS_NICHOS = {
     "marcado": ("Marcado como tentativo.", "green"),
+    "guardada": ("Decisión guardada.", "green"),
     "error": ("No se pudo guardar la decisión. Revisa la API e inténtalo de nuevo.", "rose"),
     "invalida": ("La decisión no es válida.", "amber"),
 }
@@ -73,8 +74,11 @@ def card(item: dict[str, Any], research: dict[str, Any] | None, rank: int) -> di
     label, fmt = item["niche_label"], item["format"]
     action: dict[str, Any]
     if opportunity is None:
+        # Deliberate: without a score there is nothing to decide or research, even if an
+        # older dossier exists; the dossier chip still shows its state.
         action = {"kind": "disabled", "label": "Falta puntaje"}
     elif state == "listo":
+        # (A niche without score never reaches here: "Falta puntaje" wins even with a dossier.)
         action = {
             "kind": "link",
             "label": "Ver dossier",
@@ -119,7 +123,10 @@ def card(item: dict[str, Any], research: dict[str, Any] | None, rank: int) -> di
 
 
 def list_view(
-    items: list[dict[str, Any]], research_items: list[dict[str, Any]], filters: NicheFilters
+    items: list[dict[str, Any]],
+    research_items: list[dict[str, Any]],
+    filters: NicheFilters,
+    api_total: int | None = None,
 ) -> dict[str, Any]:
     index = research_index(research_items)
     shown = [
@@ -127,7 +134,7 @@ def list_view(
         for item in items
         if (not filters.formato or item["format"] == filters.formato)
         and (not filters.alta or item["confidence"] == "alta")
-        and (not filters.ingresos or (item.get("metrics") or {}).get("n_income", 0) > 0)
+        and (not filters.ingresos or ((item.get("metrics") or {}).get("n_income") or 0) > 0)
     ]
     counts = {fmt: sum(1 for item in items if item["format"] == fmt) for fmt in FORMATS}
     return {
@@ -136,6 +143,8 @@ def list_view(
             for rank, item in enumerate(shown, 1)
         ],
         "total": len(items),
+        "api_total": max(api_total or 0, len(items)),
+        "truncated": (api_total or 0) > len(items),
         "shown": len(shown),
         "counts": counts,
         "filtros": filters,

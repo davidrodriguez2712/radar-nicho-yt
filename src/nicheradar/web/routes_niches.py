@@ -15,6 +15,11 @@ from nicheradar.web.security import Session
 router = APIRouter()
 VARY = "HX-Request, HX-History-Restore-Request"
 DECISIONS = ("nuevo", "tentativo", "descartado")
+RESEARCH_PAGE = 100
+RESEARCH_OLDER = (
+    "Puede haber investigaciones más antiguas que no se ven; "
+    "el botón Investigar podría repetir una."
+)
 RESEARCH_DOWN = "La lista de investigaciones no está disponible: no se muestra su estado."
 
 
@@ -53,19 +58,31 @@ def niche_list(request: Request, session: Annotated[Session, Depends(current_ses
                 "view": None,
                 "filtros": filters,
                 "notice": None,
-                "warning": None,
+                "warnings": [],
             },
             status_code=200 if htmx else 503,
             session=session,
             with_radar=False,
         )
     else:
-        warning: str | None = None
+        warnings: list[str] = []
         try:
-            research = api.request("GET", "/flow-research", params={"limit": "100"})["items"]
+            research = api.request("GET", "/flow-research", params={"limit": str(RESEARCH_PAGE)})[
+                "items"
+            ]
         except ApiError:
-            research, warning = [], RESEARCH_DOWN
-        view = list_view(niches["items"], research, filters)
+            research = []
+            warnings.append(RESEARCH_DOWN)
+        else:
+            if len(research) >= RESEARCH_PAGE:
+                warnings.append(RESEARCH_OLDER)
+        view = list_view(niches["items"], research, filters, niches.get("total"))
+        if view["truncated"]:
+            warnings.insert(
+                0,
+                f"Se muestran {view['total']} de {view['api_total']} nichos: "
+                "el resto no se carga en esta pantalla.",
+            )
         response = render(
             request,
             template,
@@ -75,7 +92,7 @@ def niche_list(request: Request, session: Annotated[Session, Depends(current_ses
                 "view": view,
                 "filtros": filters,
                 "notice": notice,
-                "warning": warning,
+                "warnings": warnings,
             },
             session=session,
         )
@@ -105,6 +122,7 @@ def decide(
         decision not in DECISIONS
         or formato not in ("long", "shorts")
         or not (1 <= len(etiqueta) <= 140)
+        or etiqueta in (".", "..")
     ):
         return RedirectResponse(_back(volver, "invalida"), status_code=303)
     try:
@@ -115,4 +133,5 @@ def decide(
         )
     except ApiError:
         return RedirectResponse(_back(volver, "error"), status_code=303)
-    return RedirectResponse(_back(volver, "marcado"), status_code=303)
+    notice = "marcado" if decision == "tentativo" else "guardada"
+    return RedirectResponse(_back(volver, notice), status_code=303)
