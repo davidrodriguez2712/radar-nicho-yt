@@ -1,11 +1,23 @@
+{% from "components.html" import topbar, bottomnav %}
 <!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#be123c">
+<meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false}'>
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="stylesheet" href="/static/css/app.css">
 <title>{% block title %}NicheRadar{% endblock %}</title>
+<script src="/static/js/htmx.min.js" defer></script>
+<script src="/static/js/app.js" defer></script>
 </head>
 <body>
-<main>{% block content %}{% endblock %}</main>
+<div class="app">
+{% if not bare %}{{ topbar(radar_state, csrf_token) }}{% endif %}
+<main class="page">{% block content %}{% endblock %}</main>
+{% if not bare %}{{ bottomnav(active_tab) }}{% endif %}
+</div>
 </body>
 </html>

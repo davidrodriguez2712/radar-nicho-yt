@@ -3,16 +3,20 @@
 
 import time
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 
 from nicheradar.config import Settings
 from nicheradar.web import routes_auth
 from nicheradar.web.client import ApiClient
-from nicheradar.web.deps import make_templates
+from nicheradar.web.deps import make_templates, render
 from nicheradar.web.security import LoginLimiter, SessionSigner
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 CSP = (
     "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
@@ -36,6 +40,8 @@ def create_app(
     app.state.signer = SessionSigner.from_settings(config, clock)
     app.state.limiter = LoginLimiter(clock)
     app.state.templates = make_templates()
+    app.state.radar_cache = {"until": 0.0, "value": None}
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     @app.middleware("http")
     async def security_headers(
@@ -54,6 +60,18 @@ def create_app(
     def health() -> str:
         # Same path Streamlit exposes: compose, the smoke test and the proxy probe rely on it.
         return "ok"
+
+    @app.get("/sw.js")
+    def service_worker() -> FileResponse:
+        return FileResponse(
+            STATIC_DIR / "sw.js",
+            media_type="text/javascript",
+            headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+        )
+
+    @app.get("/sin-conexión")
+    def offline(request: Request) -> Response:
+        return render(request, "offline.html")
 
     app.include_router(routes_auth.router)
     return app

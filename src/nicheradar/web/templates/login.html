@@ -1,16 +1,18 @@
 {% extends "base.html" %}
+{% set bare = true %}
 {% block title %}Entrar · NicheRadar{% endblock %}
 {% block content %}
-<h1>NicheRadar</h1>
+<p class="eyebrow">NicheRadar</p>
+<h1 class="h1">Entrar</h1>
 {% if pending %}
-<p>Acceso pendiente: configura NR_DASHBOARD_PASSWORD para abrir el observatorio.</p>
+<div class="note note--amber"><span class="note__title">Acceso pendiente</span>Configura NR_DASHBOARD_PASSWORD para abrir el observatorio.</div>
 {% else %}
-<form method="post" action="/login">
-  <label for="password">Contraseña de acceso</label>
-  <input id="password" name="password" type="password" autocomplete="current-password" required>
+<form class="page" method="post" action="/login">
+  <div class="field"><label for="password">Contraseña de acceso</label>
+  <input id="password" name="password" type="password" autocomplete="current-password" required></div>
   <input type="hidden" name="next" value="{{ next }}">
-  {% if error %}<p role="alert">{{ error }}</p>{% endif %}
-  <button type="submit">Entrar</button>
+  {% if error %}<div class="note note--rose" role="alert">{{ error }}</div>{% endif %}
+  <button class="btn btn--primary" type="submit">Entrar</button>
 </form>
 {% endif %}
 {% endblock %}

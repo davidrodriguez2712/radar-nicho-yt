@@ -9,13 +9,33 @@ from fastapi import HTTPException, Request
 from fastapi.templating import Jinja2Templates
 from starlette.responses import Response
 
+from nicheradar.web.client import ApiError
 from nicheradar.web.security import SESSION_COOKIE, Session
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
+RADAR_TTL_SECONDS = 30
 
 
 def make_templates() -> Jinja2Templates:
     return Jinja2Templates(directory=str(TEMPLATE_DIR))
+
+
+def radar_state(request: Request) -> str | None:
+    """'paused', 'active' or None when the API cannot say; cached so pages are not status calls."""
+    app = request.app
+    cache: dict[str, Any] = app.state.radar_cache
+    now = app.state.clock()
+    if cache["until"] > now:
+        cached: str | None = cache["value"]
+        return cached
+    value: str | None
+    try:
+        data = app.state.api.request("GET", "/status")
+        value = "paused" if data.get("radar_paused") else "active"
+    except ApiError:
+        value = None
+    cache.update(until=now + RADAR_TTL_SECONDS, value=value)
+    return value
 
 
 def safe_next(value: str | None) -> str:
@@ -51,6 +71,7 @@ def render(
     data: dict[str, Any] = {"active_tab": None, "radar_state": None, "csrf_token": None}
     if session is not None:
         data["csrf_token"] = request.app.state.signer.csrf(session)
+        data["radar_state"] = radar_state(request)
     data.update(context or {})
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(request, name, data, status_code=status_code)
