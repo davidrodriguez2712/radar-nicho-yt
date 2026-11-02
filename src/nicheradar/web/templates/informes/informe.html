@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "components.html" import chip %}
+{% macro link(url, text) -%}
+{%- if url %}<a href="{{ url }}" rel="noopener noreferrer nofollow" target="_blank">{{ text }}</a>{% else %}{{ text }}{% endif -%}
+{%- endmacro %}
+{% block title %}Informe · NicheRadar{% endblock %}
+{% block content %}
+<p class="eyebrow" id="eyebrow">Informe · Listo</p>
+<h1 class="h1 h1--md" id="titulo">{{ v.title }}</h1>
+{% if notice %}<div class="note note--{{ notice[1] }}" role="status">{{ notice[0] }}</div>{% endif %}
+{% if v.old_notice %}<div class="note note--amber" id="aviso-dossier">{{ v.old_notice }}</div>{% endif %}
+<section class="card" id="veredicto">
+  <span>{{ chip("Recomendación: " ~ v.headline, v.kind) }}</span>
+  <p id="tesis">{{ v.thesis }}</p>
+  {% if v.confidence %}<div class="rows"><div class="row"><span class="row__label">Confianza del informe</span><span class="row__value">{{ v.confidence }}</span></div></div>{% endif %}
+</section>
+{% if v.firm %}
+<section class="card" id="firme">
+  <h2 class="h2">Qué tan firme es</h2>
+  <div class="rows">{% for label, value in v.firm.rows %}<div class="row"><span class="row__label">{{ label }}</span><span class="row__value">{{ value }}</span></div>{% endfor %}</div>
+  {% if v.firm.subniche %}<p class="caption">El ingreso es una estimación por canal típico. Los competidores vienen de listados de terceros, sin confirmar en YouTube.</p>{% endif %}
+</section>
+{% endif %}
+<section class="card" id="tiempo">
+  <h2 class="h2">Cuánto tarda cada video</h2>
+  <div class="rows">{% for label, value in v.time_rows %}<div class="row"><span class="row__label">{{ label }}</span><span class="row__value">{{ value }}</span></div>{% endfor %}</div>
+</section>
+{% if v.exit %}
+<section class="card" id="regimen">
+  <h2 class="h2">Cuándo pasas a régimen</h2>
+  {% if v.exit.statement %}<p>{{ v.exit.statement }}</p>{% endif %}
+  {% if v.exit.basis %}<p class="caption">{{ v.exit.basis }}</p>{% endif %}
+  {% if v.exit.format_match %}<p class="caption">{{ v.exit.format_match }}</p>{% endif %}
+</section>
+{% endif %}
+<section class="card" id="compuertas">
+  <h2 class="h2">Compuertas</h2>
+  <div class="rows">{% for text, state, kind in v.gates %}<div class="row"><span class="row__label">{{ text }}</span>{{ chip(state, kind) }}</div>{% endfor %}</div>
+</section>
+<section class="card" id="gasto">
+  <h2 class="h2">Lo que gastarías</h2>
+  <div class="rows">{% for label, value in v.budget %}<div class="row"><span class="row__label">{{ label }}</span><span class="row__value">{{ value }}</span></div>{% endfor %}</div>
+  <p class="caption">Cifras del informe; no incluyen tu tiempo.{% if v.horizon %} Horizonte: {{ v.horizon }}.{% endif %}</p>
+</section>
+<h2 class="h2">Detalle (toca para abrir)</h2>
+<details class="acc" id="acc-herramientas"><summary><span><span class="acc__title">Dónde corre cada herramienta</span><br><span class="acc__sub">{{ v.tools|length }} herramientas</span></span><span aria-hidden="true">▾</span></summary>
+  <div class="acc__body">{% for t in v.tools %}<span><strong>{{ t.name }}</strong> · {{ t.phase }} · {{ t.pricing }}<br>{{ t.purpose }}{% if t.cheaper %}<br>Alternativa más barata: {{ t.cheaper }}{% endif %}</span>{% endfor %}</div></details>
+<details class="acc" id="acc-avisos"><summary><span><span class="acc__title">Lo que debes saber antes de decidir</span><br><span class="acc__sub">{{ v.warning_count }} avisos</span></span><span aria-hidden="true">▾</span></summary>
+  <div class="acc__body">{% for heading, texts in v.warnings %}<strong>{{ heading }}</strong>{% for t in texts %}<span>{{ t }}</span>{% endfor %}{% endfor %}</div></details>
+<details class="acc" id="acc-fuentes"><summary><span><span class="acc__title">Competidores y fuentes</span><br><span class="acc__sub">{{ v.competitors|length }} canales · {{ v.sources|length }} enlaces</span></span><span aria-hidden="true">▾</span></summary>
+  <div class="acc__body">{% for c in v.competitors %}<span>{{ link(c.url, c.name) }} · {{ c.subscribers }} suscriptores</span>{% endfor %}{% for s in v.sources %}<span>{{ link(s.url, s.title) }}{% if s.accessed_on %} · consultado {{ s.accessed_on }}{% endif %}</span>{% endfor %}</div></details>
+<section class="stack" id="acciones">
+  <a class="btn btn--primary" href="{{ v.launch_href }}">Lanzar piloto</a>
+  <a class="btn btn--secondary" href="{{ v.postpone_href }}">Posponer</a>
+  {% if v.can_discard %}
+  <form method="post" action="/nichos/decidir" id="descartar">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="hidden" name="etiqueta" value="{{ v.niche_label }}">
+    <input type="hidden" name="formato" value="{{ v.format }}">
+    <input type="hidden" name="decision" value="descartado">
+    <input type="hidden" name="volver" value="/nichos">
+    <button class="btn btn--danger" type="submit">Descartar</button>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

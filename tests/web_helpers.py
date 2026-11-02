@@ -1,8 +1,12 @@
 # tests/web_helpers.py
 """Shared helpers for the mobile web tests."""
 
+import copy
 import re
 from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
+from uuid import UUID
 
 import httpx
 from fastapi.testclient import TestClient
@@ -10,6 +14,7 @@ from pydantic import SecretStr
 
 from nicheradar.config import Settings
 from nicheradar.web.app import create_app
+from tests.flow_research_samples import valid_dossier, valid_dossier_v2
 
 TOKEN = "t" * 32
 PASSWORD = "p" * 32
@@ -202,3 +207,51 @@ def niche_detail(
         "language_mix": [{"language": code, "share_pct": share} for code, share in mix],
         "history": [],
     }
+
+
+REPORT_ID = "f0c90924-295a-4136-a0fb-d3fb2c3eacc6"
+
+
+def dossier_v3(**over: Any) -> dict[str, Any]:
+    """A valid dossier-v3 (the flow-research sample, deep-copied so tests can mutate it)."""
+    now = datetime(2026, 11, 2, 3, 0, tzinfo=UTC)
+    return copy.deepcopy(valid_dossier(UUID(REPORT_ID), now)) | over
+
+
+def dossier_v2() -> dict[str, Any]:
+    return copy.deepcopy(valid_dossier_v2(UUID(REPORT_ID), datetime(2026, 11, 2, 3, 0, tzinfo=UTC)))
+
+
+def dossier_v1() -> dict[str, Any]:
+    old = dossier_v2()
+    old["schema_version"] = "dossier-v1"
+    del old["rights"], old["automation_plan"]
+    return old
+
+
+def report_detail(
+    status: str = "listo", dossier: dict[str, Any] | None = None, **over: Any
+) -> dict[str, Any]:
+    """A flow-research order as the API returns it, with the frozen evidence and the dossier."""
+    base: dict[str, Any] = flow_item(status) | {
+        "evidence": {
+            "source": "niche",
+            "confidence": "media",
+            "language_mix": [
+                {"language": "en", "share_pct": 80.0},
+                {"language": "es", "share_pct": 15.0},
+                {"language": "unknown", "share_pct": 5.0},
+            ],
+            "gate": {
+                "min_automation": 90,
+                "max_human_minutes": 60,
+                "max_calibration_hours": 40,
+                "block_high_policy_risk": True,
+                "passed": True,
+                "reasons": [],
+            },
+        },
+        "dossier": dossier if status == "listo" else None,
+        "dossier_created_at": "2026-11-02T03:00:00Z" if status == "listo" else None,
+    }
+    return base | over
