@@ -104,7 +104,7 @@ Se aplican en tres puntos:
    válido es `no_go`, y eso no se puede forzar.
 3. **Al autorizar el piloto**: se repiten las comprobaciones sobre el dossier guardado. Falla con
    `409 gate_failed` salvo `accept_gate_failure: true` (`--accept-gate-failure` en
-   `scripts/pilots.py lanzar`); eso queda en el evento `gate_failure_accepted` y en el prefijo
+   `scripts/pilots.py authorize`); eso queda en el evento `gate_failure_accepted` y en el prefijo
    `[COMPUERTAS NO CUMPLIDAS aceptadas por el humano: …]` de `thesis`. Un dossier `dossier-v1`
    guardado no evalúa derechos ni plan de automatización, así que falla la compuerta de derechos
    hasta que un humano lo acepte.
