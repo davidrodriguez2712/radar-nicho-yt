@@ -9,6 +9,9 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import PlainTextResponse
 
 from nicheradar.config import Settings
+from nicheradar.web import routes_auth
+from nicheradar.web.deps import make_templates
+from nicheradar.web.security import LoginLimiter, SessionSigner
 
 CSP = (
     "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
@@ -28,6 +31,9 @@ def create_app(
     app.state.config = config
     app.state.transport = transport
     app.state.clock = clock
+    app.state.signer = SessionSigner.from_settings(config, clock)
+    app.state.limiter = LoginLimiter(clock)
+    app.state.templates = make_templates()
 
     @app.middleware("http")
     async def security_headers(
@@ -47,4 +53,5 @@ def create_app(
         # Same path Streamlit exposes: compose, the smoke test and the proxy probe rely on it.
         return "ok"
 
+    app.include_router(routes_auth.router)
     return app
