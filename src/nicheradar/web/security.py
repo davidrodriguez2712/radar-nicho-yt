@@ -52,7 +52,7 @@ class SessionSigner:
         if not token:
             return None
         payload, _, mac = token.rpartition(".")
-        if not payload or not hmac.compare_digest(mac, self._mac(payload)):
+        if not payload or not hmac.compare_digest(mac.encode(), self._mac(payload).encode()):
             return None
         expires, _, nonce = payload.partition(".")
         if not expires.isdigit() or not nonce or int(expires) <= self._clock():
@@ -63,7 +63,9 @@ class SessionSigner:
         return self._mac(f"csrf:{session.nonce}")
 
     def csrf_valid(self, session: Session, value: str | None) -> bool:
-        return bool(value) and hmac.compare_digest(value or "", self.csrf(session))
+        return bool(value) and hmac.compare_digest(
+            (value or "").encode(), self.csrf(session).encode()
+        )
 
 
 class LoginLimiter:

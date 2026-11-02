@@ -183,3 +183,22 @@ def test_logout_with_a_valid_token_ends_the_session() -> None:
     assert response.status_code == 303 and response.headers["location"] == "/login"
     set_cookie = response.headers["set-cookie"].lower()
     assert "expires=" in set_cookie or "max-age=0" in set_cookie
+
+
+def test_non_ascii_input_is_rejected_without_crashing() -> None:
+    signer = SessionSigner(KEY, Clock())
+    session = signer.read(signer.issue())
+    assert session is not None
+    assert signer.read("1.a.é") is None
+    assert signer.csrf_valid(session, "é") is False
+
+
+def test_a_non_ascii_session_cookie_redirects_to_login() -> None:
+    response = client().get("/", headers={"cookie": f"{SESSION_COOKIE}=1.a.é".encode()})
+    assert response.status_code == 303 and response.headers["location"].startswith("/login")
+
+
+def test_a_non_ascii_csrf_on_logout_is_forbidden() -> None:
+    web = client()
+    login(web)
+    assert web.post("/salir", data={"csrf": "é"}).status_code == 403
