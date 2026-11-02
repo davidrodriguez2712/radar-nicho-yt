@@ -48,8 +48,12 @@ def _page(
             "GET", f"/market/niches/{quote(label, safe='')}", params={"format": fmt}
         )
     except ApiError as err:
+        if error is not None:
+            # The order already failed: keep its message even if the form cannot be redrawn.
+            return _error_page(request, session, error, status)
         return _error_page(request, session, err.message, 404 if err.kind == "not_found" else 503)
     view = language_options(detail["language_mix"])
+    codes = {o["code"] for o in view["options"]}
     return render(
         request,
         "nichos/investigar.html",
@@ -61,7 +65,7 @@ def _page(
             "lang": view,
             "error": error,
             "reasons": reasons or [],
-            "chosen": chosen or view["suggested"],
+            "chosen": chosen if chosen in codes else view["suggested"],
         },
         status_code=status,
         session=session,
@@ -138,10 +142,16 @@ def start(
                 reasons=reasons,
             )
         return _page(
-            request, session, etiqueta, formato, status=503, chosen=idioma, error=err.message
+            request,
+            session,
+            etiqueta,
+            formato,
+            status=422 if err.kind == "invalid" else 503,
+            chosen=idioma,
+            error=err.message,
         )
     report = result.get("id")
     if not isinstance(report, str) or not UUID_RE.match(report):
-        return RedirectResponse("/nichos?aviso=error", status_code=303)
+        return RedirectResponse("/nichos?aviso=error-creada", status_code=303)
     aviso = "creada" if result.get("created") else "existente"
     return RedirectResponse(f"/informes/{report}?aviso={aviso}", status_code=303)

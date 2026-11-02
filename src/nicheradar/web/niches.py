@@ -24,6 +24,7 @@ AVISOS_NICHOS = {
     "marcado": ("Marcado como tentativo.", "green"),
     "guardada": ("Decisión guardada.", "green"),
     "error": ("No se pudo guardar la decisión. Revisa la API e inténtalo de nuevo.", "rose"),
+    "error-creada": ("No se pudo abrir el informe de la investigación creada.", "rose"),
     "invalida": ("La decisión no es válida.", "amber"),
 }
 

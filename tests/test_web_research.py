@@ -58,7 +58,7 @@ def test_language_options_suggest_the_clear_leader_only() -> None:
 def test_the_page_lists_languages_with_the_suggestion_and_the_explanations() -> None:
     text = make_client(api_with()).get(URL).text
     assert "<title>Iniciar investigación · NicheRadar</title>" in text
-    assert "Iniciar investigación de flujo" in text
+    assert '<p class="eyebrow">Iniciar investigación de flujo</p>' in text
     assert 'name="idioma" value="en" checked' in text and 'name="idioma" value="es"' in text
     assert 'value="es" checked' not in text
     assert "Sugerido" in text and "80%" in text and "15%" in text
@@ -160,7 +160,9 @@ def test_a_malformed_returned_id_is_never_used_in_the_redirect(bad_id: object) -
     web = make_client(api)
     token = csrf_of(web.get(URL).text)
     response = post(web, token)
-    assert response.status_code == 303 and response.headers["location"] == "/nichos?aviso=error"
+    assert (
+        response.status_code == 303 and response.headers["location"] == "/nichos?aviso=error-creada"
+    )
 
 
 @pytest.mark.parametrize("language", ["unknown", "xx1", "EN", "", "en-us", "<script>"])
@@ -276,3 +278,87 @@ def test_the_detail_failing_on_post_is_an_error_page_without_creating_anything()
     api.routes[DETAIL] = (404, {"detail": "Nicho no encontrado"})
     response = post(web, token)
     assert response.status_code == 404 and api.count(*ORDER) == 0
+
+
+def test_the_malformed_id_notice_is_its_own_message() -> None:
+    from nicheradar.web.niches import AVISOS_NICHOS
+
+    assert (
+        AVISOS_NICHOS["error-creada"][0]
+        == "No se pudo abrir el informe de la investigación creada."
+    )
+    api = Api(
+        {
+            ("GET", "/api/v1/market/niches"): (200, {"items": [], "total": 0}),
+            ("GET", "/api/v1/flow-research"): (200, {"items": []}),
+            STATUS: (200, {"radar_paused": True}),
+        }
+    )
+    text = make_client(api).get("/nichos?aviso=error-creada").text
+    assert "No se pudo abrir el informe de la investigación creada." in text
+
+
+def test_a_leading_invalid_code_blocks_the_suggestion() -> None:
+    view = language_options(
+        [{"language": "zh-Hans", "share_pct": 70.0}, {"language": "en", "share_pct": 30.0}]
+    )
+    assert view["suggested"] is None and [o["code"] for o in view["options"]] == ["en"]
+    assert not view["options"][0]["suggested"]
+    detail = niche_detail(mix=[("zh-Hans", 70.0), ("en", 30.0)])
+    text = make_client(api_with(detail)).get(URL).text
+    assert "Elige un idioma para continuar" in text
+    assert "Iniciar investigación en" not in text
+    assert " checked" not in text.split('name="idioma"', 1)[1].split("</form>")[0]
+
+
+def test_a_non_leading_invalid_code_does_not_block_the_suggestion() -> None:
+    view = language_options(
+        [{"language": "en", "share_pct": 70.0}, {"language": "zh-Hans", "share_pct": 30.0}]
+    )
+    assert view["suggested"] == "en"
+    # a runner-up that is invalid still counts for the tie
+    tie = language_options(
+        [{"language": "en", "share_pct": 50.0}, {"language": "zh-Hans", "share_pct": 50.0}]
+    )
+    assert tie["suggested"] is None
+
+
+def test_entries_missing_keys_are_skipped() -> None:
+    view = language_options(
+        [{"share_pct": 90.0}, {"language": "en"}, {"language": "es", "share_pct": 40.0}]
+    )
+    assert view["suggested"] == "es" and [o["code"] for o in view["options"]] == ["es"]
+
+
+@pytest.mark.parametrize(
+    ("status", "expected_status", "needle"),
+    [
+        (401, 503, "La API rechazó la credencial de servicio"),
+        (403, 503, "La API rechazó la credencial de servicio"),
+        (422, 422, "Revisa los valores"),
+    ],
+)
+def test_other_api_errors_on_post_show_their_message(
+    status: int, expected_status: int, needle: str
+) -> None:
+    web = make_client(api_with(order=(status, {"detail": "x"})))
+    token = csrf_of(web.get(URL).text)
+    response = post(web, token)
+    assert response.status_code == expected_status and needle in response.text
+    assert 'name="idioma" value="en"' in response.text
+
+
+def test_when_the_form_cannot_be_redrawn_the_conflict_message_is_still_shown() -> None:
+    api = api_with(order=(409, {"detail": {"code": "not_tentative", "message": "x"}}))
+    web = make_client(api)
+    token = csrf_of(web.get(URL).text)
+    api.routes[ORDER] = lambda request: _drop_detail(api)
+    response = post(web, token)
+    assert response.status_code == 409
+    assert "Primero marca el nicho como tentativo para poder investigarlo." in response.text
+    assert 'name="idioma"' not in response.text
+
+
+def _drop_detail(api: Api) -> httpx.Response:
+    api.routes[DETAIL] = lambda request: (_ for _ in ()).throw(httpx.ConnectError("down"))
+    return httpx.Response(409, json={"detail": {"code": "not_tentative", "message": "x"}})
