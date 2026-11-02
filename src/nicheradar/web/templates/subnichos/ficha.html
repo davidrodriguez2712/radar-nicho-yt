@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "components.html" import chip %}
+{% block title %}{{ v.label }} · NicheRadar{% endblock %}
+{% block content %}
+<p class="eyebrow">Subnicho · {% if v.measured %}medido{% else %}sin medición{% endif %}</p>
+<h1 class="h1 h1--md">{{ v.label }}</h1>
+<div class="tags">
+  {% if v.finalist %}{{ chip("Finalista", "rose") }}{% endif %}
+  {{ chip(v.family, "neutral") }}{{ chip(v.language, "blue") }}
+  {{ chip(v.status_name, "green" if v.status == "active" else "neutral") }}
+</div>
+{% if notice %}<div class="note note--{{ notice[1] }}" role="status">{{ notice[0] }}</div>{% endif %}
+{% if v.measured %}
+<p class="lead">Medimos {{ v.measured.included }} canales de YouTube el {{ v.measured.when }}. Las cifras son estimaciones, no ingresos verificados.</p>
+{% if v.measured.income %}
+<section class="card">
+  <span class="caption">Ingreso típico por canal al mes</span>
+  <span class="income__value income__value--lg">{{ v.measured.income }}</span>
+  <span class="caption">Es la mediana de los canales con vistas constantes, con el pago por mil vistas de un tema vecino. Un canal nuevo ganaría menos al principio.</span>
+</section>
+{% endif %}
+<section class="card">
+  <h2 class="h2">Qué encontramos</h2>
+  <div class="rows">{% for label, value in v.measured.rows %}<div class="row"><span class="row__label">{{ label }}</span><span class="row__value">{{ value }}</span></div>{% endfor %}</div>
+</section>
+<h2 class="h2">Canales para mirar</h2>
+<section class="card">
+  {% if v.channels_available and v.channels %}
+  <div class="list">{% for c in v.channels %}<div class="list__item"><span class="list__name">{{ c.name }}{% if c.takeoff %} {{ chip("Despegó", "rose") }}{% endif %}</span><span class="caption">{{ c.line }}</span></div>{% endfor %}</div>
+  <span class="caption">Los datos de los canales se guardan 30 días; después se muestra que vencieron.</span>
+  {% else %}
+  <p class="muted">Los datos de los canales vencieron (30 días) o no hay una medición vigente.</p>
+  {% endif %}
+</section>
+<h2 class="h2">Detalle (toca para abrir)</h2>
+<details class="acc"><summary><span><span class="acc__title">Consultas que usamos</span><br><span class="acc__sub">{{ v.queries|length }} búsquedas en YouTube</span></span><span aria-hidden="true">▾</span></summary>
+  <div class="acc__body">{% for q in v.queries %}<span>{{ q }}</span>{% endfor %}</div></details>
+{% if v.measured.rpm_source %}
+<details class="acc"><summary><span><span class="acc__title">Cómo se calcula el ingreso</span><br><span class="acc__sub">mediana por canal · pago heredado del tema vecino</span></span><span aria-hidden="true">▾</span></summary>
+  <div class="acc__body"><span>Origen del pago por mil vistas: {{ v.measured.rpm_source }}</span></div></details>
+{% endif %}
+{% else %}
+<div class="note note--amber">Todavía no medimos este subnicho.</div>
+{% endif %}
+{% if v.action.kind != "hidden" %}
+<section class="card">
+  <h2 class="h2">Investigación de flujo</h2>
+  <p class="muted">Idioma: {{ v.language_name }}, el de la hipótesis. Se crea un encargo y Claude Code investiga la competencia, las herramientas y el presupuesto en ese idioma.</p>
+  <span>{{ chip(v.research_text, v.research_kind) }}</span>
+  {% if v.action.kind == "start" %}
+  <form method="post" action="{{ v.post_href }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <button class="btn btn--primary" type="submit">{{ v.action.label }}</button>
+  </form>
+  {% elif v.action.kind == "disabled" %}
+  <button class="btn btn--primary" type="button" disabled>{{ v.action.label }}</button>
+  <p class="caption">{{ v.action.note }}</p>
+  {% else %}
+  <p class="caption">{{ v.action.note }}</p>
+  {% endif %}
+</section>
+{% endif %}
+<p class="caption"><a href="/subnichos">← Volver a Subnichos</a></p>
+{% endblock %}

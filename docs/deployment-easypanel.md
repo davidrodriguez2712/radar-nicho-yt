@@ -168,6 +168,10 @@ necesita `NR_API_HOST=0.0.0.0`, contraseña del dashboard ni credenciales de pub
 La migración necesita solo la conexión a la base nueva y la misma imagen backend.
 No montar carpetas del Mac, el socket Docker ni directorios de otras aplicaciones.
 
+`NR_DASHBOARD_UI` (opcional, en el dashboard): `streamlit` por defecto; `web` sirve la web móvil con las mismas
+variables y el mismo dominio. Para volver atrás, quitarla o ponerla en `streamlit` y reiniciar la app (ver
+[web móvil](web-movil.md)).
+
 En Domains del dashboard, configurar el hostname confirmado, ruta `/`, destino HTTP
 interno en el puerto 8501, HTTPS y redirección de HTTP a HTTPS. Verificar el certificado
 y que la sesión Streamlit mantiene su conexión WebSocket. No desactivar CORS/XSRF para

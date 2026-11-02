@@ -1,0 +1,27 @@
+{% from "components.html" import chip, button %}
+{% if error %}
+<div class="note note--rose" role="alert"><span class="note__title">No se pudo cargar</span>{{ error }}</div>
+{% elif not view.cards and not view.total %}
+<p class="lead">Todavía no hay subnichos. Cárgalos con <code>scripts/subniche.py import</code>.</p>
+{% else %}
+<div class="countline"><span><strong>{{ view.finalists }}</strong> finalistas de {{ view.total }}</span><span>Finalistas y tracción ↓</span></div>
+{% for c in view.cards %}
+<article class="card">
+  <div class="card__title"><span class="rank">{{ c.rank }}</span><a class="card__name" href="{{ c.href }}">{{ c.label }}</a></div>
+  <div class="tags">
+    {% if c.finalist %}{{ chip("Finalista", "rose") }}{% endif %}
+    {{ chip(c.family, "neutral") }}{{ chip(c.language, "blue") }}{{ chip(c.research_text, c.research_kind) }}
+  </div>
+  {% if c.income %}
+  <div class="income"><span class="income__label">Ingreso típico por canal al mes</span><span class="income__value">{{ c.income }}</span></div>
+  <dl class="stats">{% for label, value in c.stats %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
+  {% else %}
+  <p class="muted">Todavía sin medición.</p>
+  {% endif %}
+  {{ button(c.button_label, c.button_kind, href=c.href) }}
+</article>
+{% else %}
+<p class="lead">Ningún subnicho coincide con los filtros.</p>
+{% endfor %}
+<p class="caption">«Despegaron»: canales pequeños con un video muy por encima de su tamaño. «Constantes»: canales con vistas estables. «Grandes»: canales grandes en el tema.</p>
+{% endif %}

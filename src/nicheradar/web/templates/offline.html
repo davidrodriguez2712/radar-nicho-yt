@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% set bare = true %}
+{% block title %}Sin conexión · NicheRadar{% endblock %}
+{% block content %}
+<p class="eyebrow">NicheRadar</p>
+<h1 class="h1">Sin conexión</h1>
+<p class="lead">No hay conexión con el servidor. Los datos no se guardan en el teléfono: vuelve a intentarlo cuando tengas red.</p>
+<a class="btn btn--primary" href="/">Reintentar</a>
+{% endblock %}
