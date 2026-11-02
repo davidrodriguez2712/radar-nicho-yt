@@ -167,7 +167,7 @@ def test_the_form_shows_what_is_fixed_the_budget_and_the_time_summary() -> None:
     assert 'name="csrf"' in form
     assert f'name="informe" value="{ID}"' in form
     assert "Idioma (fijado en la investigación)" in text and "Inglés" in block(text, "idioma")
-    assert "Presupuesto de 10 videos" in block(text, "presupuesto")
+    assert "Presupuesto del informe (tope: 10 videos)" in block(text, "presupuesto")
     assert "Cuánto tarda cada video" in block(text, "tiempo")
     assert "Minutos por video" in block(text, "compuertas")
     assert "Reglas de parada" in text
@@ -183,9 +183,9 @@ def test_a_busy_channel_is_listed_as_taken_and_cannot_be_chosen() -> None:
     api = api_with(pilots=[pilot_item(target_channel="canal-historias", status="en_ejecucion")])
     text = make_client(api).get(URL).text
     channels = block(text, "canal")
-    assert 'value="canal-historias" disabled' in channels
-    assert "Ocupado: ya tiene un piloto activo" in channels
-    assert "Canal nuevo (sin nombre todavía)" in channels
+    assert 'value="canal-historias"' not in channels  # listed, but not offered as a radio
+    assert "canal-historias" in channels and "Ocupado: ya tiene un piloto activo" in channels
+    assert "Canal nuevo (sin nombre todavía" in channels
     free = make_client(api_with(pilots=[pilot_item(status="cerrado")])).get(URL).text
     assert "Ocupado" not in free and "disabled" not in block(free, "canal")
 

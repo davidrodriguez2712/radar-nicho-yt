@@ -61,7 +61,8 @@ Todas las pantallas de datos son `GET` protegidos por sesión; todo `POST` exige
 
 - `/market/niches`, `/flow-research` y `/pilots` se leen con tope de 100 a 200 registros y sin paginar: con más, la web ve los más recientes y lo avisa (por ejemplo, «Puede haber investigaciones más antiguas que no se ven; el botón Investigar podría repetir una»).
 - Etiquetas con `/` en el nombre del nicho: la API de mercado las rechaza (limitación de su ruta); la web no las puede abrir.
-- Un cuerpo de la API con forma inesperada (campos que faltan, `NaN`, tipos incorrectos) muestra un 503 en español («formato inesperado»), nunca un 500; las cifras no finitas se ven como «—».
+- Un cuerpo de la API con forma inesperada (campos que faltan, `NaN`, tipos incorrectos) en cualquier `GET` de pantalla o en los `POST` que redibujan una pantalla (autorizar piloto, iniciar investigación) muestra un 503 en español («formato inesperado»); en un fragmento HTMX es un aviso pequeño con estado 200. Las cifras no finitas se ven como «—» y una fecha sin zona horaria se lee como UTC.
+- Autorizar: «Canal nuevo» ignora el nombre escrito (no se envía `target_channel`); «Usar el canal que escribo» lo envía. El presupuesto mostrado es el del informe y no cambia con el tope de videos.
 - Si la API cae, cada pantalla muestra su mensaje en español con 503 (o 200 en fragmentos HTMX).
 
 ### Lo que no se muestra a propósito

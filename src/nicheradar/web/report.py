@@ -5,6 +5,7 @@ Stored dossiers can be dossier-v1, -v2 or -v3 and any optional field can be null
 every read here tolerates that, so a stored dossier can never turn into a server error.
 """
 
+import math
 import re
 from typing import Any
 
@@ -99,7 +100,7 @@ def _texts(value: object) -> list[str]:
 
 
 def _number(value: object) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, int | float):
+    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
         return None
     return float(value)
 

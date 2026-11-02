@@ -5,6 +5,7 @@ The POST creates a pilot with real consequences, so everything that matters (nic
 dossier, budget) is derived here from the stored report; the form only supplies the rules.
 """
 
+import logging
 from datetime import UTC, datetime
 from typing import Annotated, Any
 from urllib.parse import quote
@@ -13,8 +14,8 @@ from fastapi import APIRouter, Depends, Form, Request
 from starlette.responses import RedirectResponse, Response
 
 from nicheradar.web.client import ApiError
-from nicheradar.web.deps import current_session, render, shape_guard
-from nicheradar.web.format import local_datetime
+from nicheradar.web.deps import SHAPE_ERRORS, SHAPE_MESSAGE, current_session, render, shape_guard
+from nicheradar.web.format import local_datetime, parse_utc
 from nicheradar.web.niches import CONFIDENCE, FORMATS
 from nicheradar.web.pilots_form import (
     GATE_MESSAGES,
@@ -29,6 +30,8 @@ from nicheradar.web.research import LANGUAGE_NAMES, UUID_RE
 from nicheradar.web.security import Session
 
 router = APIRouter()
+_log = logging.getLogger(__name__)
+GONE = "El nicho ya no está en el radar. Inicia el flujo de nuevo."
 NOT_FOUND = "No se encontró lo que buscabas."
 NOT_READY = "El informe todavía no está listo."
 NO_BUDGET = "El informe no trae un presupuesto utilizable: no se puede autorizar el piloto."
@@ -68,7 +71,7 @@ def _fetch(request: Request, session: Session, report_id: str) -> dict[str, Any]
         return _error_page(request, session, NOT_FOUND, 404)
     if budget_body(detail["dossier"], 1, report_id) is None:
         return _error_page(request, session, NO_BUDGET, 422)
-    result: dict[str, Any] = detail
+    result: dict[str, Any] = {**detail, "id": report_id}  # the validated id, not the payload's
     return result
 
 
@@ -93,10 +96,10 @@ def _subniche_block(request: Request, detail: dict[str, Any]) -> dict[str, Any] 
     if isinstance(measured, str):
         try:
             when = local_datetime(measured, request.app.state.config.timezone)[:10]
-            moment = datetime.fromisoformat(measured.replace("Z", "+00:00"))
+            moment = parse_utc(measured)
             now = datetime.fromtimestamp(request.app.state.clock(), UTC)
             ago = max((now - moment).days, 0)
-        except (ValueError, OverflowError, OSError):
+        except (ValueError, TypeError, OverflowError, OSError):
             when = ago = None
     return {"date": when, "ago": ago, "confidence": CONFIDENCE.get(str(evidence.get("confidence")))}
 
@@ -135,6 +138,7 @@ def _page(
         "valid_days": str(defaults.valid_days),
         "close_after": str(defaults.close_after),
         "canal": "",
+        "canal_modo": "",
     } | (form or {})
     language = detail.get("language")
     return render(
@@ -204,23 +208,47 @@ def authorize(
     canal: Annotated[str, Form()] = "",
     accept_no_go: Annotated[str, Form()] = "",
     accept_gate_failure: Annotated[str, Form()] = "",
+    canal_modo: Annotated[str, Form()] = "",
 ) -> Response:
     # niche_label, format and authorized_by are deliberately not read from the form.
     if not request.app.state.signer.csrf_valid(session, csrf):
         return _error_page(request, session, "La solicitud no es válida.", 403)
     if not UUID_RE.fullmatch(informe):
         return _error_page(request, session, NOT_FOUND, 404)
-    detail = _fetch(request, session, informe)
-    if isinstance(detail, Response):
-        return detail
     typed = {
         "max_videos": max_videos,
         "valid_days": valid_days,
         "close_after": close_after,
         "canal": canal,
+        "canal_modo": canal_modo,
     }
     accepted = (accept_no_go == "1", accept_gate_failure == "1")
-    values, errors = parse_form(typed)
+    try:
+        return _authorize(request, session, informe, typed, accepted)
+    except SHAPE_ERRORS:
+        _log.exception("unexpected API payload shape on authorize")
+        try:  # redraw the form with what was typed if the report can still be read
+            detail = _fetch(request, session, informe)
+            if isinstance(detail, Response):
+                return detail
+            return _page(request, session, detail, form=typed, status=503, error=SHAPE_MESSAGE)
+        except SHAPE_ERRORS:
+            return _error_page(request, session, SHAPE_MESSAGE, 503)
+
+
+def _authorize(
+    request: Request,
+    session: Session,
+    informe: str,
+    typed: dict[str, str],
+    accepted: tuple[bool, bool],
+) -> Response:
+    detail = _fetch(request, session, informe)
+    if isinstance(detail, Response):
+        return detail
+    # "Canal nuevo" means no target channel: whatever is typed in the text box is ignored.
+    parsed = typed | {"canal": ""} if typed["canal_modo"] == "nuevo" else typed
+    values, errors = parse_form(parsed)
     busy = _busy(request)
     context: dict[str, Any] = {"form": typed, "accepted": accepted, "busy": busy}
     if values is None:
@@ -275,6 +303,8 @@ def authorize(
                 reasons=_problems(err.detail),
                 **context,
             )
+        if err.kind == "not_found":
+            return _page(request, session, detail, status=404, error=GONE, **context)
         return _page(request, session, detail, status=503, error=err.message, **context)
     pilot = result.get("pilot_id")
     target = f"/informes/{informe}?aviso=piloto"

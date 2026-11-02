@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from starlette.responses import RedirectResponse, Response
 
 from nicheradar.web.client import ApiError
-from nicheradar.web.deps import current_session, render, shape_guard
+from nicheradar.web.deps import current_session, is_fragment, render, shape_guard
 from nicheradar.web.niches import AVISOS_NICHOS, list_view, parse_filters
 from nicheradar.web.security import Session
 
@@ -23,12 +23,6 @@ RESEARCH_OLDER = (
 RESEARCH_DOWN = "La lista de investigaciones no está disponible: no se muestra su estado."
 
 
-def _fragment(request: Request) -> bool:
-    return bool(request.headers.get("hx-request")) and not request.headers.get(
-        "hx-history-restore-request"
-    )
-
-
 def _back(volver: str, aviso: str) -> str:
     # Only the niche list itself: an open redirect through `volver` must be impossible.
     base = volver if volver == "/nichos" or volver.startswith("/nichos?") else "/nichos"
@@ -41,7 +35,7 @@ def _back(volver: str, aviso: str) -> str:
 @shape_guard
 def niche_list(request: Request, session: Annotated[Session, Depends(current_session)]) -> Response:
     filters = parse_filters(request.query_params)
-    htmx = _fragment(request)
+    htmx = is_fragment(request)
     template = "nichos/_lista.html" if htmx else "nichos/lista.html"
     notice = AVISOS_NICHOS.get(request.query_params.get("aviso", ""))
     api = request.app.state.api
@@ -118,6 +112,7 @@ def decide(
             {"message": "La solicitud no es válida."},
             status_code=403,
             session=session,
+            with_radar=False,
         )
     if (
         decision not in DECISIONS

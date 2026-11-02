@@ -2,7 +2,7 @@
 """Spanish number, money and date formatting for the mobile web."""
 
 import math
-from datetime import datetime
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 DAYS = ("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
@@ -38,7 +38,7 @@ def usd_range(low: str | None, high: str | None) -> str | None:
 
 
 def compact(value: float | int | None) -> str:
-    if value is None:
+    if value is None or not math.isfinite(value):
         return "—"
     number = float(value)
     if number >= 1_000_000:
@@ -48,9 +48,14 @@ def compact(value: float | int | None) -> str:
     return es_int(number)
 
 
+def parse_utc(value: str) -> datetime:
+    """An ISO moment as an aware datetime; one without a zone is taken as UTC."""
+    moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment
+
+
 def local_datetime(value: str, timezone: str) -> str:
-    moment = datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(ZoneInfo(timezone))
-    return moment.strftime("%d/%m/%Y %H:%M")
+    return parse_utc(value).astimezone(ZoneInfo(timezone)).strftime("%d/%m/%Y %H:%M")
 
 
 def usd(value: float | str | None) -> str:

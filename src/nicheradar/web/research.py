@@ -4,8 +4,15 @@
 import re
 from typing import Any
 
-LANG_RE = re.compile(r"^[a-z]{2}(-[A-Z]{2})?$")
-UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+LANG_RE = re.compile(r"[a-z]{2}(-[A-Z]{2})?")  # fullmatch only
+# Always used with `fullmatch`: `$` would also accept a trailing newline.
+UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+def valid_id(value: object) -> bool:
+    return isinstance(value, str) and UUID_RE.fullmatch(value) is not None
+
+
 LANGUAGE_NAMES = {
     "en": "Inglés",
     "es": "Español",
@@ -36,7 +43,7 @@ def language_options(mix: list[dict[str, Any]]) -> dict[str, Any]:
         if isinstance(e.get("language"), str) and isinstance(e.get("share_pct"), int | float)
     ]
     known = sorted(
-        (e for e in entries if e[0] != "unknown" and LANG_RE.match(e[0])), key=lambda e: -e[1]
+        (e for e in entries if e[0] != "unknown" and LANG_RE.fullmatch(e[0])), key=lambda e: -e[1]
     )
     unknown = next((share for code, share in entries if code == "unknown"), None)
     options = [

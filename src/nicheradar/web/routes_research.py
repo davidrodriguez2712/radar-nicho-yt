@@ -1,6 +1,7 @@
 # src/nicheradar/web/routes_research.py
 """M8: choose the language and create a flow-research order for a backlog niche."""
 
+import logging
 from typing import Annotated
 from urllib.parse import quote
 
@@ -8,11 +9,12 @@ from fastapi import APIRouter, Depends, Form, Request
 from starlette.responses import RedirectResponse, Response
 
 from nicheradar.web.client import ApiError
-from nicheradar.web.deps import current_session, render, shape_guard
+from nicheradar.web.deps import SHAPE_ERRORS, SHAPE_MESSAGE, current_session, render, shape_guard
 from nicheradar.web.research import CONFLICT_MESSAGES, LANG_RE, UUID_RE, language_options
 from nicheradar.web.security import Session
 
 router = APIRouter()
+_log = logging.getLogger(__name__)
 FORMATS = ("long", "shorts")
 NOT_FOUND = "No se encontró lo que buscabas."
 
@@ -100,8 +102,18 @@ def start(
         return _error_page(request, session, "La solicitud no es válida.", 403)
     if not _valid_target(etiqueta, formato):
         return _error_page(request, session, NOT_FOUND, 404)
-    if not LANG_RE.match(idioma):
+    if not LANG_RE.fullmatch(idioma):
         return _error_page(request, session, "Elige un idioma válido de la lista.", 422)
+    try:
+        return _start(request, session, etiqueta, formato, idioma)
+    except SHAPE_ERRORS:
+        _log.exception("unexpected API payload shape on start")
+        return _error_page(request, session, SHAPE_MESSAGE, 503)
+
+
+def _start(
+    request: Request, session: Session, etiqueta: str, formato: str, idioma: str
+) -> Response:
     api = request.app.state.api
     try:
         detail = api.request(
@@ -152,7 +164,7 @@ def start(
             error=err.message,
         )
     report = result.get("id")
-    if not isinstance(report, str) or not UUID_RE.match(report):
+    if not isinstance(report, str) or not UUID_RE.fullmatch(report):
         return RedirectResponse("/nichos?aviso=error-creada", status_code=303)
     aviso = "creada" if result.get("created") else "existente"
     return RedirectResponse(f"/informes/{report}?aviso={aviso}", status_code=303)

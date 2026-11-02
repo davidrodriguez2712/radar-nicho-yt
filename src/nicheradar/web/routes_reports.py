@@ -37,7 +37,7 @@ def report(
     aviso: str = "",
     piloto: str = "",
 ) -> Response:
-    # `$` in UUID_RE would also accept a trailing newline: validate the whole string.
+    # UUID_RE has no anchors: always fullmatch, so a trailing newline is rejected.
     if not UUID_RE.fullmatch(report_id):
         return _error(request, session, NOT_FOUND, 404)
     try:
@@ -47,6 +47,7 @@ def report(
         return _error(
             request, session, NOT_FOUND if missing else err.message, 404 if missing else 503
         )
+    detail = {**detail, "id": report_id}  # links use the id that was validated, not the payload's
     context = {"active_tab": "nichos", "notice": notice(aviso, piloto)}
     if detail.get("status") == "listo":
         view = report_view(detail, request.app.state.config.timezone)

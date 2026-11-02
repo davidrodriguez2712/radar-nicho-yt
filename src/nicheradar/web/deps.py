@@ -95,6 +95,13 @@ def render(
     return templates.TemplateResponse(request, name, data, status_code=status_code)
 
 
+def is_fragment(request: Request) -> bool:
+    """An htmx partial request; a history restore needs the whole page."""
+    return bool(request.headers.get("hx-request")) and not request.headers.get(
+        "hx-history-restore-request"
+    )
+
+
 SHAPE_ERRORS = (KeyError, IndexError, TypeError, AttributeError, ValueError, ArithmeticError)
 SHAPE_MESSAGE = (
     "La API devolvió datos con un formato inesperado, así que no se puede mostrar esta pantalla. "
@@ -116,14 +123,22 @@ def shape_guard(handler: Callable[..., Response]) -> Callable[..., Response]:
         except SHAPE_ERRORS:
             _log.exception("unexpected API payload shape on %s", handler.__name__)
             request: Request = kwargs["request"]
-            fragment = bool(request.headers.get("hx-request")) and not request.headers.get(
-                "hx-history-restore-request"
-            )
+            if is_fragment(request):
+                # htmx does not swap 5xx and the full page would nest inside #contenido.
+                response = render(
+                    request,
+                    "_aviso_error.html",
+                    {"message": SHAPE_MESSAGE},
+                    session=kwargs.get("session"),
+                    with_radar=False,
+                )
+                response.headers["Vary"] = "HX-Request, HX-History-Restore-Request"
+                return response
             return render(
                 request,
                 "error.html",
                 {"message": SHAPE_MESSAGE},
-                status_code=200 if fragment else 503,
+                status_code=503,
                 session=kwargs.get("session"),
                 with_radar=False,
             )

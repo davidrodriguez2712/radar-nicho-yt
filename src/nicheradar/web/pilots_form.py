@@ -57,7 +57,8 @@ def parse_form(data: Mapping[str, str]) -> tuple[dict[str, Any] | None, dict[str
     for field, (low, high, hint) in RANGES.items():
         raw = data.get(field, "").strip()
         # isascii: str.isdigit also accepts digits int() could misread (e.g. superscripts).
-        if raw.isascii() and raw.isdigit() and low <= int(raw) <= high:
+        # len cap: int() raises on thousands of digits, and no valid value has more than 2.
+        if len(raw) <= 3 and raw.isascii() and raw.isdigit() and low <= int(raw) <= high:
             values[field] = int(raw)
         else:
             errors[field] = hint
@@ -80,7 +81,10 @@ def _money(value: object) -> Decimal | None:
         return None
     if not number.is_finite():
         return None
-    number = number.quantize(CENT, rounding=ROUND_HALF_UP)
+    try:
+        number = number.quantize(CENT, rounding=ROUND_HALF_UP)
+    except InvalidOperation:  # astronomical values do not fit the cent precision
+        return None
     return number if 0 <= number <= MAX_MONEY else None
 
 

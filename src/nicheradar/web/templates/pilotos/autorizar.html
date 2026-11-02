@@ -31,17 +31,19 @@
 <form class="stack" method="post" action="/pilotos/autorizar" id="autorizar">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
   <input type="hidden" name="informe" value="{{ report_id }}">
+  {% set existing = values.canal_modo == "existente" or (values.canal and values.canal_modo != "nuevo") %}
   <section class="card" id="canal">
     <h2 class="h2">Canal destino</h2>
-    <label class="row"><span><input type="radio" name="canal_modo" value="nuevo"{% if not values.canal %} checked{% endif %}> Canal nuevo (sin nombre todavía)</span></label>
-    {% for c in busy %}
-    <label class="row"><span><input type="radio" name="canal_modo" value="{{ c }}" disabled> {{ c }}</span><span class="row__value">Ocupado: ya tiene un piloto activo</span></label>
-    {% endfor %}
+    <label class="row"><span><input type="radio" name="canal_modo" value="nuevo"{% if not existing %} checked{% endif %}> Canal nuevo (sin nombre todavía; se ignora el nombre de abajo)</span></label>
+    <label class="row"><span><input type="radio" name="canal_modo" value="existente"{% if existing %} checked{% endif %}> Usar el canal que escribo abajo</span></label>
     <div class="field">
-      <label for="canal-texto">O escribe el canal</label>
+      <label for="canal-texto">Nombre del canal</label>
       <input id="canal-texto" type="text" name="canal" value="{{ values.canal }}" placeholder="canal-nombre" autocomplete="off">
       {{ field_error("canal") }}
     </div>
+    {% for c in busy %}
+    <div class="row"><span>{{ c }}</span><span class="row__value">Ocupado: ya tiene un piloto activo</span></div>
+    {% endfor %}
   </section>
   <section class="card">
     <div class="field">
@@ -61,9 +63,9 @@
     </div>
   </section>
   <section class="card" id="presupuesto">
-    <h2 class="h2">Presupuesto de {{ values.max_videos }} videos</h2>
+    <h2 class="h2">Presupuesto del informe (tope: {{ values.max_videos }} videos)</h2>
     <div class="rows">{% for label, value in v.budget %}<div class="row"><span class="row__label">{{ label }}</span><span class="row__value">{{ value }}</span></div>{% endfor %}</div>
-    <p class="caption">Cifras del informe; no incluyen tu tiempo.</p>
+    <p class="caption">Cifras del informe; no incluyen tu tiempo y no cambian con el tope de videos.</p>
   </section>
   <section class="card" id="reglas">
     <h2 class="h2">Reglas de parada</h2>

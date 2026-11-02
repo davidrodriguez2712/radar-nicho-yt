@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
 
+from nicheradar.web.research import valid_id
+
 DECISION_CHIP = {
     "nuevo": ("Sin decidir", "neutral"),
     "tentativo": ("Tentativo", "rose"),
@@ -81,6 +83,8 @@ def card(item: dict[str, Any], research: dict[str, Any] | None, rank: int) -> di
         # Deliberate: without a score there is nothing to decide or research, even if an
         # older dossier exists; the dossier chip still shows its state.
         action = {"kind": "disabled", "label": "Falta puntaje"}
+    elif state in ("listo", "pendiente", "en_curso") and not valid_id(research_id):
+        action = {"kind": "disabled", "label": "Ver estado"}
     elif state == "listo":
         # (A niche without score never reaches here: "Falta puntaje" wins even with a dossier.)
         action = {

@@ -5,6 +5,7 @@ import math
 from typing import Any
 
 from nicheradar.web import niches, subniches
+from nicheradar.web.deps import SHAPE_ERRORS
 from nicheradar.web.research import UUID_RE
 
 PAGE = 100  # size of the flow-research and pilots reads: exactly this many may hide older rows
@@ -14,7 +15,7 @@ PILOT_ATTENTION = {
     "autorizado": "Falta entregar el paquete al canal",
 }
 CLOSED = ("cerrado", "cancelado")
-FAILED = (KeyError, TypeError, ValueError, AttributeError)
+FAILED = SHAPE_ERRORS
 
 
 def attention_cards(pilots: list[dict[str, Any]]) -> list[dict[str, Any]]:
