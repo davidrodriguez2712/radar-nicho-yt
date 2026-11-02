@@ -1,4 +1,6 @@
 # tests/test_web_subniches_list.py
+import re
+
 from tests.web_helpers import HOSTILE, Api, make_client, measurement, research, subniche_item
 
 LIST = ("GET", "/api/v1/subniches")
@@ -46,8 +48,9 @@ def test_the_list_renders_one_card_per_subniche_with_the_figma_content() -> None
     assert "US$ 673 – 1.682" in text and "US$ 1.629 – 3.724" in text
     assert "Ciencia y naturaleza" in text and "Historia" in text
     assert "Dossier listo" in text and "Sin investigar" in text
-    assert "Despegaron" in text and "Constantes" in text and "Grandes" in text
-    assert "Finalista" in text
+    assert "<dt>Despegaron</dt><dd>19</dd>" in text and "<dt>Constantes</dt><dd>18</dd>" in text
+    assert "<dt>Grandes</dt><dd>4</dd>" in text and "<dt>Despegaron</dt><dd>11</dd>" in text
+    assert 'chip chip--rose">Finalista<' in text
     assert text.count('class="card"') == 2
     listing = [c for c in api.calls if c.url.path == "/api/v1/subniches"]
     assert [c.url.params["include_inactive"] for c in listing] == ["false"]
@@ -76,7 +79,8 @@ def test_the_count_line_and_the_segmented_selector() -> None:
     api = api_with(subniche_item("a_one"), subniche_item("b_two", finalist=False))
     text = make_client(api).get("/subnichos").text
     assert "1</strong> finalistas de 2" in text
-    assert "Nichos" in text and "Subnichos" in text and 'aria-current="page"' in text
+    assert "Nichos" in text
+    assert re.search(r'<a[^>]*aria-current="page"[^>]*>Subnichos', text)
 
 
 def test_filters_narrow_the_cards_in_the_web_layer() -> None:
@@ -88,7 +92,8 @@ def test_filters_narrow_the_cards_in_the_web_layer() -> None:
         ),
     )
     web = make_client(api)
-    assert "Beta" not in web.get("/subnichos", params={"familia": "history"}).text
+    by_family = web.get("/subnichos", params={"familia": "history"}).text
+    assert "Alpha" in by_family and "Gamma" in by_family and "Beta" not in by_family
     only = web.get("/subnichos", params={"finalistas": "1"}).text
     assert "Alpha" in only and "Beta" not in only and "Gamma" not in only
     state = web.get("/subnichos", params={"estado": "proposed"}).text
@@ -130,6 +135,7 @@ def test_hostile_api_text_is_escaped_everywhere_in_the_list() -> None:
     text = make_client(api).get("/subnichos").text
     assert "<script>alert(1)</script>" not in text
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in text
+    assert re.search(r'<option value="[^"]*&lt;script&gt;', text)
 
 
 def test_an_unavailable_api_shows_a_clear_message_with_503() -> None:
@@ -147,3 +153,47 @@ def test_an_unavailable_api_shows_a_clear_message_with_503() -> None:
 def test_an_empty_list_has_its_own_message() -> None:
     text = make_client(api_with()).get("/subnichos").text
     assert "Todavía no hay subnichos" in text
+
+
+def test_filter_pills_do_not_hardcode_the_on_state() -> None:
+    api = api_with(subniche_item("a_one"))
+    text = make_client(api).get("/subnichos", params={"finalistas": "1", "inactivos": "1"}).text
+    assert "pill--on" not in text and text.count(" checked") == 2
+
+
+def test_an_explicit_paused_or_archived_state_asks_for_inactive_hypotheses() -> None:
+    for estado in ("paused", "archived"):
+        api = api_with(subniche_item("a_one", status=estado))
+        make_client(api).get("/subnichos", params={"estado": estado})
+        listing = [c for c in api.calls if c.url.path == "/api/v1/subniches"]
+        assert [c.url.params["include_inactive"] for c in listing] == ["true"], estado
+    api = api_with(subniche_item("a_one"))
+    make_client(api).get("/subnichos", params={"estado": "active"})
+    assert [
+        c.url.params["include_inactive"] for c in api.calls if c.url.path == "/api/v1/subniches"
+    ] == ["false"]
+
+
+def test_history_restore_gets_the_full_page_and_responses_vary() -> None:
+    web = make_client(api_with(subniche_item("a_one", label="Alpha")))
+    restore = web.get(
+        "/subnichos", headers={"hx-request": "true", "hx-history-restore-request": "true"}
+    )
+    assert "<html" in restore.text and 'class="topbar"' in restore.text
+    assert restore.headers["vary"] == "HX-Request, HX-History-Restore-Request"
+    fragment = web.get("/subnichos", headers={"hx-request": "true"})
+    assert "<html" not in fragment.text
+    assert fragment.headers["vary"] == "HX-Request, HX-History-Restore-Request"
+
+
+def test_an_htmx_request_with_the_api_down_gets_a_swappable_200_fragment() -> None:
+    import httpx
+
+    def boom(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down")
+
+    api = Api({LIST: boom, ("GET", "/api/v1/status"): (200, {"radar_paused": False})})
+    response = make_client(api).get("/subnichos", headers={"hx-request": "true"})
+    assert response.status_code == 200 and "API no disponible" in response.text
+    assert "<html" not in response.text
+    assert response.headers["vary"] == "HX-Request, HX-History-Restore-Request"
