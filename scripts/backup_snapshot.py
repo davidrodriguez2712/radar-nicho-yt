@@ -171,7 +171,7 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
     ).scalar_one():
         raise ValueError("market_intel_not_paused")
     revision = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-    if revision != "0020":
+    if revision != "0021":
         raise ValueError("unreviewed_schema_revision")
     has_pilots = any(counts[name] for name in PILOT_TABLES)
     has_research = any(counts[name] for name in RESEARCH_TABLES)
