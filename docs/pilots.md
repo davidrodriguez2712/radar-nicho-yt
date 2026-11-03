@@ -46,9 +46,10 @@ El estado se guarda con códigos **ASCII**; los documentos usan la forma con til
 
 | Ruta | Quién | Nota |
 |---|---|---|
-| `POST /api/v1/pilots`, `GET /api/v1/pilots` | Humano (token de servicio) | «Lanzar» y listar |
+| `POST /api/v1/pilots`, `GET /api/v1/pilots` | Humano (token de servicio) | «Lanzar» y listar; cada item de la lista incluye además `valid_until`, `delivered_at` (`null` sin entregar) y `channel` (último bloque reportado: `reported_at`, `channel_status`, `checks`, `note`; `null` sin reportes) |
 | `POST /api/v1/pilots/{id}/decision`, `/cancel`, `GET …/closing-summary` | Humano | `seguir` / `cerrar`; el resumen es markdown `EVD-…` |
 | `GET /api/v1/pilots/pending?channel=` | Canal o humano | Autorizados, vigentes, sin entregar |
+| `GET …/{id}/videos` | Canal o humano | `{"items": [...]}` con los videos reportados (`video_id`, `source_state`, `stage`, `visibility`, `published_at`, `cost_usd`, `cost_equivalent_usd`, `machine_minutes`, `failure_code`, `measurement`), por `published_at` ascendente (sin fecha al final) y luego `video_id`; `measurement` es `null` o solo sus campos con valor (los de Shorts incluidos). Misma visibilidad que el detalle: lo ajeno o inexistente responde `404` |
 | `GET …/{id}/package`, `POST …/{id}/delivery`, `POST …/{id}/reports`, `GET …/{id}` | Canal o humano | Un token de canal ve solo lo suyo; lo ajeno responde `404` |
 | `POST/GET /api/v1/channel-tokens`, `DELETE …/{token_id}` | Humano | El token se muestra una sola vez |
 

@@ -200,6 +200,13 @@ def pilots_router(
         except service.PilotError as error:
             raise _http(error) from error
 
+    @router.get("/pilots/{pilot_id}/videos")
+    def videos_of(pilot_id: str, who: Anyone, connection: Db) -> dict[str, Any]:
+        try:
+            return {"items": service.list_videos(connection, pilot_id, who.channel_id)}
+        except service.PilotError as error:
+            raise _http(error) from error
+
     @router.post("/pilots/{pilot_id}/delivery")
     def delivery(
         pilot_id: str, body: DeliveryRequest, who: Anyone, connection: Db

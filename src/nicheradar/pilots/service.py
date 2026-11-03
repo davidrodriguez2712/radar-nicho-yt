@@ -423,6 +423,8 @@ def default_stop_rules(format: str) -> list[dict[str, Any]]:
 
 
 def _row(connection: Connection, pilot_id: str) -> Any:
+    if "\x00" in pilot_id:  # Postgres no admite NUL en texto: un id así no existe, no es un 503
+        raise PilotError("not_found")
     row = (
         connection.execute(select(pilots).where(pilots.c.pilot_id == pilot_id).with_for_update())
         .mappings()
@@ -543,6 +545,68 @@ def _videos_for_rules(connection: Connection, pk: UUID) -> list[dict[str, Any]]:
         }
         for r in rows
     ]
+
+
+_LONG_MEASUREMENT = (
+    "measured_at",
+    "window_days",
+    "views",
+    "avd_pct",
+    "browse_share_pct",
+    "subscribers_gained",
+)
+_SHORTS_MEASUREMENT = (
+    "engaged_views",
+    "engaged_view_ratio_pct",
+    "avg_view_pct",
+    "shorts_feed_share_pct",
+    "shares",
+    "stayed_to_watch_pct",
+    "early_retention_pct",
+    "early_retention_second",
+)
+
+
+def list_videos(
+    connection: Connection, pilot_id: str, channel_id: str | None
+) -> list[dict[str, Any]]:
+    """Videos reportados de un piloto: publicados primero (más antiguo antes), sin fecha al final.
+
+    Misma visibilidad que el detalle: un piloto ajeno o inexistente es ``not_found``.
+    """
+    row = _row(connection, pilot_id)
+    _own(row, channel_id)
+    joined = videos.outerjoin(shorts, shorts.c.pilot_video_id == videos.c.id)
+    rows = connection.execute(
+        select(videos, *(c for c in shorts.c if c.name != "pilot_video_id"))
+        .select_from(joined)
+        .where(videos.c.pilot_pk == row["id"])
+        .order_by(videos.c.published_at.asc().nulls_last(), videos.c.video_id)
+    ).mappings()
+    out = []
+    for r in rows:
+        measured = {
+            name: r[name]
+            for name in (*_LONG_MEASUREMENT, *_SHORTS_MEASUREMENT)
+            if r[name] is not None
+        }
+        out.append(
+            _plain(
+                {
+                    "video_id": r["video_id"],
+                    "source_state": r["source_state"],
+                    "stage": r["stage"],
+                    "visibility": r["visibility"],
+                    "published_at": r["published_at"],
+                    "cost_usd": r["cost_usd"],
+                    "cost_equivalent_usd": r["cost_equivalent_usd"],
+                    "machine_minutes": r["machine_minutes"],
+                    "failure_code": r["failure_code"],
+                    "measurement": measured or None,
+                }
+            )
+        )
+    return out
 
 
 def _evaluate(connection: Connection, row: Any, now: datetime) -> dict[str, Any]:
@@ -786,7 +850,10 @@ def list_pilots(
                     "format": row["format"],
                     "target_channel": row["target_channel"],
                     "authorized_at": row["authorized_at"],
+                    "valid_until": row["valid_until"],
+                    "delivered_at": row["delivered_at"],
                     "last_report_at": row["last_report_at"],
+                    "channel": row["channel_info"],
                     "channel_last_contact_at": contact,
                     "totals": evaluation["totals"],
                     "proposal": rules.proposal(evaluation, acknowledged),
