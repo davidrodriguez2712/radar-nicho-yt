@@ -73,6 +73,29 @@ def usd(value: float | str | None) -> str:
     return f"US$ {es_int(float(value))}"
 
 
+MAX_MONEY = 1e9
+
+
+def money_amount(value: object) -> str:
+    """One money format for a single amount: US$ with a Spanish decimal comma.
+
+    A whole amount has no decimals ("US$ 41"); under 100 it keeps two ("US$ 0,96"); from 100 up it
+    rounds to a whole number. Negative, non-finite, non-numeric or absurdly large read as "—".
+    A numeric string (the API sends some amounts as strings) counts as its number.
+    """
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        return "—"
+    try:
+        number = float(value)
+    except (ValueError, OverflowError):
+        return "—"
+    if not math.isfinite(number) or number < 0 or number > MAX_MONEY:
+        return "—"
+    if number >= 100 or number == int(number):
+        return f"US$ {es_int(number)}"
+    return "US$ " + f"{number:.2f}".replace(".", ",")
+
+
 def pct(value: float | None) -> str:
     return "—" if value is None or not math.isfinite(value) else f"{round(value)}%"
 

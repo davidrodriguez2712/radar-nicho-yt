@@ -88,6 +88,8 @@ def validate_note(value: str) -> str | None:
     note = value.replace("\r\n", "\n").replace("\r", "\n").strip()
     if not 1 <= len(note) <= NOTE_MAX:
         return None
+    if any(unicodedata.category(c) == "Cc" and c not in "\n\t" for c in note):
+        return None  # NUL and other controls: Postgres refuses NUL and no person types the rest
     return note if any(_visible(char) for char in note) else None
 
 

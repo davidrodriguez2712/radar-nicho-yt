@@ -506,3 +506,14 @@ def test_a_past_validity_of_an_undelivered_pilot_reads_in_the_past_tense() -> No
     assert "vence" not in found[0]["text"]
     ahead = pilot_item(status="autorizado", delivered_at=None, valid_until="2026-11-05T00:00:00Z")
     assert blockers(ahead, NOW)[0]["text"].startswith("La vigencia vence el 5 nov")
+
+
+@pytest.mark.parametrize("garbage", ["basura", "", "2026-13-45", 7, ["x"]])
+def test_a_garbage_delivered_at_does_not_count_as_delivered(garbage: object) -> None:
+    pilot = pilot_item(
+        status="autorizado", delivered_at=garbage, valid_until="2026-11-05T00:00:00Z"
+    )
+    assert any(b["kind"] == "vigencia" for b in blockers(pilot, NOW))
+    assert next_action(pilot) == "Falta que tu Mac baje el paquete"
+    real = pilot_item(status="autorizado", delivered_at="2026-11-03T10:00:00Z")
+    assert next_action(real) is None

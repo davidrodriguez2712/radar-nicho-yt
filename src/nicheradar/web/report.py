@@ -16,7 +16,7 @@ from nicheradar.flow_research.gates import (
     calibration_reasons,
     minutes_reasons,
 )
-from nicheradar.web.format import compact, local_datetime, usd
+from nicheradar.web.format import compact, local_datetime, money_amount
 from nicheradar.web.niches import CONFIDENCE, FORMATS
 from nicheradar.web.research import LANGUAGE_NAMES
 
@@ -110,10 +110,7 @@ def _hours(value: float) -> str:
 
 
 def _money(value: object) -> str:
-    try:
-        return usd(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return "—"
+    return money_amount(value)
 
 
 def _minutes(items: list[dict[str, Any]], key: str) -> int:

@@ -113,7 +113,7 @@ def blockers(item: dict[str, Any], now: datetime, timezone: str = "UTC") -> list
     valid_until = _moment(item.get("valid_until"))
     if (
         status == "autorizado"
-        and not item.get("delivered_at")
+        and _moment(item.get("delivered_at")) is None
         and valid_until is not None
         and valid_until - now <= VALIDITY_WINDOW
     ):
@@ -150,7 +150,7 @@ def next_action(item: dict[str, Any]) -> str | None:
     if waiting:
         noun = "video espera" if waiting == 1 else "videos esperan"
         return f"{waiting} {noun} tu veredicto en el canal"
-    if status == "autorizado" and not item.get("delivered_at"):
+    if status == "autorizado" and _moment(item.get("delivered_at")) is None:
         return "Falta que tu Mac baje el paquete"
     return None
 

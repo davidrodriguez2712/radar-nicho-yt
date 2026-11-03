@@ -619,3 +619,31 @@ def test_a_note_needs_one_visible_character_and_keeps_its_inner_newlines() -> No
 def test_the_note_limit_is_1500_characters() -> None:
     assert validate_note("a" * 1500) == "a" * 1500
     assert validate_note("a" * 1501) is None
+
+
+@pytest.mark.parametrize("value", ["ok\x00x", "\x00", "a\x1fb", "a\x7fb", "a\x85b", "a\x1bb"])
+def test_a_note_with_control_characters_is_rejected(value: str) -> None:
+    assert validate_note(value) is None
+
+
+def test_newlines_and_tabs_stay_valid_in_a_note() -> None:
+    assert validate_note("uno\tdos\ndos") == "uno\tdos\ndos"
+
+
+@pytest.mark.parametrize(
+    ("post", "status"),
+    [
+        (lambda web, token: post_decision(web, token, note="ok\x00x"), "decision_pendiente"),
+        (lambda web, token: post_cancel(web, token, reason="ok\x00x"), "autorizado"),
+    ],
+)
+def test_a_nul_in_the_note_or_reason_is_refused_locally_and_writes_nothing(
+    post: Any, status: str
+) -> None:
+    api = api_with(status, {DECISION: (200, {}), CANCEL: (200, {})})
+    web = make_client(api)
+    path = PATHS["seguir"] if status == "decision_pendiente" else PATHS["cancelar"]
+    response = post(web, token_of(web, path))
+    assert response.status_code == 422
+    assert "obligatorio y admite hasta 1500 caracteres" in response.text
+    assert writes(api) == 0

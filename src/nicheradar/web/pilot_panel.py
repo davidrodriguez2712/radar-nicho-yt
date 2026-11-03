@@ -9,7 +9,7 @@ exists when the package carries ``preparation_days``) and every list is capped.
 from datetime import datetime, timedelta
 from typing import Any
 
-from nicheradar.web.format import es_int, short_date, zone
+from nicheradar.web.format import money_amount, short_date, zone
 from nicheradar.web.pilots_view import (
     MAX_PREPARATION_DAYS,
     PILOT_RE,
@@ -110,7 +110,7 @@ EVENT_TEXT = {
     "superseded": "Reemplazado",
     "gate_failure_accepted": "Aceptaste una compuerta no cumplida",
 }
-EVENT_DETAIL_KEYS = {"note": "Nota", "proposal": "Propuesta"}
+EVENT_DETAIL_KEYS = {"note": "Nota", "proposal": "Propuesta", "reason": "Motivo"}
 NOTICES = {
     "autorizado": ("Piloto autorizado. Falta que tu Mac baje el paquete.", "green"),
     "seguido": ("Decidiste seguir: el piloto continúa.", "green"),
@@ -134,21 +134,8 @@ def notice(key: object) -> tuple[str, str] | None:
     return NOTICES.get(key) if isinstance(key, str) else None
 
 
-MAX_MONEY = 1e9
-
-
 def _money(value: object) -> str:
-    """One money format for the whole panel: US$ with a Spanish decimal comma.
-
-    A whole amount has no decimals ("US$ 41"); under 100 it keeps two ("US$ 0,96"); from 100 up it
-    rounds to a whole number. Negative, non-finite or absurdly large amounts read as unknown.
-    """
-    number = _num(value)
-    if number is None or number < 0 or number > MAX_MONEY:
-        return "—"
-    if number >= 100 or number == int(number):
-        return f"US$ {es_int(number)}"
-    return "US$ " + f"{number:.2f}".replace(".", ",")
+    return money_amount(value)
 
 
 def _minutes(value: object) -> str:
@@ -356,6 +343,19 @@ def _costs(detail: dict[str, Any], now: datetime) -> dict[str, str]:
     }
 
 
+def _cancel_reason(detail: dict[str, Any]) -> str:
+    """Why a pilot was cancelled: its close_reason, else the reason of the cancelled event."""
+    reason = _str(detail.get("close_reason"))
+    if reason:
+        return reason
+    for event in reversed(_list(detail.get("events"))):
+        if isinstance(event, dict) and event.get("kind") == "cancelled":
+            found = _str(_dict(event.get("detail")).get("reason"))
+            if found:
+                return found[:DETAIL_CAP]
+    return ""
+
+
 def _summary(
     detail: dict[str, Any], now: datetime, timezone: str, pid: str | None
 ) -> dict[str, Any]:
@@ -403,11 +403,14 @@ def _summary(
         for key in ("seguir", "cerrar", "cancelar", "cierre")
     ]
     closed_at = _moment(detail.get("closed_at"))
+    cancel_reason = _cancel_reason(detail) if status == "cancelado" else ""
     return {
         "state_text": state_text,
         "closed_text": _day(closed_at, timezone),
         "close_reason": _str(detail.get("close_reason")),
         "is_closed": status == "cerrado",
+        "is_cancelled": status == "cancelado",
+        "cancel_reason": cancel_reason,
         "blockers": found,
         "next_action": next_action(detail) or NO_BLOCKERS_NEXT,
         "dates": dates(detail, now, timezone),

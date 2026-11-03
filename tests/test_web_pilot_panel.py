@@ -682,3 +682,29 @@ def test_the_closed_notice_links_to_the_closing_summary_only_for_a_closed_pilot(
         text = page(api_with(pilot_detail(status="cerrado")), extra=f"aviso={key}")
         assert f"/pilotos/{PID}/cierre?" not in text
         assert "Ver resumen de cierre" not in block(text, "aviso")
+
+
+def test_the_cancelled_event_shows_its_reason_translated_and_escaped() -> None:
+    events = [event("cancelled", detail={"reason": HOSTILE})]
+    text = page(api_with(detail_with(status="cancelado", events=events)), "historial")
+    history = flat(block(text, "tab-historial")) if 'id="tab-historial"' in text else flat(text)
+    assert "Motivo:" in history and "reason:" not in history
+    assert ESCAPED in text and "<script>alert(1)</script>" not in text
+
+
+def test_the_summary_shows_the_cancellation_reason_only_for_cancelled_pilots() -> None:
+    events = [event("authorized"), event("cancelled", detail={"reason": "Ya no conviene"})]
+    cancelled = page(api_with(detail_with(status="cancelado", events=events)))
+    state = flat(block(cancelled, "res-estado"))
+    assert "Cancelado" in state and "Motivo: Ya no conviene" in state
+    own = page(api_with(detail_with(status="cancelado", close_reason="Por costo", events=events)))
+    assert "Motivo: Por costo" in flat(block(own, "res-estado"))
+    hostile = detail_with(
+        status="cancelado", events=[event("cancelled", detail={"reason": HOSTILE})]
+    )
+    text = page(api_with(hostile))
+    assert ESCAPED in block(text, "res-estado") and "<script>alert(1)</script>" not in text
+    open_pilot = page(api_with(detail_with(status="en_ejecucion", events=events)))
+    assert "Ya no conviene" not in block(open_pilot, "res-estado")
+    nothing = page(api_with(detail_with(status="cancelado", events=[])))
+    assert "Motivo" not in block(nothing, "res-estado")

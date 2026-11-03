@@ -127,7 +127,7 @@ def test_budget_body_rounds_money_to_two_decimals_and_keeps_order() -> None:
     assert body is not None
     assert (body["low"], body["likely"], body["high"]) == (2.99, 9.29, 41.0)
     assert body["currency"] == "USD" and body["max_videos"] == 10
-    assert body["basis"] == f"Presupuesto del informe {ID}: probable US$ 9."
+    assert body["basis"] == f"Presupuesto del informe {ID}: probable US$ 9,29."
 
 
 def test_budget_body_accepts_strings_and_repairs_order_after_rounding() -> None:

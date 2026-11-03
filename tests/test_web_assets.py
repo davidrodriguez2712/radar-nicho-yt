@@ -187,3 +187,16 @@ def test_every_class_the_pilot_templates_use_has_a_rule_in_the_stylesheet() -> N
                     if not re.search(rf"\.{re.escape(name)}(?![\w-])", css):
                         missing.add(f"{template.name}: {name}")
     assert not missing, sorted(missing)
+
+
+def _rule(css: str, selector: str) -> str:
+    found = re.search(rf"(?:^|\}})\s*{re.escape(selector)}\s*\{{([^}}]*)\}}", css)
+    assert found, selector
+    return found.group(1)
+
+
+def test_pills_and_the_hoy_card_links_are_44px_touch_targets() -> None:
+    css = (STATIC / "css" / "app.css").read_text()
+    for selector in (".pill", ".list__name"):
+        rule = _rule(css, selector)
+        assert "min-height:44px" in rule and "align-items:center" in rule, selector

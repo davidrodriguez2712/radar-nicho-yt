@@ -3,6 +3,7 @@
   <div class="card" id="res-estado">
     <h2 class="card__heading">Estado actual</h2>
     <p>{{ s.state_text }}</p>
+    {% if s.is_cancelled %}<p>Cancelado{% if s.cancel_reason %}. Motivo: {{ s.cancel_reason }}{% endif %}</p>{% endif %}
     {% if s.is_closed %}<p>Cerrado{% if s.closed_text %} el {{ s.closed_text }}{% endif %}{% if s.close_reason %}. Motivo: {{ s.close_reason }}{% endif %}</p>{% endif %}
   </div>
   <div class="card" id="res-bloqueos">

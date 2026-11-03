@@ -105,3 +105,18 @@ def test_an_unknown_timezone_falls_back_to_utc_instead_of_raising(zone: str) -> 
     assert spanish_date(moment, zone) == "Lunes 2 de noviembre"
     assert short_date(moment, zone) == "2 nov"
     assert local_datetime("2026-11-02T03:00:00Z", zone) == "02/11/2026 03:00"
+
+
+@pytest.mark.parametrize(
+    ("value", "text"),
+    [
+        (41, "US$ 41"), (0.96, "US$ 0,96"), (9.29, "US$ 9,29"), (99.5, "US$ 99,50"),
+        (100.4, "US$ 100"), (1234.4, "US$ 1.234"), ("19.0", "US$ 19"), ("5.5", "US$ 5,50"),
+        (0, "US$ 0"), (-1, "—"), (float("nan"), "—"), (float("inf"), "—"), (2e9, "—"),
+        (None, "—"), (True, "—"), ("oops", "—"), ("nan", "—"), ([1], "—"), (10**400, "—"),
+    ],
+)  # fmt: skip
+def test_money_amount_is_the_single_amount_format(value: object, text: str) -> None:
+    from nicheradar.web.format import money_amount
+
+    assert money_amount(value) == text
