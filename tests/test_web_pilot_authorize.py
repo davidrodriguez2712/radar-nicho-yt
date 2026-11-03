@@ -272,7 +272,7 @@ def test_a_failing_computed_gate_row_also_needs_the_gate_checkbox() -> None:
     assert 'name="accept_gate_failure"' in text
 
 
-def test_authorizing_posts_server_derived_fields_and_redirects_to_the_report() -> None:
+def test_authorizing_posts_server_derived_fields_and_redirects_to_the_pilot_panel() -> None:
     bodies: list[dict[str, Any]] = []
     api = api_with(extra={AUTH: recorder(bodies)})
     web = make_client(api)
@@ -281,9 +281,7 @@ def test_authorizing_posts_server_derived_fields_and_redirects_to_the_report() -
         web, token, niche_label="OTRA", format="shorts", authorized_by="otro", canal="canal-nuevo"
     )
     assert response.status_code == 303
-    assert (
-        response.headers["location"] == f"/informes/{ID}?aviso=piloto&piloto=pil_20261102_historia"
-    )
+    assert response.headers["location"] == "/pilotos/pil_20261102_historia?aviso=autorizado"
     (body,) = bodies
     assert body["niche_label"] == "historia militar explicada" and body["format"] == "long"
     assert body["dossier_request_id"] == ID and body["authorized_by"] == "propietario (web)"
@@ -307,8 +305,11 @@ def test_authorizing_posts_server_derived_fields_and_redirects_to_the_report() -
     }
 
 
-def test_the_success_redirect_drops_a_malformed_pilot_id() -> None:
-    bad = {"pilot_id": "x\nSet-Cookie: a=b", "status": "autorizado", "package": {}}
+@pytest.mark.parametrize(
+    "bad_id", ["x\nSet-Cookie: a=b", "pil_20261102_x\n", "../pilots", "", None, 7, "pil_1_x"]
+)
+def test_the_success_redirect_drops_a_malformed_pilot_id(bad_id: object) -> None:
+    bad = {"pilot_id": bad_id, "status": "autorizado", "package": {}}
     web = make_client(api_with(extra={AUTH: (201, bad)}))
     response = post(web, csrf_of(web.get(URL).text))
     assert response.status_code == 303

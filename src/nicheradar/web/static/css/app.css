@@ -87,3 +87,27 @@ input[type=radio],input[type=checkbox]{accent-color:var(--primary)}
 .blockers{display:flex;flex-direction:column;gap:4px;margin:0;padding-left:18px;font-size:13px;color:var(--primary)}
 .pilot__next{margin:0;font-size:13px}
 .pilot__contact,.pilot__progress,.pilot__ok{margin:0}
+.card__heading{margin:0;font-size:14px;font-weight:600}
+.pilot__channel{font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+.steps{display:flex;gap:6px;margin:0;padding:0 0 2px;list-style:none;overflow-x:auto}
+.step{flex:none;padding:6px 10px;border:1px solid var(--line2);border-radius:99px;background:var(--white);font-size:11px;font-weight:500;color:var(--muted);white-space:nowrap}
+.step--done{background:var(--green);border-color:transparent;color:var(--green-ink)}
+.step--current{background:var(--rose);border-color:var(--primary);color:var(--primary);font-weight:600}
+.step--todo{background:var(--pale)}
+.subtabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.subtab{display:inline-flex;align-items:center;flex:none;min-height:44px;padding:0 16px;border:1px solid var(--line2);border-radius:99px;background:var(--white);font-size:13px;color:var(--ink);text-decoration:none}
+.subtab--on{background:var(--rose);border-color:var(--primary);color:var(--primary);font-weight:600}
+.blocker{line-height:1.35}
+.blocker__owner{display:inline-flex;margin-left:4px;padding:2px 8px;border-radius:99px;background:var(--rose);font-size:11px;font-weight:500;color:var(--primary)}
+.dates,.checks,.rules,.videos,.history,.plain{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+.plain{padding-left:18px;list-style:disc}
+.dates__label{font-weight:600}
+.dates__value{font-weight:700}
+.action{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin:0}
+.action .btn{min-height:44px}
+.check,.rule,.video,.event{padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;overflow-wrap:anywhere}
+.check:last-child,.rule:last-child,.video:last-child,.event:last-child{border-bottom:0}
+.check__label,.rule__text,.video__id{font-weight:600}
+.mark{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:99px;font-size:12px;font-weight:700}
+.mark--ok{background:var(--green);color:var(--green-ink)}
+.mark--todo{background:var(--amber);color:var(--amber-ink)}

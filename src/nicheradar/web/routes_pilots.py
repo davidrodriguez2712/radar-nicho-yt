@@ -307,7 +307,6 @@ def _authorize(
             return _page(request, session, detail, status=404, error=GONE, **context)
         return _page(request, session, detail, status=503, error=err.message, **context)
     pilot = result.get("pilot_id")
-    target = f"/informes/{informe}?aviso=piloto"
     if isinstance(pilot, str) and PILOT_ID_RE.fullmatch(pilot):
-        target += f"&piloto={pilot}"
-    return RedirectResponse(target, status_code=303)
+        return RedirectResponse(f"/pilotos/{pilot}?aviso=autorizado", status_code=303)
+    return RedirectResponse(f"/informes/{informe}?aviso=piloto", status_code=303)

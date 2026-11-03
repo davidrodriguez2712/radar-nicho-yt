@@ -1,0 +1,7 @@
+{% set vs = v.videos %}
+<section class="stack" id="tab-videos">
+  {% if vs.failed %}<div class="note note--amber" role="alert">No se pudieron cargar los videos. El resto del panel sigue disponible.</div>
+  {% elif not vs.rows %}<p class="lead">Todavía no hay videos reportados.</p>
+  {% else %}<ul class="card videos" id="videos-lista">{% for r in vs.rows %}<li class="video"><span class="video__id">{{ r.video_id }}</span> <span class="chip chip--neutral">{{ r.stage }}</span> <span class="caption">{{ r.visibility }}</span> <span class="caption">{{ r.published }}</span> <span class="caption">{{ r.cost }}</span> <span class="caption">{{ r.minutes }}</span></li>{% endfor %}</ul>
+  {% if vs.capped %}<p class="caption">Se muestran los primeros 100 videos.</p>{% endif %}{% endif %}
+</section>

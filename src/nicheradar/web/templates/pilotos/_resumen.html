@@ -1,0 +1,45 @@
+{% set s = v.summary %}
+<section class="stack" id="tab-resumen">
+  <div class="card" id="res-estado">
+    <h2 class="card__heading">Estado actual</h2>
+    <p>{{ s.state_text }}</p>
+    {% if s.is_closed %}<p>Cerrado{% if s.closed_text %} el {{ s.closed_text }}{% endif %}{% if s.close_reason %}. Motivo: {{ s.close_reason }}{% endif %}</p>{% endif %}
+  </div>
+  <div class="card" id="res-bloqueos">
+    <h2 class="card__heading">Bloqueos y avisos ({{ s.blockers|length }})</h2>
+    {% if s.blockers %}<ul class="blockers">{% for b in s.blockers %}<li class="blocker blocker--{{ b.kind }}">{{ b.text }} <span class="blocker__owner">{{ b.owner }}</span></li>{% endfor %}</ul>
+    {% else %}<p class="caption pilot__ok">Sin bloqueos</p>{% endif %}
+  </div>
+  <div class="card" id="res-siguiente">
+    <h2 class="card__heading">Siguiente acción tuya</h2>
+    <p class="pilot__next">{{ s.next_action }}</p>
+  </div>
+  <div class="card" id="res-fechas">
+    <h2 class="card__heading">Fechas (tentativas)</h2>
+    {% if s.dates %}<ul class="dates">{% for d in s.dates %}<li><span class="dates__label">{{ d.label }}</span>{% if d.value %} <span class="dates__value">{{ d.value }}</span>{% endif %}{% if d.note %} <span class="caption">{{ d.note }}</span>{% endif %}</li>{% endfor %}</ul>
+    {% else %}<p class="caption">Todavía no hay fechas con una base real.</p>{% endif %}
+  </div>
+  <div class="card" id="res-propuesta">
+    <h2 class="card__heading">Propuesta de NicheRadar</h2>
+    {% if s.proposal_text %}<p><strong>{{ s.proposal_text }}</strong>{% if s.proposal_reason %} <span class="caption">{{ s.proposal_reason }}</span>{% endif %}</p>
+    {% else %}<p class="caption">Sin propuesta todavía.</p>{% endif %}
+  </div>
+  <div class="card" id="res-acciones">
+    <h2 class="card__heading">Acciones</h2>
+    {% for a in s.actions %}<p class="action">{% if a.href %}<a class="btn btn--{{ a.kind }}" href="{{ a.href }}">{{ a.label }}</a>{% else %}<button class="btn btn--secondary" type="button" disabled>{{ a.label }}</button> <span class="caption">{{ a.reason }}</span>{% endif %}</p>
+    {% endfor %}
+  </div>
+  <div class="card" id="res-reglas">
+    <h2 class="card__heading">Reglas de parada</h2>
+    <p>{{ s.rules.total }}{% if s.rules.counts %}: {{ s.rules.counts }}{% endif %}</p>
+    {% if s.rules.close_after %}<p class="caption">Se propone cerrar tras {{ s.rules.close_after }} hitos fallidos seguidos.</p>{% endif %}
+    {% if v.pilot_id %}<a href="/pilotos/{{ v.pilot_id }}?pestana=reglas">Ver las reglas</a>{% endif %}
+  </div>
+  <div class="card" id="res-costos">
+    <h2 class="card__heading">Costos y tiempos</h2>
+    <p>Dinero gastado: {{ s.costs.spent }}</p>
+    <p>Equivalente de Claude: {{ s.costs.equivalent }} (no se suma)</p>
+    <p>Minutos de máquina: {{ s.costs.minutes }}</p>
+    <p class="caption">Último reporte: {{ s.costs.last_report }}</p>
+  </div>
+</section>
