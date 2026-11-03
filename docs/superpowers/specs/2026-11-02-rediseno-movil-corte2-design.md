@@ -145,6 +145,18 @@ lo sube como hoy. El canal no necesita saber que existe. Límites que se aceptan
 lectura** de la tabla `eventos` (columnas `video_id`, `de_estado`, `a_estado`, `actor`, `creado_en`), así que un cambio de
 ese esquema en el canal exige actualizar el script, y el reporte lo arma el script de este repositorio, no el canal.
 
+**Hallazgo del 2026-11-03 sobre el método `gate_waits_capped_v1` (leído de la base real de `canal-historias`).** Antes de
+implementar se midió qué dicen los eventos del canal. Resultado: (1) la única compuerta humana del pipeline es
+`VEREDICTOS_PENDIENTES` → `humano:aprobar-veredicto`, y su espera real tiene mediana de **menos de 1 minuto** (13 valores
+entre 0,1 y 0,2 min; colas de 13 a 286 min); (2) la elección de miniatura la hace el humano solo en 10 de 36 videos, y su
+ventana incluye tiempo de máquina del agente; (3) **no existe** ningún evento de «subido en privado → programado»: la
+validación en YouTube Studio no deja rastro, y la instrucción que se escribe en Claude Code tampoco. Consecuencia: las
+esperas en compuertas **subestiman por un orden de magnitud** el tiempo humano declarado (≈1 a 5 min medidos contra ≈20
+declarados), así que una racha «3 videos seguidos bajo 60 minutos» se cumpliría siempre y la calibración no informaría
+nada. Por eso el método de esperas **no se implementa tal cual**: la decisión sobre el método queda reabierta (ver «Decisiones
+pendientes»). Lo que **no** depende del método (contrato v3, migración, ingestión, API y pantalla M13) sí se hace, con
+`human_minutes_method` declarando siempre cómo se obtuvo cada cifra.
+
 ### 6. Calibración (M13, 2b)
 
 La calibración **se calcula al leer**, no se guarda ni se congela en el paquete (sin cambio del contrato
@@ -201,8 +213,12 @@ paridad con Streamlit (corte 3); desplegar nada.
 
 ## Decisiones cerradas (continuación)
 
-1. **Método de minutos humanos:** esperas en las compuertas con tope, rotulado «estimado» (`gate_waits_capped_v1`). El límite
-   conocido (no ve el tiempo de escribir la instrucción en Claude Code) se acepta. Resuelto.
-4. **Tope de cada espera humana:** 15 minutos, configurable. Resuelto.
+4. **Tope de cada espera humana:** 15 minutos, configurable (aplica a cualquier método basado en ventanas). Resuelto.
 
-No quedan decisiones pendientes del propietario en este spec.
+## Decisiones cerradas (2026-11-03)
+
+1. **Método de minutos humanos: (C) más (B) como suelo.** El tiempo activo se lee de los registros de sesión de Claude Code
+   de la carpeta del canal (solo lectura, desde este repositorio, tope de 15 min por hueco) y se suma el supuesto fijo
+   declarado por canal para lo que no deja rastro (validación en YouTube Studio). Ambos números son visibles
+   («medido X · supuesto Y») y `human_minutes_method` lo declara siempre. Resuelto; el productor
+   `scripts/channel_human_minutes.py` ya no está bloqueado (necesita su propio plan).
