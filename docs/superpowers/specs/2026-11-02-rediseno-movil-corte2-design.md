@@ -134,9 +134,13 @@ Alternativas evaluadas:
 - **Leer los registros de sesión de Claude Code.** Máxima fidelidad, pero asocia sesiones a videos con heurísticas
   frágiles y toca archivos privados del usuario. Descartado.
 
-Cambios fuera de este repositorio (plan propio en el repositorio del canal, ver Decisiones): `pipeline/reporte_canal.py`
-(función nueva `minutos_humanos(eventos, tope)`, `_CLAVES_VIDEO`, `contract` → v3) y el script de reporte. Es aditivo: no
-cambia la máquina de estados ni los eventos existentes; solo lee `eventos`.
+**Dónde vive el proceso (decisión del propietario, 2026-11-02):** en **este** repositorio, sin modificar nada de
+`canal-historias`. Un script nuevo, `scripts/channel_human_minutes.py`, abre en **solo lectura** la base del canal
+(`datos/pipeline.db`, tabla `eventos`), calcula los minutos humanos por video con el método elegido, y los añade al archivo
+de reporte que el canal ya deja en su `outbox` (v1 o v2), convirtiéndolo en `channel-report-v3`; después `channel_sync.py`
+lo sube como hoy. El canal no necesita saber que existe. Límites que se aceptan: el script depende del **esquema de
+lectura** de la tabla `eventos` (columnas `video_id`, `de_estado`, `a_estado`, `actor`, `creado_en`), así que un cambio de
+ese esquema en el canal exige actualizar el script, y el reporte lo arma el script de este repositorio, no el canal.
 
 ### 6. Calibración (M13, 2b)
 
@@ -158,6 +162,8 @@ errores de API en español, `shape_guard` en las pantallas). Específico de este
 `^pil_\d{8}_[a-z0-9_-]+$` (`fullmatch`) antes de usarse; ningún token de canal ni clave se muestra.
 
 ## Compatibilidad y despliegue
+
+- Nada de lo de este corte modifica el repositorio del canal: el cálculo de minutos humanos corre desde este repositorio.
 
 - 2a no cambia contratos ni base de datos; añade una ruta de lectura a la API. Se despliega con la imagen de la API y la del
   dashboard (release con aprobación).
@@ -185,15 +191,14 @@ Emisión de tokens de canal desde la web; reabrir un piloto cerrado; una regla d
 minutos humanos; hooks de Claude Code o lectura de registros de sesión como fuente de minutos; las pantallas de
 paridad con Streamlit (corte 3); desplegar nada.
 
-## Decisiones que necesitan al propietario
+## Decisiones del propietario (2026-11-02)
 
-1. **Método de minutos humanos.** Recomendado: `gate_waits_capped_v1` (esperas en compuertas con tope de 15 minutos,
-   rotulado «estimado»). Alternativa: hooks de Claude Code desde el inicio. Costo si es incorrecto: reetiquetar el método
-   (el contrato ya lo permite) y recalcular.
-2. **Permiso para modificar el repositorio del canal** (`canal-historias`, en producción): cambio aditivo en
-   `pipeline/reporte_canal.py` y `scripts/reporte_nicheradar.py`, en una rama, con pruebas, sin tocar la máquina de estados,
-   y desplegado después de que la API acepte v3. Recomendado: sí, en una rama y con tu revisión antes de mezclar.
-3. **Orden:** recomendado 2a primero (visible, sin migración) y 2b después. Alternativa: 2b primero si lo que más urge es
-   medir el tiempo de los pilotos A y B desde su primer video.
-4. **Tope de cada espera humana** (15 minutos por defecto). Con tus tiempos declarados (10 min para dar la instrucción y
-   10 min para validar), 15 es holgado; si prefieres un tope menor, el estimado se acerca más a tu esfuerzo real.
+2. **Dónde vive el proceso de minutos humanos:** en este repositorio, sin tocar `canal-historias` (ver sección 5). Resuelto.
+3. **Orden:** 2a primero, 2b después. Resuelto.
+
+## Decisiones pendientes
+
+1. **Método de minutos humanos** (explicado con un ejemplo en la conversación). Recomendado: esperas en las compuertas
+   con tope, rotulado «estimado». Alternativa: hooks de Claude Code, que también miden el tiempo de dar la instrucción pero
+   exigen instalar algo en cada canal (y eso toca el repositorio del canal, que se quiere evitar).
+4. **Tope de cada espera humana.** Recomendado 15 minutos (configurable). Pendiente de que se entienda el efecto.
