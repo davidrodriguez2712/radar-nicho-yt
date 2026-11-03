@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Cierre del piloto · NicheRadar{% endblock %}
+{% block content %}
+<p class="eyebrow">Piloto</p>
+<h1 class="h1 h1--md">Resumen de cierre</h1>
+<p class="lead">Texto tal como lo entrega la API, sin formato.</p>
+{% if text %}<pre class="resumen-cierre" id="resumen-cierre">{{ text }}</pre>
+{% else %}<div class="note note--amber" role="status">El resumen de cierre está vacío.</div>{% endif %}
+<a class="btn btn--secondary" href="/pilotos/{{ pilot_id }}">Volver al piloto</a>
+{% endblock %}

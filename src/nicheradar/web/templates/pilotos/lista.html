@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Pilotos · NicheRadar{% endblock %}
+{% block content %}
+<h1 class="h1">Pilotos</h1>
+<p class="caption">Dónde está cada uno, qué lo frena y cuándo hay decisión. Fechas tentativas.</p>
+<form class="filters" method="get" action="/pilotos"
+      hx-get="/pilotos" hx-trigger="change" hx-target="#contenido" hx-swap="innerHTML" hx-push-url="true">
+  <label class="pill"><input type="radio" name="filtro" value="todos"{% if filter == "todos" %} checked{% endif %}>Todos{% if view %} {{ view.counts.todos }}{% endif %}</label>
+  <label class="pill"><input type="radio" name="filtro" value="activos"{% if filter == "activos" %} checked{% endif %}>Activos{% if view %} {{ view.counts.activos }}{% endif %}</label>
+  <label class="pill"><input type="radio" name="filtro" value="bloqueo"{% if filter == "bloqueo" %} checked{% endif %}>Con bloqueo{% if view %} {{ view.counts.bloqueo }}{% endif %}</label>
+  <label class="pill"><input type="radio" name="filtro" value="cerrados"{% if filter == "cerrados" %} checked{% endif %}>Cerrados{% if view %} {{ view.counts.cerrados }}{% endif %}</label>
+  <noscript><button class="btn btn--secondary" type="submit">Aplicar</button></noscript>
+</form>
+<div id="contenido" class="stack">
+{% include "pilotos/_lista.html" %}
+</div>
+{% endblock %}

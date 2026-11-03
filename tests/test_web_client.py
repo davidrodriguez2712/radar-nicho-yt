@@ -1,4 +1,6 @@
 # tests/test_web_client.py
+from collections.abc import Iterator
+
 import httpx
 import pytest
 
@@ -117,3 +119,99 @@ def test_an_invalid_api_url_is_unavailable() -> None:
     with pytest.raises(ApiError) as error:
         client_for(Api({("GET", "/api/v1/x"): bad})).request("GET", "/x")
     assert error.value.kind == "unavailable"
+
+
+LIMIT = 256 * 1024
+
+
+def text_api(response: httpx.Response) -> Api:
+    return Api({("GET", "/api/v1/t"): lambda request: response})
+
+
+def test_request_text_returns_the_plain_text_and_maps_errors_like_request() -> None:
+    api = Api(
+        {
+            ("GET", "/api/v1/t"): lambda request: httpx.Response(
+                200, text="# Resumen\nñandú ✓", headers={"content-type": "text/plain"}
+            )
+        }
+    )
+    assert client_for(api).request_text("GET", "/t", params={"a": "b"}) == "# Resumen\nñandú ✓"
+    call = api.calls[0]
+    assert call.headers["authorization"] == f"Bearer {TOKEN}"
+    assert call.url.params["a"] == "b" and TOKEN not in str(call.url)
+    for status, kind in ((401, "unauthorized"), (403, "unauthorized"), (404, "not_found")):
+        failing = Api({("GET", "/api/v1/t"): (status, {"detail": {"code": "c", "message": "m"}})})
+        with pytest.raises(ApiError) as error:
+            client_for(failing).request_text("GET", "/t")
+        assert (error.value.kind, error.value.status) == (kind, status)
+    conflict = Api({("GET", "/api/v1/t"): (409, {"detail": {"code": "bad_transition"}})})
+    with pytest.raises(ApiError) as error:
+        client_for(conflict).request_text("GET", "/t")
+    assert error.value.kind == "conflict" and error.value.detail == {"code": "bad_transition"}
+    for status, kind in ((422, "invalid"), (500, "error"), (503, "error")):
+        with pytest.raises(ApiError) as error:
+            client_for(text_api(httpx.Response(status, text="plain failure"))).request_text(
+                "GET", "/t"
+            )
+        assert (error.value.kind, error.value.status, error.value.detail) == (kind, status, None)
+
+
+def test_request_text_handles_empty_odd_and_unreachable_responses() -> None:
+    assert client_for(text_api(httpx.Response(200, content=b""))).request_text("GET", "/t") == ""
+    assert client_for(text_api(httpx.Response(204))).request_text("GET", "/t") == ""
+    for odd in (b"\xff\xfe\x00bad", b"ok \xc3"):
+        with pytest.raises(ApiError) as error:
+            client_for(text_api(httpx.Response(200, content=odd))).request_text("GET", "/t")
+        assert error.value.kind == "error"
+
+    def boom(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down")
+
+    with pytest.raises(ApiError) as error:
+        client_for(Api({("GET", "/api/v1/t"): boom})).request_text("GET", "/t")
+    assert error.value.kind == "unavailable"
+    missing = Api({("GET", "/api/v1/t"): (200, {})})
+    with pytest.raises(ApiError) as error:
+        ApiClient(
+            settings(service_token=None), transport=httpx.MockTransport(missing)
+        ).request_text("GET", "/t")
+    assert error.value.kind == "not_configured" and missing.calls == []
+
+    def bad(request: httpx.Request) -> httpx.Response:
+        raise httpx.InvalidURL("bad")
+
+    with pytest.raises(ApiError) as error:
+        client_for(Api({("GET", "/api/v1/t"): bad})).request_text("GET", "/t")
+    assert error.value.kind == "unavailable"
+
+
+def test_request_text_refuses_bodies_over_the_limit() -> None:
+    exact = httpx.Response(200, content=b"a" * LIMIT)
+    assert len(client_for(text_api(exact)).request_text("GET", "/t")) == LIMIT
+    over = httpx.Response(200, content=b"a" * (LIMIT + 1))  # declares its content-length
+    with pytest.raises(ApiError) as error:
+        client_for(text_api(over)).request_text("GET", "/t")
+    assert error.value.kind == "error"
+
+    def chunks() -> Iterator[bytes]:
+        for _ in range(LIMIT // 1024 + 1):
+            yield b"a" * 1024
+
+    streamed = httpx.Response(200, content=chunks())  # chunked: no content-length to check
+    assert "content-length" not in streamed.headers
+    with pytest.raises(ApiError) as error:
+        client_for(text_api(streamed)).request_text("GET", "/t")
+    assert error.value.kind == "error"
+    huge_error = httpx.Response(500, content=b"a" * (LIMIT + 1))
+    with pytest.raises(ApiError) as error:
+        client_for(text_api(huge_error)).request_text("GET", "/t")
+    assert error.value.kind == "error" and error.value.detail is None
+
+
+@pytest.mark.parametrize("declared", ["\u00b2", "\u0663", "\u0661\u0662"])
+def test_request_text_ignores_a_non_ascii_content_length(declared: str) -> None:
+    response = httpx.Response(
+        200, content=b"hola", headers=[(b"content-length", declared.encode())]
+    )
+    assert client_for(text_api(response)).request_text("GET", "/t") == "hola"

@@ -55,7 +55,7 @@ Todas las pantallas de datos son `GET` protegidos por sesión; todo `POST` exige
 2. «Descartar» solo aparece para nichos de backlog (no subnichos).
 3. Autorizar un piloto no pide cadencia, preparación ni receta.
 4. `authorized_by` es un valor fijo.
-5. «Ver pilotos» está desactivado hasta el corte 2; la pestaña Pilotos y «Más» también.
+5. La pestaña Pilotos se activa en el corte 2a; «Más» sigue desactivada hasta el corte 3.
 
 ### Límites conocidos
 
@@ -67,13 +67,43 @@ Todas las pantallas de datos son `GET` protegidos por sesión; todo `POST` exige
 
 ### Lo que no se muestra a propósito
 
-Porque la API no entrega el dato o el diseño lo difiere: Fit, Demanda y Volumen de un nicho; el idioma en la lista de nichos (y su filtro); Cadencia, Preparación y Receta al autorizar; la barra de proporción por etapa del informe; «Descartar» en subnichos; la pestaña Pilotos y «Más» (corte 2 y 3). No se inventa ningún valor para estos huecos.
+Porque la API no entrega el dato o el diseño lo difiere: Fit, Demanda y Volumen de un nicho; el idioma en la lista de nichos (y su filtro); Cadencia, Preparación y Receta al autorizar; la barra de proporción por etapa del informe; «Descartar» en subnichos; «Más» (corte 3). No se inventa ningún valor para estos huecos.
 
 ### Pruebas transversales
 
-`tests/test_web_smoke_screens.py` recorre las siete rutas con texto hostil en todas las cadenas, con la API caída, con cuerpos mal formados (cada campo reemplazado por `null`, texto, número, `NaN`, infinito, listas y objetos vacíos), con fechas sin zona horaria, y comprueba que no haya orígenes de terceros, código en línea, CSP distinto entre rutas ni `POST` sin CSRF que toque la API.
+`tests/test_web_smoke_screens.py` recorre las rutas de los cortes 1 y 2a (incluidas las cinco pestañas del piloto, las confirmaciones y el cierre) con texto hostil en todas las cadenas, con la API caída, con cuerpos mal formados (cada campo reemplazado por `null`, texto, número, `NaN`, infinito, listas y objetos vacíos), con fechas sin zona horaria, y comprueba que no haya orígenes de terceros, código en línea, CSP distinto entre rutas ni `POST` sin CSRF que toque la API (también los de pilotos), y que un `POST` con CSRF en un estado no permitido no escriba nada.
 
-Faltan el corte 2 (lista y panel de pilotos, preparación) y el corte 3 (paridad con Streamlit y retiro).
+
+## Pantallas del corte 2a (pilotos)
+
+| Pantalla | Ruta | API que usa |
+|---|---|---|
+| Lista de pilotos (M5) | `/pilotos?filtro=todos\|activos\|bloqueo\|cerrados` | `GET /pilots?limit=100` (con `valid_until`, `delivered_at` y `channel`, campos aditivos de la lista) |
+| Panel (M6) con Resumen, Preparación (M7), Videos, Reglas e Historial | `/pilotos/{id}?pestana=…`; `/pilotos/{id}/preparacion` redirige (303) a la pestaña | `GET /pilots/{id}`; la pestaña Videos además `GET /pilots/{id}/videos` (endpoint nuevo del corte 2a) |
+| Seguir o cerrar | `/pilotos/{id}/decidir?accion=seguir\|cerrar`, `POST` | `GET /pilots/{id}`, `POST /pilots/{id}/decision` |
+| Cancelar | `/pilotos/{id}/cancelar`, `POST` | `GET /pilots/{id}`, `POST /pilots/{id}/cancel` |
+| Resumen de cierre | `/pilotos/{id}/cierre` | `GET /pilots/{id}/closing-summary` (texto, tope 256 KiB) |
+| Hoy (M14 parcial) | `/` | las tarjetas de pilotos enlazan al panel; los informes ya con piloto se excluyen |
+
+Los `POST` validan CSRF, el id y la nota localmente, releen el piloto y solo entonces escriben; la decisión
+sale de la ruta y el actor lo fija el servidor. Tras una acción se vuelve al panel con un aviso
+(`?aviso=`, claves fijas).
+
+### Lo que el corte 2a omite a propósito
+
+- La frase de postura editorial, la URL del canal y la emisión de tokens (se hace por línea de comandos).
+- El plazo de preparación y la cadencia: el contrato del paquete no tiene esos campos, así que no se muestran ni se calculan.
+- Las fechas sin una base real; las que se muestran van rotuladas «tentativa».
+
+### Límites del corte 2a
+
+- `GET /pilots` se lee con tope de 100: con exactamente 100 la lista y Hoy avisan de que puede haber más. Los videos, reglas y eventos se muestran hasta un tope fijo por pestaña, también con aviso.
+- Un id de piloto con `%2F` no llega a la ruta: responde 404 por defecto.
+- Una zona horaria de configuración inválida cae a UTC en vez de romper la pantalla.
+
+### Siguiente: corte 2b
+
+Contrato `channel-report-v3`, minutos humanos, M13 y la tarjeta de pilotos en calibración de M14.
 
 ## Comprobación visual contra el Figma
 
@@ -81,9 +111,9 @@ Faltan el corte 2 (lista y panel de pilotos, preparación) y el corte 3 (paridad
 uv run python scripts/web_preview.py --out /tmp/web-preview
 ```
 
-Renderiza Subnichos (lista y ficha), Hoy, Nichos, Investigar, Informe v3 y Autorizar con datos de ejemplo
+Renderiza Subnichos (lista y ficha), Hoy, Nichos, Investigar, Informe v3, Autorizar y, del corte 2a, Pilotos, Piloto (Resumen), Preparación y Confirmar con datos de ejemplo
 (`scripts/web_preview_data.py`, sin API real) y guarda `lista`, `ficha`, `hoy`, `nichos`, `investigar`,
-`informe` y `autorizar` como `.html` y, si hay Chrome (`--chrome RUTA`), como `.png` a 390 px de ancho con
+`informe`, `autorizar`, `pilotos`, `piloto`, `preparacion` y `confirmar` como `.html` y, si hay Chrome (`--chrome RUTA`), como `.png` a 390 px de ancho con
 escala 2. Compárense con el Figma M9 (`29:2`) y M10 (`30:2`) y los demás marcos del archivo. Los estados de investigación de la lista son
 ilustrativos, como en el Figma. Las rutas `file://` solo existen en esta vista previa. Chrome headless no
 baja de 500 px de ventana, por eso la página se mide dentro de un `iframe` de 390 px y se recorta con `sips`

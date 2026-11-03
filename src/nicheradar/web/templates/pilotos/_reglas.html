@@ -1,0 +1,6 @@
+{% set rs = v.rules %}
+<section class="stack" id="tab-reglas">
+  {% if not rs.rows %}<p class="lead">Todavía no hay reglas evaluadas.</p>
+  {% else %}<ul class="card rules" id="reglas-lista">{% for r in rs.rows %}<li class="rule"><span class="rule__text">{{ r.text }}</span> <span class="caption">{{ r.milestone }}</span> <span class="chip chip--neutral">{{ r.status }}</span>{% if r.detail %} <span class="caption">{{ r.detail }}</span>{% endif %}</li>{% endfor %}</ul>
+  {% if rs.capped %}<p class="caption">Se muestran las primeras 100 reglas.</p>{% endif %}{% endif %}
+</section>

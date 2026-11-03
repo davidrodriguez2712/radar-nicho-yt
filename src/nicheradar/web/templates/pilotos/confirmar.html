@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ spec.title }} · NicheRadar{% endblock %}
+{% block content %}
+<p class="eyebrow">Piloto</p>
+<h1 class="h1 h1--md">{{ spec.title }}</h1>
+<section class="card" id="piloto">
+  <h2 class="h2">{{ niche or "Piloto sin nicho" }}</h2>
+  <p class="caption">{% if channel %}Canal: {{ channel }}{% else %}Canal todavía sin nombre{% endif %}</p>
+</section>
+{% if error %}<div class="note note--rose" id="error" role="alert">{{ error }}</div>{% endif %}
+{% if blocked %}
+<div class="note note--amber" role="status"><p id="bloqueo">{{ blocked }}</p></div>
+<a class="btn btn--secondary" href="/pilotos/{{ pilot_id }}">Volver al piloto</a>
+{% else %}
+<div class="note note--amber" role="status"><p id="consecuencia">{{ spec.consequence }}</p></div>
+<form class="stack" method="post" action="{{ form_action }}" id="confirmar-form">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <div class="field">
+    <label for="nota">{{ spec.label }}</label>
+    <textarea id="nota" name="{{ spec.field }}" rows="5" maxlength="{{ note_max }}" required>{{ note }}</textarea>
+    <span class="caption">Obligatorio, hasta {{ note_max }} caracteres.</span>
+  </div>
+  <button class="btn btn--{{ spec.kind }}" type="submit">{{ spec.button }}</button>
+  <a class="btn btn--secondary" href="/pilotos/{{ pilot_id }}">Volver sin cambios</a>
+</form>
+{% endif %}
+{% endblock %}

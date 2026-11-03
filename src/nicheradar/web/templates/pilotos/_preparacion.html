@@ -1,0 +1,25 @@
+{% set p = v.prep %}
+<section class="stack" id="tab-preparacion">
+  <div class="card">
+    <h2 class="card__heading">Preparación del canal</h2>
+    {% if p.deadline %}<p id="prep-plazo"><strong>Plazo de preparación: vence el {{ p.deadline }} (tentativa)</strong></p>
+    {% elif p.delivered %}<p class="caption" id="prep-plazo">El plazo de preparación depende del paquete de este piloto, y el paquete no lo trae.</p>
+    {% else %}<p class="caption" id="prep-plazo">El plazo de preparación depende del paquete y empieza a contar cuando se entrega.</p>{% endif %}
+    <p id="prep-cuenta">{{ p.count_text }}</p>
+  </div>
+  <div class="card" id="prep-pasos">
+    <h2 class="card__heading">Pasos que informa el canal</h2>
+    {% if p.steps %}<ul class="checks">{% for c in p.steps %}<li class="check"><span class="mark mark--{{ "ok" if c.ok else "todo" }}" aria-hidden="true">{{ "✓" if c.ok else "!" }}</span><span class="sr-only">{{ "hecho" if c.ok else "pendiente" }}</span> <span class="check__label">{{ c.label }}</span>{% if c.detail %} <span class="caption">{{ c.detail }}</span>{% endif %}{% if c.expires %} <span class="caption">caduca el {{ c.expires }}</span>{% endif %}</li>{% endfor %}</ul>
+    {% if p.shown_cap %}<p class="caption">Se muestran los primeros {{ p.shown_cap }} de {{ p.total }} pasos.</p>{% endif %}
+    {% else %}<p class="caption">El canal todavía no informó pasos de preparación.</p>{% endif %}
+    {% if p.note %}<p class="caption">Nota del canal: {{ p.note }}</p>{% endif %}
+  </div>
+  <div class="card" id="prep-guarda">
+    <h2 class="card__heading">Qué guarda NicheRadar</h2>
+    <ul class="plain">
+      <li>El estado de cada paso que informa el canal</li>
+      <li>Ninguna clave ni token: viven solo en tu Mac</li>
+    </ul>
+  </div>
+  <p class="caption" id="prep-cli">Los tokens del canal se emiten en la línea de comandos (<code>scripts/pilots.py token-issue</code>), no desde la web.</p>
+</section>

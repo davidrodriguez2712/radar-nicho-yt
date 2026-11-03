@@ -1,0 +1,6 @@
+{% set es = v.events %}
+<section class="stack" id="tab-historial">
+  {% if not es.rows %}<p class="lead">Todavía no hay eventos.</p>
+  {% else %}<ul class="card history" id="historial-lista">{% for e in es.rows %}<li class="event"><strong>{{ e.text }}</strong>{% if e.actor %} · {{ e.actor }}{% endif %} · {{ e.when }}{% if e.detail %} <span class="caption">{{ e.detail }}</span>{% endif %}</li>{% endfor %}</ul>
+  {% if es.capped %}<p class="caption">Se muestran los 100 eventos más recientes.</p>{% endif %}{% endif %}
+</section>

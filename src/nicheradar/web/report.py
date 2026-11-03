@@ -16,7 +16,7 @@ from nicheradar.flow_research.gates import (
     calibration_reasons,
     minutes_reasons,
 )
-from nicheradar.web.format import compact, local_datetime, usd
+from nicheradar.web.format import compact, local_datetime, money_amount
 from nicheradar.web.niches import CONFIDENCE, FORMATS
 from nicheradar.web.research import LANGUAGE_NAMES
 
@@ -38,7 +38,7 @@ AVISOS_INFORME = {
     "existente": ("Ya había una investigación activa con esa clave.", "amber"),
     "piloto": ("Piloto autorizado.", "green"),
 }
-PILOT_RE = re.compile(r"pil_\d{8}_[a-z0-9_-]+")
+PILOT_RE = re.compile(r"pil_[0-9]{8}_[a-z0-9-]{1,40}")
 STATUS_PAGES = {
     "pendiente": ("En cola", "amber", "La investigación espera a que Claude Code la reclame."),
     "en_curso": (
@@ -110,10 +110,7 @@ def _hours(value: float) -> str:
 
 
 def _money(value: object) -> str:
-    try:
-        return usd(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return "—"
+    return money_amount(value)
 
 
 def _minutes(items: list[dict[str, Any]], key: str) -> int:

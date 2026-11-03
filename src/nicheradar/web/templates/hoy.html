@@ -13,11 +13,10 @@
   {% if v.pilots.truncated %}<div class="note note--amber">Puede haber registros más antiguos que no se ven.</div>{% endif %}
   <div class="list">
     {% for p in v.pilots.cards %}
-    <div class="list__item"><span class="list__name">{{ p.label }}</span><span class="muted">{{ p.channel }}</span>{{ chip(p.text, "amber") }}</div>
+    <div class="list__item">{% if p.href %}<a class="list__name" href="{{ p.href }}">{{ p.label }}</a>{% else %}<span class="list__name">{{ p.label }}</span>{% endif %}<span class="muted">{{ p.channel }}</span>{{ chip(p.text, "amber") }}</div>
     {% endfor %}
   </div>
-  <button class="btn btn--secondary" type="button" disabled>Ver pilotos</button>
-  <p class="caption">Próximamente</p>
+  <a class="btn btn--secondary" href="/pilotos">Ver pilotos</a>
   {% endif %}
 </section>
 
@@ -27,6 +26,7 @@
   <div class="note note--amber">Informes listos: no disponible ahora</div>
   {% else %}
   {% if v.reports.unchecked %}<div class="note note--amber">No se pudo comprobar si ya tienen piloto.</div>{% endif %}
+  {% if v.reports.partial %}<div class="note note--amber">No se pudo comprobar si algunos informes ya tienen piloto.</div>{% endif %}
   {% if v.reports.truncated %}<div class="note note--amber">Puede haber registros más antiguos que no se ven.</div>{% endif %}
   <div class="list">
     {% for r in v.reports.cards %}

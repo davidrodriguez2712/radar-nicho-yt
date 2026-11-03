@@ -1,0 +1,25 @@
+{% from "components.html" import chip %}
+{% if error %}
+<div class="note note--rose" role="alert"><span class="note__title">No se pudo cargar</span>{{ error }}</div>
+{% else %}
+{% for w in warnings %}<div class="note note--amber">{{ w }}</div>{% endfor %}
+{% if not view.counts.todos %}
+<p class="lead">Todavía no hay pilotos. Se crean al autorizar un informe de investigación.</p>
+{% else %}
+<p class="caption pilot__contact">{{ view.contact_text }}</p>
+{% for c in view.cards %}
+<article class="card">
+  <div class="card__title"><span class="card__name">{{ c.niche_label }}</span></div>
+  <div class="tags">{{ chip(c.status_text, c.status_kind) }}{{ chip(c.format_text, "neutral") }}</div>
+  <p class="caption">Canal: <span class="pilot__channel">{{ c.channel_text }}</span></p>
+  {% if c.blockers %}<ul class="blockers">{% for b in c.blockers %}<li class="blocker blocker--{{ b.kind }}">{{ b.text }}</li>{% endfor %}</ul>
+  {% else %}<p class="caption pilot__ok">Sin bloqueos</p>{% endif %}
+  {% if c.next_action %}<p class="pilot__next"><strong>Siguiente:</strong> {{ c.next_action }}</p>{% endif %}
+  <p class="caption pilot__progress">{{ c.progress }}</p>
+  {% if c.href %}<a class="btn btn--secondary" href="{{ c.href }}">Abrir</a>{% endif %}
+</article>
+{% else %}
+<p class="lead">Ningún piloto coincide con este filtro.</p>
+{% endfor %}
+{% endif %}
+{% endif %}

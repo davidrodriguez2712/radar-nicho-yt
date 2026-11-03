@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "components.html" import chip %}
+{% block title %}Piloto · NicheRadar{% endblock %}
+{% block content %}
+<p class="eyebrow">Piloto</p>
+<h1 class="h1 h1--md">Piloto · {{ v.title }}</h1>
+{% if notice %}<div class="note note--{{ notice[1] }}" id="aviso" role="status">{{ notice[0] }}{% if closing_link and v.pilot_id %} <a class="tap" href="/pilotos/{{ v.pilot_id }}/cierre">Ver resumen de cierre</a>{% endif %}</div>{% endif %}
+<div class="tags" id="cabecera">{{ chip(v.status_text, v.status_kind) }}{{ chip(v.format_text, "neutral") }}{% if v.language_text %}{{ chip(v.language_text, "neutral") }}{% endif %}{% if v.channel_name %}<span class="caption">Canal: <span class="pilot__channel">{{ v.channel_name }}</span></span>{% endif %}</div>
+<ol class="steps" id="linea-estados" aria-label="Línea de estados">
+{% for s in v.states %}<li class="step step--{{ s.state }}"{% if s.state == "current" %} aria-current="step"{% endif %}>{% if s.state == "current" %}<span class="sr-only">actual: </span>{% elif s.state == "done" %}<span class="sr-only">hecho: </span>{% endif %}{{ s.label }}</li>
+{% endfor %}</ol>
+<nav class="subtabs" id="pestanas" aria-label="Secciones del piloto">
+{% for t in v.tabs %}{% if t.href %}<a class="subtab{% if t.current %} subtab--on{% endif %}" href="{{ t.href }}"{% if t.current %} aria-current="page"{% endif %}>{{ t.label }}</a>{% endif %}
+{% endfor %}</nav>
+{% if v.tab == "resumen" %}{% include "pilotos/_resumen.html" %}
+{% elif v.tab == "preparacion" %}{% include "pilotos/_preparacion.html" %}
+{% elif v.tab == "videos" %}{% include "pilotos/_videos.html" %}
+{% elif v.tab == "reglas" %}{% include "pilotos/_reglas.html" %}
+{% else %}{% include "pilotos/_historial.html" %}{% endif %}
+<p class="caption"><a class="tap" href="/pilotos">← Volver a Pilotos</a></p>
+{% endblock %}

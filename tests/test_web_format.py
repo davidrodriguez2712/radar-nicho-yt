@@ -8,6 +8,7 @@ from nicheradar.web.format import (
     es_int,
     local_datetime,
     pct,
+    short_date,
     spanish_date,
     usd,
     usd_range,
@@ -86,3 +87,36 @@ def test_spanish_date_handles_the_year_boundaries_and_every_month_name() -> None
         "enero", "febrero", "marzo", "abril", "mayo", "junio",
         "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
     ]  # fmt: skip
+
+
+def test_short_date_is_day_and_spanish_month_in_the_given_timezone() -> None:
+    from nicheradar.web.format import short_date
+
+    moment = datetime(2026, 11, 8, 0, 0, tzinfo=UTC)
+    assert short_date(moment, "UTC") == "8 nov"
+    assert short_date(moment, "America/Lima") == "7 nov"  # still the 7th in Lima
+    assert short_date(datetime(2026, 1, 31, 12, 0), "UTC") == "31 ene"  # naive means UTC
+    assert short_date(datetime(2026, 9, 1, 12, 0, tzinfo=UTC), "UTC") == "1 sep"
+
+
+@pytest.mark.parametrize("zone", ["No/Such_Zone", "", "../etc", "x" * 400])
+def test_an_unknown_timezone_falls_back_to_utc_instead_of_raising(zone: str) -> None:
+    moment = datetime(2026, 11, 2, 3, 0, tzinfo=UTC)  # a Sunday night in Lima, Monday in UTC
+    assert spanish_date(moment, zone) == "Lunes 2 de noviembre"
+    assert short_date(moment, zone) == "2 nov"
+    assert local_datetime("2026-11-02T03:00:00Z", zone) == "02/11/2026 03:00"
+
+
+@pytest.mark.parametrize(
+    ("value", "text"),
+    [
+        (41, "US$ 41"), (0.96, "US$ 0,96"), (9.29, "US$ 9,29"), (99.5, "US$ 99,50"),
+        (100.4, "US$ 100"), (1234.4, "US$ 1.234"), ("19.0", "US$ 19"), ("5.5", "US$ 5,50"),
+        (0, "US$ 0"), (-1, "—"), (float("nan"), "—"), (float("inf"), "—"), (2e9, "—"),
+        (None, "—"), (True, "—"), ("oops", "—"), ("nan", "—"), ([1], "—"), (10**400, "—"),
+    ],
+)  # fmt: skip
+def test_money_amount_is_the_single_amount_format(value: object, text: str) -> None:
+    from nicheradar.web.format import money_amount
+
+    assert money_amount(value) == text

@@ -48,7 +48,7 @@ def today(request: Request, session: Annotated[Session, Depends(current_session)
         {
             "active_tab": "hoy",
             "today": spanish_date(now, config.timezone),
-            "v": today_view(sources),
+            "v": today_view(sources, now, config.timezone),
         },
         session=session,
     )

@@ -7,10 +7,10 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
-from nicheradar.web.format import usd
+from nicheradar.web.format import money_amount
 
 CHANNEL_RE = re.compile(r"^canal-[a-z0-9-]{1,40}$")
-PILOT_ID_RE = re.compile(r"^pil_\d{8}_[a-z0-9_-]+$")
+PILOT_ID_RE = re.compile(r"^pil_[0-9]{8}_[a-z0-9-]{1,40}$")  # pilots/contracts.py PILOT_ID
 CLOSED = ("cerrado", "cancelado")
 MAX_MONEY = Decimal("1000000")
 CENT = Decimal("0.01")
@@ -105,5 +105,5 @@ def budget_body(dossier: dict[str, Any], max_videos: int, informe_id: str) -> di
         "likely": float(likely),
         "high": float(high),
         "max_videos": max_videos,
-        "basis": f"Presupuesto del informe {informe_id}: probable {usd(float(likely))}.",
+        "basis": f"Presupuesto del informe {informe_id}: probable {money_amount(float(likely))}.",
     }

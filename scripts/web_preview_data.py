@@ -718,27 +718,137 @@ REPORT: dict[str, Any] = {
     "dossier_created_at": "2026-11-02T03:00:00Z",
 }
 
-PILOTS: list[dict[str, Any]] = [
-    {
-        "pilot_id": "pil_20261102_historia",
-        "status": "autorizado",
-        "niche_label": "historia militar explicada",
+PILOT_ID = "pil_20261102_historia"
+_NOW = "2026-11-03T12:00:00Z"
+
+
+def _totals(**over: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "videos": 0,
+        "published": 0,
+        "measured": 0,
+        "by_stage": {},
+        "spent_usd": 0,
+        "equivalent_usd": 0,
+        "machine_minutes": 0,
+        "machine_minutes_complete": True,
+    }
+    return base | over
+
+
+def _check(check_id: str, label: str, ok: bool, **over: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "id": check_id,
+        "label": label,
+        "ok": ok,
+        "detail": None,
+        "expires_at": None,
+    }
+    return base | over
+
+
+_CHECKS = [
+    _check("youtube_oauth", "Autorizar subida y medición de YouTube", True,
+           expires_at="2026-11-08T00:00:00Z"),
+    _check("channel_dir", "Carpeta del canal en la Mac", False, detail="No se encontró."),
+]  # fmt: skip
+
+
+def _pilot(pilot_id: str, label: str, status: str, **over: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "pilot_id": pilot_id,
+        "status": status,
+        "niche_label": label,
         "format": "long",
         "target_channel": "canal-historias",
         "authorized_at": "2026-11-02T03:00:00Z",
         "last_report_at": None,
         "channel_last_contact_at": None,
-        "totals": {
-            "videos": 0,
-            "published": 0,
-            "measured": 0,
-            "by_stage": {},
-            "spent_usd": 0,
-            "equivalent_usd": 0,
-            "machine_minutes": 0,
-            "machine_minutes_complete": True,
+        "totals": _totals(),
+        "proposal": {
+            "action": "sin_datos_suficientes",
+            "reason": "Aún no hay medición suficiente.",
         },
-        "proposal": {"action": "sin_datos_suficientes", "reason": "x"},
-        "needs_decision": True,
+        "needs_decision": False,
+        "valid_until": "2026-11-16T03:00:00Z",
+        "delivered_at": None,
+        "channel": None,
     }
-]
+    return base | over
+
+
+PILOTS: list[dict[str, Any]] = [
+    _pilot(
+        PILOT_ID, "historia militar explicada", "entregado",
+        delivered_at="2026-11-03T10:00:00Z",
+        channel_last_contact_at="2026-11-03T11:00:00Z",
+        channel={"reported_at": "2026-11-03T11:00:00Z", "channel_status": "active",
+                 "note": None, "checks": _CHECKS},
+    ),
+    _pilot(
+        "pil_20261030_ciencia", "ciencia en español", "decision_pendiente",
+        needs_decision=True, last_report_at="2026-11-03T08:00:00Z",
+        channel_last_contact_at="2026-11-03T08:00:00Z",
+        totals=_totals(videos=10, published=10, measured=8, spent_usd=18.5,
+                       equivalent_usd=120, machine_minutes=640),
+        proposal={"action": "cerrar", "reason": "Dos hitos fallidos seguidos."},
+    ),
+    _pilot(
+        "pil_20261101_cine", "cine de terror explicado", "autorizado",
+        valid_until="2026-11-05T03:00:00Z",
+    ),
+    _pilot("pil_20261020_viejo", "viajes baratos", "cerrado"),
+]  # fmt: skip
+
+PILOT_DETAIL: dict[str, Any] = PILOTS[0] | {
+    "language": "en",
+    "authorized_by": "propietario (web)",
+    "first_report_at": None,
+    "closed_at": None,
+    "close_reason": None,
+    "package": {
+        "niche": {"label": "historia militar explicada", "format": "long", "language": "en"},
+        "dossier": {
+            "request_id": "f0c90924-295a-4136-a0fb-d3fb2c3eacc6",
+            "schema": "dossier-v3",
+            "recommendation": "go",
+            "confidence": "medium",
+            "thesis": "Historia militar con voz neutra",
+            "unknowns": [],
+        },
+        "budget": {
+            "currency": "USD", "low": 3, "likely": 19.5, "high": 41, "max_videos": 10,
+            "basis": "Estimación del dossier",
+        },
+        "stop_rules": [
+            {"text": "Cerrar si no hay 1.000 vistas al video 10",
+             "milestone": {"kind": "video", "value": 10}},
+            {"text": "Revisar la retención a la semana 6",
+             "milestone": {"kind": "week", "value": 6}},
+        ],
+        "close_after_failed_milestones": 2,
+    },
+    "evaluation": {
+        "rules": [
+            {"id": "r1", "text": "Cerrar si no hay 1.000 vistas al video 10",
+             "milestone": "video:10", "status": "pendiente", "detail": "Aún no hay datos."},
+            {"id": "r2", "text": "Revisar la retención a la semana 6",
+             "milestone": "week:6", "status": "sin_datos_suficientes", "detail": None},
+        ],
+        "milestones": [], "totals": {}, "warnings": [], "close_after": 2,
+    },
+    "acknowledged": [],
+    "events": [
+        {"kind": "authorized", "actor": "propietario (web)", "at": "2026-11-02T03:00:00Z",
+         "detail": {"note": "Autorizado desde la web"}},
+        {"kind": "delivered", "actor": "canal", "at": "2026-11-03T10:00:00Z", "detail": {}},
+    ],
+}  # fmt: skip
+PILOT_VIDEOS: list[dict[str, Any]] = [
+    {
+        "video_id": "v1", "source_state": "PUBLICADO", "stage": "published",
+        "visibility": "public", "published_at": "2026-11-05T12:00:00Z", "cost_usd": 0.32,
+        "cost_equivalent_usd": 1.5, "machine_minutes": 70, "failure_code": None,
+        "measurement": None,
+    }
+]  # fmt: skip

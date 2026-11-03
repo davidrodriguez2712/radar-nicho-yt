@@ -15,18 +15,22 @@ from tests.web_helpers import (
     HOSTILE,
     REPORT_ID,
     Api,
+    csrf_of,
     dossier_v3,
     flow_item,
     make_client,
     niche_detail,
     niche_item,
+    pilot_detail,
     pilot_item,
+    pilot_video,
     report_detail,
     research,
     subniche_card,
     subniche_item,
 )
 
+PID = "pil_20261102_historia"
 ROUTES = [
     "/",
     "/nichos",
@@ -35,12 +39,24 @@ ROUTES = [
     "/subnichos/uno",
     f"/informes/{REPORT_ID}",
     f"/pilotos/autorizar?informe={REPORT_ID}",
+    "/pilotos",
+    "/pilotos?filtro=bloqueo",
+    f"/pilotos/{PID}",
+    f"/pilotos/{PID}?pestana=preparacion",
+    f"/pilotos/{PID}?pestana=videos",
+    f"/pilotos/{PID}?pestana=reglas",
+    f"/pilotos/{PID}?pestana=historial",
+    f"/pilotos/{PID}/decidir?accion=seguir",
+    f"/pilotos/{PID}/decidir?accion=cerrar",
+    f"/pilotos/{PID}/cancelar",
+    f"/pilotos/{PID}/cierre",
 ]
 STRUCTURAL = {
     "status", "format", "language", "decision", "recommendation", "schema_version", "id",
     "slug", "state", "kind", "confidence", "comparator", "metric", "level", "verdict", "basis",
     "origin", "stage", "stages", "source", "version", "signal", "rpm_source", "rpm_state",
-    "family", "parent_niche_slug", "channel_id", "pilot_id", "report_id", "action", "code",
+    "family", "parent_niche_slug", "visibility", "source_state", "channel_status",
+    "channel_id", "pilot_id", "report_id", "action", "code",
     "path", "unit", "currency", "kind_of", "classification", "rights", "automation", "mode",
 }  # fmt: skip
 SCRIPT = "<script>alert(1)</script>"
@@ -58,14 +74,36 @@ def hostile(value: Any, key: str | None = None) -> Any:
     return value
 
 
-def fixtures() -> dict[str, Any]:
+def pilot_fixture(status: str = "decision_pendiente") -> dict[str, Any]:
+    rule = {"id": "r1", "text": "t", "milestone": "video:3", "status": "no_cumple", "detail": "d"}
+    event = {"kind": "decision_seguir", "actor": "humano", "at": "2026-11-04T10:00:00Z"}
+    return pilot_detail(
+        PID,
+        status=status,
+        evaluation={
+            "rules": [rule],
+            "milestones": [],
+            "totals": {},
+            "warnings": ["w"],
+            "close_after": 2,
+        },
+        events=[event | {"detail": {"note": "n"}}, event | {"kind": "authorized"}],
+        acknowledged=["a"],
+    ) | {"proposal": {"action": "cerrar", "reason": "r"}}
+
+
+def fixtures(route: str = "") -> dict[str, Any]:
+    pilot_status = "entregado" if route.endswith("/cancelar") else "decision_pendiente"
     return {
         "status": {"radar_paused": True, "timezone": "America/Lima"},
         "niches": {"items": [niche_item()], "total": 1, "limit": 200, "offset": 0},
         "niche": niche_detail(),
         "flows": {"items": [flow_item("listo", id=REPORT_ID), flow_item("en_curso")]},
         "report": report_detail(dossier=dossier_v3()),
-        "pilots": {"items": [pilot_item(needs_decision=True)]},
+        "pilots": {"items": [pilot_item(PID, status="decision_pendiente", needs_decision=True)]},
+        "pilot": pilot_fixture(pilot_status),
+        "videos": {"items": [pilot_video("v1"), pilot_video("v2", stage="measuring")]},
+        "closing": "Resumen de cierre\n\n- una linea",
         "subniches": {"items": [subniche_item(research=research())]},
         "card": subniche_card(research=research()),
     }
@@ -81,6 +119,7 @@ class SmokeApi(Api):
     def __init__(self, data: dict[str, Any] | None, error: Exception | None = None) -> None:
         super().__init__()
         self.data, self.error = data, error
+        self.write_status = 500
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.calls.append(request)
@@ -89,7 +128,21 @@ class SmokeApi(Api):
         assert self.data is not None
         path = request.url.path.removeprefix("/api/v1")
         if request.method != "GET":
-            return httpx.Response(500, json={"detail": "unexpected write"})
+            return httpx.Response(self.write_status, json={"detail": {"code": "bad_transition"}})
+        if path == f"/pilots/{PID}/closing-summary":
+            return httpx.Response(
+                200,
+                content=str(self.data["closing"]).encode(),
+                headers={"content-type": "text/plain"},
+            )
+        if path == f"/pilots/{PID}/videos":
+            return httpx.Response(
+                200, content=dump(self.data["videos"]), headers={"content-type": "application/json"}
+            )
+        if path == f"/pilots/{PID}":
+            return httpx.Response(
+                200, content=dump(self.data["pilot"]), headers={"content-type": "application/json"}
+            )
         key = next(
             (k for prefix, k in RESOURCES if path == prefix or path.startswith(prefix + "/")), None
         )
@@ -136,7 +189,7 @@ def check_safe(response: httpx.Response, route: str) -> None:
 
 @pytest.mark.parametrize("route", ROUTES)
 def test_hostile_text_is_escaped_on_every_screen(route: str) -> None:
-    web, _ = client_for(hostile(fixtures()))
+    web, _ = client_for(hostile(fixtures(route)))
     response = web.get(route)
     check_safe(response, route)
     body = response.text
@@ -191,7 +244,7 @@ BAD: list[Any] = [None, "x", 7, [], {}, float("nan"), float("inf")]
 
 @pytest.mark.parametrize("route", ROUTES)
 def test_malformed_shapes_never_give_a_500(route: str) -> None:
-    base = fixtures()
+    base = fixtures(route)
     data = copy.deepcopy(base)
     web, api = client_for(data)  # the fake API reads `data` on every call
     failures: list[str] = []
@@ -228,7 +281,7 @@ def _naive(value: Any) -> Any:
 
 @pytest.mark.parametrize("route", ROUTES)
 def test_timezone_naive_datetimes_never_give_a_500(route: str) -> None:
-    web, _ = client_for(_naive(fixtures()))
+    web, _ = client_for(_naive(fixtures(route)))
     check_safe(web.get(route), route)
 
 
@@ -246,6 +299,9 @@ NAN_PATHS = [
     "/api/v1/pilots",
     "/api/v1/subniches",
     "/api/v1/subniches/uno",
+    f"/api/v1/pilots/{PID}",
+    f"/api/v1/pilots/{PID}/videos",
+    f"/api/v1/pilots/{PID}/closing-summary",
 ]
 
 
@@ -264,7 +320,7 @@ INLINE = re.compile(r"<style|\sstyle\s*=|<script(?![^>]*\ssrc=)|\son[a-z]+\s*=",
 
 def good_clients() -> Iterator[tuple[str, TestClient]]:
     for route in ROUTES:
-        web, _ = client_for(fixtures())
+        web, _ = client_for(fixtures(route))
         yield route, web
 
 
@@ -289,6 +345,9 @@ POSTS: list[tuple[str, dict[str, str]]] = [
     ("/nichos/decidir", {"etiqueta": "x", "formato": "long", "decision": "descartado"}),
     ("/nichos/investigar", {"etiqueta": "x", "formato": "long", "idioma": "en"}),
     ("/pilotos/autorizar", {"informe": REPORT_ID, "canal": "c"}),
+    (f"/pilotos/{PID}/decidir?accion=seguir", {"note": "ok"}),
+    (f"/pilotos/{PID}/decidir?accion=cerrar", {"note": "ok"}),
+    (f"/pilotos/{PID}/cancelar", {"reason": "ok"}),
     ("/subnichos/uno/investigar", {"idioma": "en"}),
     ("/salir", {}),
 ]
@@ -312,3 +371,92 @@ def test_login_is_the_only_post_outside_csrf() -> None:
     bare = TestClient(web.app, follow_redirects=False)
     assert bare.post("/login", data={"password": "bad"}).status_code in (200, 303, 401, 429)
     assert api.calls == []
+
+
+PILOT_POSTS = [
+    (f"/pilotos/{PID}/decidir?accion=seguir", "note"),
+    (f"/pilotos/{PID}/decidir?accion=cerrar", "note"),
+    (f"/pilotos/{PID}/cancelar", "reason"),
+]
+
+
+def _writes(api: SmokeApi) -> list[str]:
+    return [f"{c.method} {c.url.path}" for c in api.calls if c.method != "GET"]
+
+
+@pytest.mark.parametrize(("path", "field"), PILOT_POSTS)
+def test_a_pilot_post_with_csrf_in_a_disallowed_state_writes_nothing(path: str, field: str) -> None:
+    for status in ("cerrado", "cancelado", "autorizado", "en_ejecucion", "inventado"):
+        data = fixtures()
+        data["pilot"]["status"] = status
+        web, api = client_for(data)
+        token = csrf_of(web.get("/pilotos").text)
+        disallowed = (
+            (path.endswith("seguir") and status != "decision_pendiente")
+            or (path.endswith("cerrar") and status not in ("en_ejecucion", "decision_pendiente"))
+            or (path.endswith("cancelar") and status not in ("autorizado", "entregado"))
+        )
+        if not disallowed:
+            continue
+        response = web.post(path, data={"csrf": token, field: "una nota"})
+        check_safe(response, path)
+        assert response.status_code in (409, 503), (path, status, response.status_code)
+        assert _writes(api) == [], (path, status)
+
+
+@pytest.mark.parametrize(("path", "field"), PILOT_POSTS)
+def test_malformed_pilot_shapes_never_give_a_500_on_the_post_paths(path: str, field: str) -> None:
+    base = fixtures("/cancelar" if path.endswith("cancelar") else "")
+    data = copy.deepcopy(base)
+    web, api = client_for(data)
+    api.write_status = 409
+    token = csrf_of(web.get("/pilotos").text)
+    failures: list[str] = []
+    for path_in_pilot in paths(base["pilot"]):
+        for bad in BAD:
+            data["pilot"] = replaced(base["pilot"], path_in_pilot, bad)
+            for note in ("una nota", ""):
+                where = f"pilot{list(path_in_pilot)} <- {bad!r} note={note!r}"
+                try:
+                    response = web.post(path, data={"csrf": token, field: note})
+                except Exception as error:
+                    failures.append(f"{where}: {type(error).__name__}: {error}")
+                    continue
+                if response.status_code >= 500 and response.status_code != 503:
+                    failures.append(f"{where}: {response.status_code}")
+                assert "Traceback" not in response.text
+        data["pilot"] = base["pilot"]
+    assert not failures, (len(failures), failures[:6])
+
+
+def test_the_pilot_preparation_address_redirects_and_never_loads_third_parties() -> None:
+    web, _ = client_for(fixtures())
+    response = web.get(f"/pilotos/{PID}/preparacion")
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/pilotos/{PID}?pestana=preparacion"
+
+
+def test_unknown_pilot_statuses_stages_and_event_kinds_render() -> None:
+    data = fixtures()
+    data["pilot"]["status"] = "inventado"
+    data["pilot"]["events"] = [{"kind": "inventado", "actor": "x", "at": "2026-11-04T10:00:00Z"}]
+    data["videos"] = {"items": [pilot_video("v1", stage="inventado", source_state="X")]}
+    data["pilots"] = {"items": [pilot_item(PID, status="inventado")]}
+    web, _ = client_for(data)
+    for route in ROUTES:
+        if route.startswith("/pilotos"):
+            check_safe(web.get(route), route)
+
+
+def test_huge_numbers_in_the_pilot_payload_never_give_a_500() -> None:
+    data = fixtures()
+    huge = 10**400
+    data["pilot"]["totals"] = {"spent_usd": huge, "published": huge, "machine_minutes": huge}
+    data["pilot"]["package"]["budget"]["max_videos"] = huge
+    data["pilot"]["package"]["budget"]["high"] = huge
+    data["videos"] = {"items": [pilot_video("v1", cost_usd=huge, machine_minutes=huge)]}
+    data["pilots"] = {"items": [pilot_item(PID, totals={"videos": huge, "spent_usd": huge})]}
+    web, _ = client_for(data)
+    for route in ROUTES:
+        if route.startswith("/pilotos"):
+            check_safe(web.get(route), route)
