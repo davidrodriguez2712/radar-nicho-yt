@@ -66,3 +66,21 @@ def shorts_report(
     }
     body.update(deepcopy(over))
     return body
+
+
+def shorts_video_v3(n: int, measured: bool = True, **over: Any) -> dict[str, Any]:
+    """Video de Shorts de channel-report-v3: igual al de v2 más ``human_minutes``."""
+    data = shorts_video(n, measured, human_minutes=12)
+    data.update(over)
+    return data
+
+
+def shorts_report_v3(
+    videos: list[dict[str, Any]] | None = None,
+    pilot_id: str = "pil_20261201_curiosidades-shorts",
+    **over: Any,
+) -> dict[str, Any]:
+    body = shorts_report(videos if videos is not None else [shorts_video_v3(1)], pilot_id=pilot_id)
+    body.update(contract="channel-report-v3", human_minutes_method="gate_waits")
+    body.update(deepcopy(over))
+    return body
