@@ -350,3 +350,23 @@ def test_v1_and_v2_reject_the_v3_fields() -> None:
 def test_an_unknown_contract_still_falls_back_to_v1() -> None:
     _, problems = validate_report(report(contract="channel-report-v9"), NOW)
     assert paths(problems) == {"contract"}
+
+
+@pytest.mark.parametrize("big", [100001, 10**30])
+def test_v3_rejects_human_minutes_above_the_cap_long_and_shorts(big: int) -> None:
+    _, problems = validate_report(report_v3(video_v3(human_minutes=big)), NOW)
+    assert paths(problems) == {"videos.0.human_minutes"}
+    _, problems = validate_report(shorts_report_v3([shorts_video_v3(1, human_minutes=big)]), NOW)
+    assert paths(problems) == {"videos.0.human_minutes"}
+
+
+def test_v3_accepts_human_minutes_at_the_cap_long_and_shorts() -> None:
+    _, problems = validate_report(report_v3(video_v3(human_minutes=100000)), NOW)
+    assert problems == []
+    _, problems = validate_report(shorts_report_v3([shorts_video_v3(1, human_minutes=100000)]), NOW)
+    assert problems == []
+
+
+def test_v3_rejects_a_whole_json_float_for_human_minutes() -> None:
+    _, problems = validate_report(report_v3(video_v3(human_minutes=25.0)), NOW)
+    assert paths(problems) == {"videos.0.human_minutes"}

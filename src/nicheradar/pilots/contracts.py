@@ -322,11 +322,11 @@ class ShortsVideo(VideoBase):
 class VideoV3(Video):
     """Video largo de channel-report-v3. ``None`` es "no medido", nunca 0."""
 
-    human_minutes: Annotated[int, Field(ge=0, strict=True)] | None
+    human_minutes: Annotated[int, Field(ge=0, le=100000, strict=True)] | None
 
 
 class ShortsVideoV3(ShortsVideo):
-    human_minutes: Annotated[int, Field(ge=0, strict=True)] | None
+    human_minutes: Annotated[int, Field(ge=0, le=100000, strict=True)] | None
 
 
 class Check(Contract):
