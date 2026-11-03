@@ -355,9 +355,13 @@ def test_a_naive_authorization_date_is_read_as_utc() -> None:
 
 def test_pilot_re_accepts_real_ids_and_rejects_a_trailing_newline_with_fullmatch() -> None:
     assert PILOT_RE.fullmatch("pil_20261102_historia")
-    assert PILOT_RE.fullmatch("pil_20261102_a-b_c")
+    assert PILOT_RE.fullmatch("pil_20261102_a-b-c")
+    assert PILOT_RE.fullmatch("pil_20261102_" + "a" * 40)
     assert PILOT_RE.fullmatch("pil_20261102_historia\n") is None
     for bad in ("", "x&y=1", "pil_2026_a", "pil_20261102_", "PIL_20261102_a", "pil_20261102_a/b"):
+        assert PILOT_RE.fullmatch(bad) is None
+    # the API contract has no underscore in the slug, no Unicode digits and at most 40 characters
+    for bad in ("pil_20261102_a_b", "pil_٢٠٢٦١١٠٢_x", "pil_20261102_" + "a" * 41):
         assert PILOT_RE.fullmatch(bad) is None
 
 

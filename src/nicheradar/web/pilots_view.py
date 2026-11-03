@@ -23,7 +23,7 @@ STATUS_CHIP: dict[str, tuple[str, str]] = {
 }
 ACTIVE = frozenset({"autorizado", "entregado", "en_ejecucion", "decision_pendiente"})
 CLOSED = frozenset({"cerrado", "cancelado"})
-PILOT_RE = re.compile(r"^pil_\d{8}_[a-z0-9_-]+$")
+PILOT_RE = re.compile(r"^pil_[0-9]{8}_[a-z0-9-]{1,40}$")  # pilots/contracts.py PILOT_ID
 FILTERS = ("todos", "activos", "bloqueo", "cerrados")
 EXPIRY_WINDOW = timedelta(days=7)
 VALIDITY_WINDOW = timedelta(days=3)

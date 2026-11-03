@@ -26,14 +26,14 @@
   </div>
   <div class="card" id="res-acciones">
     <h2 class="card__heading">Acciones</h2>
-    {% for a in s.actions %}<p class="action">{% if a.href %}<a class="btn btn--{{ a.kind }}" href="{{ a.href }}">{{ a.label }}</a>{% else %}<button class="btn btn--secondary" type="button" disabled>{{ a.label }}</button> <span class="caption">{{ a.reason }}</span>{% endif %}</p>
+    {% for a in s.actions %}<p class="action">{% if a.href %}<a class="btn btn--{{ a.kind }}" href="{{ a.href }}">{{ a.label }}</a>{% else %}<button class="btn btn--secondary" type="button" disabled aria-describedby="why-{{ a.key }}">{{ a.label }}</button> <span class="caption" id="why-{{ a.key }}">{{ a.reason }}</span>{% endif %}</p>
     {% endfor %}
   </div>
   <div class="card" id="res-reglas">
     <h2 class="card__heading">Reglas de parada</h2>
     <p>{{ s.rules.total }}{% if s.rules.counts %}: {{ s.rules.counts }}{% endif %}</p>
     {% if s.rules.close_after %}<p class="caption">Se propone cerrar tras {{ s.rules.close_after }} hitos fallidos seguidos.</p>{% endif %}
-    {% if v.pilot_id %}<a href="/pilotos/{{ v.pilot_id }}?pestana=reglas">Ver las reglas</a>{% endif %}
+    {% if v.pilot_id %}<a class="tap" href="/pilotos/{{ v.pilot_id }}?pestana=reglas">Ver las reglas</a>{% endif %}
   </div>
   <div class="card" id="res-costos">
     <h2 class="card__heading">Costos y tiempos</h2>

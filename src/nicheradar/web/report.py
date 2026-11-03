@@ -38,7 +38,7 @@ AVISOS_INFORME = {
     "existente": ("Ya había una investigación activa con esa clave.", "amber"),
     "piloto": ("Piloto autorizado.", "green"),
 }
-PILOT_RE = re.compile(r"pil_\d{8}_[a-z0-9_-]+")
+PILOT_RE = re.compile(r"pil_[0-9]{8}_[a-z0-9-]{1,40}")
 STATUS_PAGES = {
     "pendiente": ("En cola", "amber", "La investigación espera a que Claude Code la reclame."),
     "en_curso": (

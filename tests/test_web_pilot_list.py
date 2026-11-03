@@ -194,7 +194,17 @@ def test_a_missing_channel_reads_to_be_defined() -> None:
     assert 'Canal: <span class="pilot__channel">canal por definir</span>' in card
 
 
-@pytest.mark.parametrize("bad_id", ["pil_20261102_a\n", "", "x&y=1"])
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        "pil_20261102_a\n",
+        "",
+        "x&y=1",
+        "pil_٢٠٢٦١١٠٢_x",
+        "pil_20261102_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "pil_20261102_a_b",
+    ],
+)
 def test_the_panel_link_is_only_emitted_for_a_valid_pilot_id(bad_id: str) -> None:
     text = client(api_with(pilot_item(bad_id, niche_label="roto"))).get("/pilotos").text
     card = cards_of(text)["roto"]

@@ -113,6 +113,9 @@ def test_parse_form_enforces_the_api_ranges_and_reports_field_errors() -> None:
 
 def test_pilot_id_regex_is_anchored_for_fullmatch() -> None:
     assert PILOT_ID_RE.fullmatch("pil_20261102_historia-1")
+    assert not PILOT_ID_RE.fullmatch("pil_٢٠٢٦١١٠٢_x")
+    assert not PILOT_ID_RE.fullmatch("pil_20261102_" + "a" * 41)
+    assert PILOT_ID_RE.fullmatch("pil_20261102_" + "a" * 40)
     assert not PILOT_ID_RE.fullmatch("pil_20261102_x\n")
     assert not PILOT_ID_RE.fullmatch("pil_2026_x")
 
@@ -306,7 +309,19 @@ def test_authorizing_posts_server_derived_fields_and_redirects_to_the_pilot_pane
 
 
 @pytest.mark.parametrize(
-    "bad_id", ["x\nSet-Cookie: a=b", "pil_20261102_x\n", "../pilots", "", None, 7, "pil_1_x"]
+    "bad_id",
+    [
+        "x\nSet-Cookie: a=b",
+        "pil_20261102_x\n",
+        "../pilots",
+        "",
+        None,
+        7,
+        "pil_1_x",
+        "pil_٢٠٢٦١١٠٢_x",
+        "pil_20261102_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "pil_20261102_a_b",
+    ],
 )
 def test_the_success_redirect_drops_a_malformed_pilot_id(bad_id: object) -> None:
     bad = {"pilot_id": bad_id, "status": "autorizado", "package": {}}

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from nicheradar.web.format import short_date
+from nicheradar.web.format import es_int, short_date
 from nicheradar.web.pilots_view import (
     MAX_PREPARATION_DAYS,
     PILOT_RE,
@@ -18,6 +18,7 @@ from nicheradar.web.pilots_view import (
     _ago,
     _check_label,
     _checks,
+    _count,
     _dict,
     _moment,
     _num,
@@ -134,12 +135,21 @@ def notice(key: object) -> tuple[str, str] | None:
     return NOTICES.get(key) if isinstance(key, str) else None
 
 
+MAX_MONEY = 1e9
+
+
 def _money(value: object) -> str:
+    """One money format for the whole panel: US$ with a Spanish decimal comma.
+
+    A whole amount has no decimals ("US$ 41"); under 100 it keeps two ("US$ 0,96"); from 100 up it
+    rounds to a whole number. Negative, non-finite or absurdly large amounts read as unknown.
+    """
     number = _num(value)
-    if number is None:
+    if number is None or number < 0 or number > MAX_MONEY:
         return "—"
-    text = f"{number:,.2f}".replace(",", "\0").replace(".", ",").replace("\0", ".")
-    return f"US$ {text}"
+    if number >= 100 or number == int(number):
+        return f"US$ {es_int(number)}"
+    return "US$ " + f"{number:.2f}".replace(".", ",")
 
 
 def _minutes(value: object) -> str:
@@ -354,7 +364,7 @@ def _summary(
     package = _dict(detail.get("package"))
     cap = _int(_dict(package.get("budget")).get("max_videos"), 1, 50)
     totals = _dict(detail.get("totals"))
-    published = int(_num(totals.get("published")) or 0)
+    published = _count(totals.get("published"))
     first = _moment(detail.get("first_report_at"))
     if first is not None:
         day = max(int((now - first).total_seconds() // 86400), 0) + 1

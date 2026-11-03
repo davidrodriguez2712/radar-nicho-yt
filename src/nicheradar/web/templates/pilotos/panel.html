@@ -7,7 +7,7 @@
 {% if notice %}<div class="note note--{{ notice[1] }}" id="aviso" role="status">{{ notice[0] }}</div>{% endif %}
 <div class="tags" id="cabecera">{{ chip(v.status_text, v.status_kind) }}{{ chip(v.format_text, "neutral") }}{% if v.language_text %}{{ chip(v.language_text, "neutral") }}{% endif %}{% if v.channel_name %}<span class="caption">Canal: <span class="pilot__channel">{{ v.channel_name }}</span></span>{% endif %}</div>
 <ol class="steps" id="linea-estados" aria-label="Línea de estados">
-{% for s in v.states %}<li class="step step--{{ s.state }}"{% if s.state == "current" %} aria-current="step"{% endif %}>{{ s.label }}</li>
+{% for s in v.states %}<li class="step step--{{ s.state }}"{% if s.state == "current" %} aria-current="step"{% endif %}>{% if s.state == "current" %}<span class="sr-only">actual: </span>{% elif s.state == "done" %}<span class="sr-only">hecho: </span>{% endif %}{{ s.label }}</li>
 {% endfor %}</ol>
 <nav class="subtabs" id="pestanas" aria-label="Secciones del piloto">
 {% for t in v.tabs %}{% if t.href %}<a class="subtab{% if t.current %} subtab--on{% endif %}" href="{{ t.href }}"{% if t.current %} aria-current="page"{% endif %}>{{ t.label }}</a>{% endif %}
@@ -17,5 +17,5 @@
 {% elif v.tab == "videos" %}{% include "pilotos/_videos.html" %}
 {% elif v.tab == "reglas" %}{% include "pilotos/_reglas.html" %}
 {% else %}{% include "pilotos/_historial.html" %}{% endif %}
-<p class="caption"><a href="/pilotos">← Volver a Pilotos</a></p>
+<p class="caption"><a class="tap" href="/pilotos">← Volver a Pilotos</a></p>
 {% endblock %}

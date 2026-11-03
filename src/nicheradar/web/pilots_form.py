@@ -10,7 +10,7 @@ from typing import Any
 from nicheradar.web.format import usd
 
 CHANNEL_RE = re.compile(r"^canal-[a-z0-9-]{1,40}$")
-PILOT_ID_RE = re.compile(r"^pil_\d{8}_[a-z0-9_-]+$")
+PILOT_ID_RE = re.compile(r"^pil_[0-9]{8}_[a-z0-9-]{1,40}$")  # pilots/contracts.py PILOT_ID
 CLOSED = ("cerrado", "cancelado")
 MAX_MONEY = Decimal("1000000")
 CENT = Decimal("0.01")

@@ -56,6 +56,11 @@ def flat(markup: str) -> str:
     return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", markup)).split())
 
 
+def visible(markup: str) -> str:
+    """Text a sighted user reads: the visually hidden spans are dropped."""
+    return flat(re.sub(r'<span class="sr-only">.*?</span>', "", markup, flags=re.S))
+
+
 def items(markup: str) -> list[str]:
     return re.findall(r"<li\b[^>]*>(.*?)</li>", markup, re.S)
 
@@ -99,7 +104,11 @@ def test_a_valid_panel_shows_title_status_line_and_the_five_tabs() -> None:
         assert f'href="/pilotos/{PID}?pestana={key}"' in attrs
     assert [a for a, _ in links if "aria-current" in a] == [links[0][0]]
     assert 'aria-current="page"' in links[0][0]
-    assert block(text, "linea-estados")
+    line = block(text, "linea-estados")
+    assert re.findall(
+        r'<li class="step step--current" aria-current="step">(.*?)</li>', line, re.S
+    ) == ['<span class="sr-only">actual: </span>En ejecución']
+    assert line.count('<span class="sr-only">hecho: </span>') == 3
 
 
 @pytest.mark.parametrize(
@@ -120,19 +129,19 @@ def test_the_state_line_marks_exactly_the_current_state_for_each_status(
     steps = items(block(text, "linea-estados"))
     labels = ["Autorizado", "Entregado", "Preparando", "En ejecución", "Decisión pendiente"]
     labels.append("Cerrado")
-    assert [flat(s) for s in steps] == labels
+    assert [visible(s) for s in steps] == labels
     marked = re.findall(
         r'<li class="step step--current"[^>]*aria-current="step"[^>]*>(.*?)</li>',
         block(text, "linea-estados"),
         re.S,
     )
-    assert [flat(m) for m in marked] == ([current] if current else [])
+    assert [visible(m) for m in marked] == ([current] if current else [])
     assert len(re.findall("step--current", block(text, "linea-estados"))) == len(marked)
     done = re.findall(
         r'<li class="step step--done"[^>]*>(.*?)</li>', block(text, "linea-estados"), re.S
     )
     if current:
-        assert [flat(d) for d in done] == labels[: labels.index(current)]
+        assert [visible(d) for d in done] == labels[: labels.index(current)]
     else:
         assert done == []
 
@@ -195,8 +204,8 @@ def test_costs_show_spent_against_the_package_budget_and_flag_incomplete_machine
         status="en_ejecucion", last_report_at="2026-11-03T09:00:00Z", totals=totals()
     )
     costs = flat(block(page(api_with(detail)), "res-costos"))
-    assert "Dinero gastado: US$ 12,50 de US$ 41,00" in costs
-    assert "Equivalente de Claude: US$ 30,00 (no se suma)" in costs
+    assert "Dinero gastado: US$ 12,50 de US$ 41" in costs
+    assert "Equivalente de Claude: US$ 30 (no se suma)" in costs
     assert "Minutos de máquina: 2 h 10 min" in costs and "(incompleto)" not in costs
     assert "Último reporte: hace 3 h" in costs
     detail = detail_with(
@@ -204,7 +213,7 @@ def test_costs_show_spent_against_the_package_budget_and_flag_incomplete_machine
     )
     costs = flat(block(page(api_with(detail)), "res-costos"))
     assert "Minutos de máquina: 0 h 45 min (incompleto)" in costs
-    assert "Dinero gastado: US$ 0,32 de US$ 41,00" in costs
+    assert "Dinero gastado: US$ 0,32 de US$ 41" in costs
     assert "Último reporte: todavía no hay" in costs
     package = dict(pilot_detail()["package"])  # type: ignore[call-overload]
     package["budget"] = {"currency": "USD", "low": 3}
@@ -214,6 +223,18 @@ def test_costs_show_spent_against_the_package_budget_and_flag_incomplete_machine
     costs = flat(block(page(api_with(detail_with(totals=bad))), "res-costos"))
     assert "Dinero gastado: —" in costs and "Minutos de máquina: —" in costs
     assert "Equivalente de Claude: — (no se suma)" in costs
+    for amount, shown in (
+        (-1, "—"),
+        (2e9, "—"),
+        (250.4, "US$ 250"),
+        (0, "US$ 0"),
+        (0.96, "US$ 0,96"),
+    ):
+        view = panel_view(detail_with(totals=totals(spent_usd=amount)), None, NOW, "UTC", "resumen")
+        assert view["summary"]["costs"]["spent"].startswith(shown), amount
+    negative = totals(machine_minutes=-5)
+    view = panel_view(detail_with(totals=negative), None, NOW, "UTC", "resumen")
+    assert view["summary"]["costs"]["minutes"] == "—"
     # JSON cannot carry NaN or infinity, so the view model is checked directly.
     nan = detail_with(totals=totals(spent_usd=float("nan"), machine_minutes=float("inf")))
     summary = panel_view(nan, None, NOW, "UTC", "resumen")["summary"]["costs"]
@@ -238,10 +259,13 @@ def test_preparation_tab_lists_the_channel_checks_as_steps_with_status_and_detai
     steps = block(text, "prep-pasos")
     rows = items(steps)
     assert [flat(r) for r in rows] == [
-        "✓ Paso uno caduca el 10 nov",
-        "! Paso dos falta algo",
+        "✓ hecho Paso uno caduca el 10 nov",
+        "! pendiente Paso dos falta algo",
     ]
     assert "mark--ok" in rows[0] and "mark--todo" in rows[1]
+    assert "aria-label" not in steps  # hidden text instead, which every reader announces
+    assert '<span class="sr-only">hecho</span>' in rows[0]
+    assert '<span class="sr-only">pendiente</span>' in rows[1]
     assert "nota del canal" in flat(block(text, "prep-pasos"))
     assert 'id="tab-resumen"' not in text and 'id="tab-preparacion"' in text
     tabs = block(text, "pestanas")
@@ -429,7 +453,18 @@ def test_the_preparation_route_redirects_to_the_tab() -> None:
 
 
 @pytest.mark.parametrize(
-    "bad", ["pil_20261102_x%0A", "..%2Fpilots", "pil_2026_x", "x" * 300, "PIL_20261102_x", "%20"]
+    "bad",
+    [
+        "pil_20261102_x%0A",
+        "..%2Fpilots",
+        "pil_2026_x",
+        "x" * 300,
+        "PIL_20261102_x",
+        "%20",
+        "pil_%D9%A2%D9%A0%D9%A2%D9%A6%D9%A1%D9%A1%D9%A0%D9%A2_x",
+        "pil_20261102_" + "a" * 200,
+        "pil_20261102_a_b",
+    ],
 )
 def test_a_malformed_pilot_id_is_404_and_never_reaches_the_api(bad: str) -> None:
     api = api_with()
@@ -485,6 +520,14 @@ def test_hostile_text_everywhere_is_escaped() -> None:
         assert "<script>" not in text, tab
         assert "[x](https://evil.test)" not in text.replace(ESCAPED, ""), tab
         assert ESCAPED in text, tab
+        section = {
+            None: "res-bloqueos",
+            "preparacion": "prep-pasos",
+            "videos": "videos-lista",
+            "reglas": "reglas-lista",
+            "historial": "historial-lista",
+        }[tab]
+        assert ESCAPED in block(text, section), (tab, section)
     summary = page(api_with(detail))
     assert ESCAPED in block(summary, "res-propuesta")
     assert ESCAPED in block(summary, "res-bloqueos")
@@ -539,7 +582,9 @@ def test_the_action_buttons_are_links_only_when_the_status_allows_them() -> None
     pending = actions("decision_pendiente")
     assert f'href="/pilotos/{PID}/decidir?accion=seguir"' in pending
     assert f'href="/pilotos/{PID}/decidir?accion=cerrar"' in pending
+    assert "/cancelar" not in pending and "/cierre" not in pending
     running = actions("en_ejecucion")
+    assert "/cancelar" not in running
     assert f'href="/pilotos/{PID}/decidir?accion=cerrar"' in running
     assert "accion=seguir" not in running and "disabled" in running
     assert "Solo cuando hay una decisión pendiente" in flat(running)
@@ -578,8 +623,8 @@ def test_the_notice_comes_only_from_fixed_keys() -> None:
     for key, message in expected.items():
         text = page(api_with(), extra=f"aviso={key}")
         assert message in flat(block(text, "aviso")), key
-    for junk in ("otro", "", HOSTILE, "AUTORIZADO", "autorizado%0A"):
-        response = client(api_with()).get(f"/pilotos/{PID}", params={"aviso": junk})
+    for junk in ("otro", "", "AUTORIZADO", "autorizado%0A", "autorizado%20", "%3Cscript%3E"):
+        response = client(api_with()).get(f"/pilotos/{PID}?aviso={junk}")
         assert response.status_code == 200
         assert 'id="aviso"' not in response.text
         assert "<script>" not in response.text
@@ -603,3 +648,25 @@ def test_thousands_of_items_are_capped_and_rendered() -> None:
     text = page(api, "preparacion")
     assert "Faltan 1500 de 3000 pasos." in flat(block(text, "prep-cuenta"))
     assert "Se muestran los primeros 100" in flat(block(text, "prep-pasos"))
+
+
+def test_a_negative_published_count_is_read_as_zero() -> None:
+    detail = detail_with(
+        status="en_ejecucion",
+        first_report_at="2026-11-01T12:00:00Z",
+        totals=totals(published=-5),
+    )
+    assert "Día 3 · 0 de 10 publicados" in flat(block(page(api_with(detail)), "res-estado"))
+
+
+def test_accessibility_hooks_for_disabled_actions_and_touch_targets() -> None:
+    text = page(api_with(detail_with(status="en_ejecucion")))
+    acciones = block(text, "res-acciones")
+    disabled = re.findall(r'<button[^>]*disabled[^>]*aria-describedby="([^"]+)"', acciones)
+    assert len(disabled) == 3
+    for target in disabled:
+        assert re.search(rf'<span[^>]*id="{target}"[^>]*>[^<]+</span>', acciones)
+    assert re.search(r'<a class="tap"[^>]*>Ver las reglas</a>', block(text, "res-reglas"))
+    assert '<a class="tap" href="/pilotos">← Volver a Pilotos</a>' in text
+    css = open("src/nicheradar/web/static/css/app.css", encoding="utf-8").read()
+    assert ".sr-only{" in css and ".tap{" in css and "min-height:44px" in css.split(".tap{")[1]

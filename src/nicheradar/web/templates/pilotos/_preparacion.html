@@ -9,7 +9,7 @@
   </div>
   <div class="card" id="prep-pasos">
     <h2 class="card__heading">Pasos que informa el canal</h2>
-    {% if p.steps %}<ul class="checks">{% for c in p.steps %}<li class="check"><span class="mark mark--{{ "ok" if c.ok else "todo" }}" aria-label="{{ "Hecho" if c.ok else "Pendiente" }}">{{ "✓" if c.ok else "!" }}</span> <span class="check__label">{{ c.label }}</span>{% if c.detail %} <span class="caption">{{ c.detail }}</span>{% endif %}{% if c.expires %} <span class="caption">caduca el {{ c.expires }}</span>{% endif %}</li>{% endfor %}</ul>
+    {% if p.steps %}<ul class="checks">{% for c in p.steps %}<li class="check"><span class="mark mark--{{ "ok" if c.ok else "todo" }}" aria-hidden="true">{{ "✓" if c.ok else "!" }}</span><span class="sr-only">{{ "hecho" if c.ok else "pendiente" }}</span> <span class="check__label">{{ c.label }}</span>{% if c.detail %} <span class="caption">{{ c.detail }}</span>{% endif %}{% if c.expires %} <span class="caption">caduca el {{ c.expires }}</span>{% endif %}</li>{% endfor %}</ul>
     {% if p.shown_cap %}<p class="caption">Se muestran los primeros {{ p.shown_cap }} de {{ p.total }} pasos.</p>{% endif %}
     {% else %}<p class="caption">El canal todavía no informó pasos de preparación.</p>{% endif %}
     {% if p.note %}<p class="caption">Nota del canal: {{ p.note }}</p>{% endif %}

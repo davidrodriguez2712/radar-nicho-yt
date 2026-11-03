@@ -111,3 +111,5 @@ input[type=radio],input[type=checkbox]{accent-color:var(--primary)}
 .mark{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:99px;font-size:12px;font-weight:700}
 .mark--ok{background:var(--green);color:var(--green-ink)}
 .mark--todo{background:var(--amber);color:var(--amber-ink)}
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.tap{display:inline-flex;align-items:center;min-height:44px}
