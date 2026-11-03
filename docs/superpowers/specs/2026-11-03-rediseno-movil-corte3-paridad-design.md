@@ -129,16 +129,11 @@ Orden, para no dejar a producción sin interfaz:
 Gráficos nuevos; descargas o exportaciones (Streamlit no las tiene); rediseñar la lógica de puntuación; cambios de la API
 privada (no hacen falta); cambios de proveedor o de infraestructura.
 
-## Decisiones pendientes del propietario
+## Decisiones del propietario (2026-11-03)
 
-1. **Diseño de las pantallas nuevas.** El Figma móvil tiene M1 a M14 y ninguna de estas pantallas. Opciones: (A) usar el
-   mismo lenguaje visual y mostrarte capturas reales para aprobar (recomendado: más rápido y consistente); (B) diseñarlas
-   primero en tu archivo de Figma móvil existente (más lento).
-2. **Editores JSON** de producción, puntuación y escenarios: (A) mantener un cuadro de texto JSON validado por la API,
-   con la plantilla de la receta por defecto y los errores del servidor visibles (recomendado: se usan poco y evita
-   duplicar los modelos de la API); (B) formularios por campo (más cómodos en el teléfono, mucho más trabajo y riesgo de
-   desalinearse de la API).
-3. **Orden de las entregas.** Recomendado: 3a, 3b, 3c, 3d, 3e y 3f, porque Operación y Resumen son lo que más se consulta.
-   Alternativa: lo que más uses primero.
-4. **Compatibilidad de `NR_DASHBOARD_UI` tras el retiro:** (A) eliminarla y que un valor `streamlit` en el entorno se
-   ignore con un aviso en el arranque (recomendado); (B) fallar al arrancar si vale `streamlit`.
+1. **Diseño de las pantallas nuevas: (B).** Se diseñan primero en el archivo de Figma móvil existente y se implementan
+   contra ese diseño. Bloquea la implementación de cada entrega hasta que su diseño esté aprobado.
+2. **Editores JSON: (A).** Cuadro de texto JSON validado por la API, con la plantilla de la receta por defecto y los
+   errores del servidor visibles.
+3. **Orden de las entregas:** 3a, 3b, 3c, 3d, 3e y 3f (supuesto del recomendado; sin objeción).
+4. **`NR_DASHBOARD_UI` tras el retiro: (A).** Se elimina; un valor `streamlit` se ignora con un aviso en el arranque.

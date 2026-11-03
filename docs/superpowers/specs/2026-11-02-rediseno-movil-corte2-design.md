@@ -215,12 +215,10 @@ paridad con Streamlit (corte 3); desplegar nada.
 
 4. **Tope de cada espera humana:** 15 minutos, configurable (aplica a cualquier método basado en ventanas). Resuelto.
 
-## Decisiones pendientes
+## Decisiones cerradas (2026-11-03)
 
-1. **Método de minutos humanos (reabierta por el hallazgo de la sección 5).** Opciones: (A) esperas en compuertas, tal cual:
-   subestima y se descarta; (B) medido + supuesto fijo declarado una vez por canal (`instrucción` y `validación`, por
-   ejemplo 10 + 10 min, de tus propios números) y rotulado «medido X · supuesto Y»: honesto pero la racha depende de las
-   constantes; (C) tiempo activo leído de los registros de sesión de Claude Code de la carpeta del canal (solo lectura,
-   desde este repositorio, con tope de 15 min por hueco): mide de verdad el tiempo de dar instrucciones y de revisar dentro
-   de Claude Code, pero no ve la validación hecha solo en YouTube Studio ni cambia nada en el repositorio del canal. Se
-   recomienda (C) como medida principal más (B) como suelo para lo que no deja rastro, con ambos números visibles.
+1. **Método de minutos humanos: (C) más (B) como suelo.** El tiempo activo se lee de los registros de sesión de Claude Code
+   de la carpeta del canal (solo lectura, desde este repositorio, tope de 15 min por hueco) y se suma el supuesto fijo
+   declarado por canal para lo que no deja rastro (validación en YouTube Studio). Ambos números son visibles
+   («medido X · supuesto Y») y `human_minutes_method` lo declara siempre. Resuelto; el productor
+   `scripts/channel_human_minutes.py` ya no está bloqueado (necesita su propio plan).
