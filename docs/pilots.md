@@ -5,7 +5,8 @@ Alta de un canal operado por el agente: [`contracts/channel-onboarding-v1.md`](c
 [`runbook-canal-piloto.md`](runbook-canal-piloto.md).
 Formatos exactos (fuente única): [`contracts/pilot-package-v1.md`](contracts/pilot-package-v1.md)
 [`contracts/channel-report-v1.md`](contracts/channel-report-v1.md) (formato largo) y
-[`contracts/channel-report-v2.md`](contracts/channel-report-v2.md) (Shorts). Este documento no los repite:
+[`contracts/channel-report-v2.md`](contracts/channel-report-v2.md) (Shorts) y
+[`contracts/channel-report-v3.md`](contracts/channel-report-v3.md) (v1/v2 más minutos humanos). Este documento no los repite:
 dice **dónde está el código, cómo se usa y en qué se aparta o completa el contrato**.
 
 Estado (2026-10-25): **desplegado** en producción (release
@@ -138,4 +139,14 @@ respalda con el resto de las tablas de pilotos; la `0020` añade las tablas del 
 
 ## Minutos humanos (channel-report-v3)
 
-Solo `channel-report-v3` trae `human_minutes` (entero 0..100000 o `null` = no medido, nunca 0 por defecto) y `human_minutes_method` por reporte. Los reportes v1/v2 no tocan esas columnas: un v1 posterior no borra lo ya guardado. `totals` añade `human_minutes` (suma de los no nulos) y `human_minutes_complete` (falso si algún video no tiene dato); el resumen de cierre muestra «Minutos humanos» con «(incompleto…)» en ese caso.
+Contrato: [`contracts/channel-report-v3.md`](contracts/channel-report-v3.md). Solo `channel-report-v3` trae `human_minutes` por video (entero 0..100000 o `null` = no medido, clave obligatoria) y `human_minutes_method` por reporte (migración `0021`).
+
+| Caso | Efecto sobre lo guardado |
+|---|---|
+| `v3` con `reported_at` más nuevo | Reemplaza minutos y método, también con `null` (sobrescribe con NULL: el último reporte es la verdad) |
+| `v3` con `reported_at` igual o anterior | No cambia nada (minutos y método se conservan juntos) |
+| `v1` / `v2` | Nunca tocan los minutos ni el método guardados |
+
+`totals` añade `human_minutes` (suma de los no nulos, 0 si ninguno está medido) y `human_minutes_complete` (verdadero solo si todos los videos tienen dato). Con un piloto sin mediciones el total es 0 con `complete = false`: léase «sin medir», nunca 0 minutos. El resumen de cierre muestra «Minutos humanos» con «(incompleto…)» en ese caso.
+
+Método decidido (2026-11-03): tiempo activo de los registros de sesión de Claude Code más un supuesto fijo por canal, «medido X · supuesto Y»; el productor `scripts/channel_human_minutes.py` está pendiente de su propio plan.
