@@ -100,6 +100,9 @@ visibility, published_at, cost_usd, cost_equivalent_usd, machine_minutes, failur
 reglas de autorización que `GET /pilots/{id}` (service token; un token de canal solo ve los suyos). Los datos ya están en
 `pilot_videos`. Sin este endpoint no hay pestaña «Videos» ni, después, racha de calibración.
 
+Además, `GET /pilots` añade a cada item tres campos **aditivos** que ya existen en el detalle (`valid_until`, `delivered_at` y
+`channel`), para que la lista muestre los bloqueos del canal sin hacer una llamada de detalle por piloto.
+
 ### 4. `channel-report-v3` (2b)
 
 Contrato nuevo, **aditivo**: igual que v1 (largos) o v2 (shorts) más, por video, `human_minutes` (entero ≥ 0 o `null`) y,
