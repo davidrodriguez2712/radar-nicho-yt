@@ -165,3 +165,11 @@ def test_exceeding_max_videos_is_a_warning_not_a_conclusion() -> None:
         close_after=2,
     )
     assert any("max_videos" in w for w in ev["warnings"])
+
+
+def test_totals_sum_human_minutes_ignoring_unmeasured_and_flag_incomplete() -> None:
+    t = run([vid(1, human_minutes=25), vid(2, human_minutes=None), vid(3)])["totals"]
+    assert t["human_minutes"] == 25 and t["human_minutes_complete"] is False
+    full = run([vid(1, human_minutes=25), vid(2, human_minutes=0)])["totals"]
+    assert full["human_minutes"] == 25 and full["human_minutes_complete"] is True
+    assert run([])["totals"]["human_minutes_complete"] is True

@@ -49,7 +49,7 @@ El estado se guarda con códigos **ASCII**; los documentos usan la forma con til
 | `POST /api/v1/pilots`, `GET /api/v1/pilots` | Humano (token de servicio) | «Lanzar» y listar; cada item de la lista incluye además `valid_until`, `delivered_at` (`null` sin entregar) y `channel` (último bloque reportado: `reported_at`, `channel_status`, `checks`, `note`; `null` sin reportes) |
 | `POST /api/v1/pilots/{id}/decision`, `/cancel`, `GET …/closing-summary` | Humano | `seguir` / `cerrar`; el resumen es markdown `EVD-…` |
 | `GET /api/v1/pilots/pending?channel=` | Canal o humano | Autorizados, vigentes, sin entregar |
-| `GET …/{id}/videos` | Canal o humano | `{"items": [...]}` con los videos reportados (`video_id`, `source_state`, `stage`, `visibility`, `published_at`, `cost_usd`, `cost_equivalent_usd`, `machine_minutes`, `failure_code`, `measurement`), por `published_at` ascendente (sin fecha al final) y luego `video_id`; `measurement` es `null` o solo sus campos con valor (los de Shorts incluidos). Misma visibilidad que el detalle: lo ajeno o inexistente responde `404` |
+| `GET …/{id}/videos` | Canal o humano | `{"items": [...]}` con los videos reportados (`video_id`, `source_state`, `stage`, `visibility`, `published_at`, `cost_usd`, `cost_equivalent_usd`, `machine_minutes`, `human_minutes`, `human_minutes_method`, `failure_code`, `measurement`), por `published_at` ascendente (sin fecha al final) y luego `video_id`; `measurement` es `null` o solo sus campos con valor (los de Shorts incluidos). Misma visibilidad que el detalle: lo ajeno o inexistente responde `404` |
 | `GET …/{id}/package`, `POST …/{id}/delivery`, `POST …/{id}/reports`, `GET …/{id}` | Canal o humano | Un token de canal ve solo lo suyo; lo ajeno responde `404` |
 | `POST/GET /api/v1/channel-tokens`, `DELETE …/{token_id}` | Humano | El token se muestra una sola vez |
 
@@ -135,3 +135,7 @@ respalda con el resto de las tablas de pilotos; la `0020` añade las tablas del 
 `tests/test_pilot_contracts.py`, `test_pilot_rules.py`, `test_pilots_api.py`,
 `test_channel_sync.py`, `test_pilots_dashboard.py`, `test_pilots_cli.py`, `test_pilots_schema.py`
 (las de API y esquema usan PostgreSQL temporal: `NR_TEST_POSTGRES_BIN`).
+
+## Minutos humanos (channel-report-v3)
+
+Solo `channel-report-v3` trae `human_minutes` (entero 0..100000 o `null` = no medido, nunca 0 por defecto) y `human_minutes_method` por reporte. Los reportes v1/v2 no tocan esas columnas: un v1 posterior no borra lo ya guardado. `totals` añade `human_minutes` (suma de los no nulos) y `human_minutes_complete` (falso si algún video no tiene dato); el resumen de cierre muestra «Minutos humanos» con «(incompleto…)» en ese caso.

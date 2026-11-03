@@ -32,7 +32,9 @@ from nicheradar.pilots.contracts import (
     Problem,
     ShortsMeasurement,
     ShortsVideo,
+    ShortsVideoV3,
     Video,
+    VideoV3,
     package_sha256,
     report_format,
     stage_of,
@@ -537,6 +539,7 @@ def _videos_for_rules(connection: Connection, pk: UUID) -> list[dict[str, Any]]:
             "cost_usd": r["cost_usd"],
             "cost_equivalent_usd": r["cost_equivalent_usd"],
             "machine_minutes": r["machine_minutes"],
+            "human_minutes": r["human_minutes"],
             "avd_pct": r["avd_pct"],
             "browse_share_pct": r["browse_share_pct"],
             "views": r["views"],
@@ -601,6 +604,8 @@ def list_videos(
                     "cost_usd": r["cost_usd"],
                     "cost_equivalent_usd": r["cost_equivalent_usd"],
                     "machine_minutes": r["machine_minutes"],
+                    "human_minutes": r["human_minutes"],
+                    "human_minutes_method": r["human_minutes_method"],
                     "failure_code": r["failure_code"],
                     "measurement": measured or None,
                 }
@@ -662,11 +667,21 @@ def _shorts_values(m: ShortsMeasurement | None) -> dict[str, Any] | None:
 
 
 def _video_values(
-    video: Video | ShortsVideo, channel_id: str, reported_at: datetime
+    video: Video | ShortsVideo | VideoV3 | ShortsVideoV3,
+    channel_id: str,
+    reported_at: datetime,
+    method: str | None = None,
 ) -> dict[str, Any]:
     m = video.measurement
     long_form = m if isinstance(m, Measurement) else None
+    # Solo v3 escribe los minutos humanos: v1/v2 no tocan esas columnas (quedan NULL o lo guardado).
+    human = (
+        {"human_minutes": video.human_minutes, "human_minutes_method": method}
+        if isinstance(video, VideoV3 | ShortsVideoV3)
+        else {}
+    )
     return {
+        **human,
         "source_state": video.source_state,
         "stage": stage_of(channel_id, video),
         "visibility": video.visibility,
@@ -711,7 +726,9 @@ def submit_report(
         raise PilotError("not_delivered")
     upserted = ignored = 0
     for video in report.videos:
-        values = _video_values(video, channel_id, report.reported_at)
+        values = _video_values(
+            video, channel_id, report.reported_at, getattr(report, "human_minutes_method", None)
+        )
         stored = connection.execute(
             select(videos.c.id, videos.c.reported_at).where(
                 videos.c.pilot_pk == row["id"], videos.c.video_id == video.video_id
@@ -960,6 +977,9 @@ def closing_summary(connection: Connection, pilot_id: str, now: datetime) -> str
         f"(no es dinero gastado): {totals['equivalent_usd']} USD.",
         f"- Minutos de máquina: {totals['machine_minutes']}"
         + ("" if totals["machine_minutes_complete"] else " (incompleto: faltan videos sin dato)")
+        + ".",
+        f"- Minutos humanos: {totals['human_minutes']}"
+        + ("" if totals["human_minutes_complete"] else " (incompleto: faltan videos sin dato)")
         + ".",
         "",
         "## Reglas de parada frente a lo medido",

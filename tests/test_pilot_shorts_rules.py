@@ -151,3 +151,10 @@ def test_long_form_metrics_still_evaluate_as_before_with_shorts_fields_absent() 
         close_after=2,
     )
     assert result["rules"][0]["status"] == MET
+
+
+def test_shorts_totals_carry_human_minutes() -> None:
+    from nicheradar.pilots.rules import _totals
+
+    totals, _ = _totals([svid(1, human_minutes=7), svid(2, human_minutes=None)], 10)
+    assert totals["human_minutes"] == 7 and totals["human_minutes_complete"] is False
