@@ -196,9 +196,10 @@ paridad con Streamlit (corte 3); desplegar nada.
 2. **Dónde vive el proceso de minutos humanos:** en este repositorio, sin tocar `canal-historias` (ver sección 5). Resuelto.
 3. **Orden:** 2a primero, 2b después. Resuelto.
 
-## Decisiones pendientes
+## Decisiones cerradas (continuación)
 
-1. **Método de minutos humanos** (explicado con un ejemplo en la conversación). Recomendado: esperas en las compuertas
-   con tope, rotulado «estimado». Alternativa: hooks de Claude Code, que también miden el tiempo de dar la instrucción pero
-   exigen instalar algo en cada canal (y eso toca el repositorio del canal, que se quiere evitar).
-4. **Tope de cada espera humana.** Recomendado 15 minutos (configurable). Pendiente de que se entienda el efecto.
+1. **Método de minutos humanos:** esperas en las compuertas con tope, rotulado «estimado» (`gate_waits_capped_v1`). El límite
+   conocido (no ve el tiempo de escribir la instrucción en Claude Code) se acepta. Resuelto.
+4. **Tope de cada espera humana:** 15 minutos, configurable. Resuelto.
+
+No quedan decisiones pendientes del propietario en este spec.
