@@ -162,21 +162,34 @@ def test_top_subniches_list_finalists_with_a_measurement_first() -> None:
     assert [c["label"] for c in top_subniches(items[:3])] == ["M1", "Sin-Med"]
 
 
+NOW = datetime(2026, 11, 3, 15, 0, tzinfo=UTC)
+
+
 def test_attention_cards_cover_decisions_and_authorized_pilots_only() -> None:
     pilots = [
         pilot_item(
             "pil_20261102_a", niche_label="A", needs_decision=True, status="decision_pendiente"
         ),
-        pilot_item("pil_20261102_b", niche_label="B", status="autorizado", target_channel=None),
+        pilot_item(
+            "pil_20261102_b",
+            niche_label="B",
+            status="autorizado",
+            target_channel=None,
+            delivered_at=None,
+        ),
         pilot_item("pil_20261102_c", niche_label="C", status="en_ejecucion"),
         pilot_item("pil_20261102_d", niche_label="D", status="autorizado", needs_decision=True),
     ]
-    cards = attention_cards(pilots)
-    assert [(c["label"], c["channel"], c["text"]) for c in cards] == [
-        ("A", "canal-historias", "Decide si sigue o cierra"),
-        ("B", "Canal nuevo", "Falta entregar el paquete al canal"),
-        ("D", "canal-historias", "Decide si sigue o cierra"),
+    cards = attention_cards(pilots, NOW)
+    assert [(c["label"], c["channel"], c["text"], c["href"]) for c in cards] == [
+        ("A", "canal-historias", "Decide si sigue o cierra", "/pilotos/pil_20261102_a"),
+        ("B", "Canal nuevo", "Falta que tu Mac baje el paquete", "/pilotos/pil_20261102_b"),
+        ("D", "canal-historias", "Decide si sigue o cierra", "/pilotos/pil_20261102_d"),
     ]
+
+
+def test_attention_cards_skip_what_is_not_a_pilot_dict() -> None:
+    assert attention_cards([1, "x", None, ["a"]], NOW) == []  # type: ignore[list-item]
 
 
 # ---- the page -------------------------------------------------------------------------------
@@ -225,25 +238,178 @@ def test_the_four_cards_and_their_links() -> None:
     assert ">Uno<" in section(text, "subnichos") and "Dos" not in section(text, "subnichos")
 
 
-def test_pilots_needing_something_are_listed_as_text_with_a_disabled_pilots_link() -> None:
+def attention_items(card: str) -> list[str]:
+    """The entries of the pilots card, each one a whole `list__item` block."""
+    return re.findall(r'<div class="list__item">.*?</div>', card, re.S)
+
+
+def test_a_pilot_needing_something_links_to_its_panel_with_the_derived_reason() -> None:
     pilots = [
-        pilot_item("pil_20261102_a", needs_decision=True, status="decision_pendiente"),
-        pilot_item("pil_20261102_b", status="autorizado", target_channel="canal-b"),
+        pilot_item(
+            "pil_20261102_a",
+            niche_label="niche-a",
+            needs_decision=True,
+            status="decision_pendiente",
+        ),
+        pilot_item(
+            "pil_20261102_b",
+            niche_label="niche-b",
+            status="autorizado",
+            target_channel="canal-b",
+            delivered_at=None,
+        ),
     ]
     text = make_client(full_api({PILOTS: (200, {"items": pilots})})).get("/").text
     card = section(text, "pilotos")
     assert "2 pilotos necesitan algo de ti" in card
-    assert "Decide si sigue o cierra" in card and "Falta entregar el paquete al canal" in card
-    assert "canal-b" in card
-    assert "Próximamente" in card
-    assert re.search(r"<a[^>]*>[^<]*Ver pilotos", card) is None
-    assert re.search(r"<button[^>]*disabled[^>]*>Ver pilotos</button>", card)
-    assert "/pilotos" not in card
+    first, second = attention_items(card)
+    assert '<a class="list__name" href="/pilotos/pil_20261102_a">niche-a</a>' in first
+    assert "Decide si sigue o cierra" in first and "canal-historias" in first
+    assert '<a class="list__name" href="/pilotos/pil_20261102_b">niche-b</a>' in second
+    assert "Falta que tu Mac baje el paquete" in second and "canal-b" in second
+
+
+def test_a_pilot_with_a_blocker_but_no_decision_is_listed_with_that_blocker() -> None:
+    blocked = pilot_item(
+        "pil_20261102_x",
+        niche_label="bloqueado",
+        status="en_ejecucion",
+        channel={
+            "checks": [
+                {
+                    "id": "youtube_oauth",
+                    "label": "Autorizar YouTube",
+                    "ok": False,
+                    "detail": "Falta el permiso",
+                    "expires_at": None,
+                }
+            ]
+        },
+    )
+    quiet = pilot_item("pil_20261102_y", niche_label="tranquilo", status="en_ejecucion")
+    text = make_client(full_api({PILOTS: (200, {"items": [blocked, quiet]})})).get("/").text
+    card = section(text, "pilotos")
+    assert "1 piloto necesita algo de ti" in card
+    (entry,) = attention_items(card)
+    assert 'href="/pilotos/pil_20261102_x">bloqueado</a>' in entry
+    assert "Falta: Autorizar YouTube. Falta el permiso" in entry
+    assert "tranquilo" not in card
+
+
+def test_blockers_use_the_configured_timezone() -> None:
+    late = pilot_item(
+        "pil_20261102_x",
+        status="en_ejecucion",
+        channel={
+            "checks": [
+                {"id": "k", "label": "Clave", "ok": True, "expires_at": "2026-11-05T03:00:00Z"}
+            ]
+        },
+    )
+    api: dict[tuple[str, str], Route] = {PILOTS: (200, {"items": [late]})}
+    moment = datetime(2026, 11, 3, 15, 0, tzinfo=UTC).timestamp()
+    lima = make_client(full_api(api), clock=lambda: moment).get("/").text
+    assert "Clave vence el 4 nov" in section(lima, "pilotos")
+    utc = make_client(full_api(api), clock=lambda: moment, timezone="UTC").get("/").text
+    assert "Clave vence el 5 nov" in section(utc, "pilotos")
+
+
+def test_the_pilots_link_is_a_real_link_now() -> None:
+    card = section(make_client(full_api()).get("/").text, "pilotos")
+    assert '<a class="btn btn--secondary" href="/pilotos">Ver pilotos</a>' in card
+    assert "Próximamente" not in card
+    assert "disabled" not in card
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    ["../x", "pil_20261102_a\n", "PIL_20261102_A", "pil_2026110_a", "a/b", "", "pil_20261102_é", 7],
+)
+def test_an_invalid_pilot_id_never_becomes_a_link(bad_id: object) -> None:
+    pilot = pilot_item(bad_id, niche_label="sin-enlace", needs_decision=True)  # type: ignore[arg-type]
+    card = section(
+        make_client(full_api({PILOTS: (200, {"items": [pilot]})})).get("/").text, "pilotos"
+    )
+    (entry,) = attention_items(card)
+    assert '<span class="list__name">sin-enlace</span>' in entry
+    assert "<a" not in entry
+    assert card.count("/pilotos/") == 0
+    assert "1 piloto necesita algo de ti" in card
+
+
+def test_closed_and_cancelled_pilots_never_appear_in_the_attention_card() -> None:
+    pilots = [
+        pilot_item("pil_20261102_a", status="cerrado", needs_decision=True, niche_label="cer"),
+        pilot_item(
+            "pil_20261102_b",
+            status="cancelado",
+            needs_decision=True,
+            niche_label="can",
+            delivered_at=None,
+        ),
+    ]
+    card = section(
+        make_client(full_api({PILOTS: (200, {"items": pilots})})).get("/").text, "pilotos"
+    )
+    assert "Ningún piloto necesita algo de ti" in card
+    assert attention_items(card) == []
+    assert "/pilotos/pil_" not in card
 
 
 def test_one_pilot_uses_the_singular() -> None:
     card = section(make_client(full_api()).get("/").text, "pilotos")
     assert "1 piloto necesita algo de ti" in card and "pilotos necesitan" not in card
+
+
+def test_the_counting_text_stays_correct_in_singular_and_plural() -> None:
+    def card_for(count: int) -> str:
+        pilots = [
+            pilot_item(f"pil_20261102_p{i}", needs_decision=True, niche_label=f"p{i}")
+            for i in range(count)
+        ]
+        page = make_client(full_api({PILOTS: (200, {"items": pilots})})).get("/").text
+        return section(page, "pilotos")
+
+    assert '<h2 class="h2">Ningún piloto necesita algo de ti</h2>' in card_for(0)
+    assert '<h2 class="h2">1 piloto necesita algo de ti</h2>' in card_for(1)
+    assert '<h2 class="h2">2 pilotos necesitan algo de ti</h2>' in card_for(2)
+    assert '<h2 class="h2">4 pilotos necesitan algo de ti</h2>' in card_for(4)
+
+
+def test_a_malformed_pilot_item_only_degrades_its_own_card() -> None:
+    weird = pilot_item(
+        "pil_20261102_w",
+        niche_label=["unhashable"],
+        format={"a": 1},
+        status="en_ejecucion",
+        totals="x",
+        channel={"checks": "x"},
+        channel_last_contact_at=-12345.5,
+        valid_until=[1],
+    )
+    broken = {"pilot_id": None}  # missing nearly every key
+    raw = json.dumps({"items": [weird, broken]}).replace("-12345.5", "NaN")
+    assert "NaN" in raw
+
+    def nan_pilots(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, content=raw.encode(), headers={"content-type": "application/json"}
+        )
+
+    page = make_client(full_api({PILOTS: nan_pilots})).get("/")
+    assert page.status_code == 200
+    text = page.text
+    for name in ("nichos", "subnichos"):
+        assert "no disponible" not in section(text, name)
+    assert "Pilotos: no disponible" not in section(text, "pilotos")
+    assert ">n0<" in section(text, "nichos") and ">Uno<" in section(text, "subnichos")
+
+
+def test_a_pilot_item_that_breaks_the_reports_crossing_does_not_hide_the_pilots_card() -> None:
+    weird = pilot_item("pil_20261102_w", niche_label=["unhashable"], needs_decision=True)
+    text = make_client(full_api({PILOTS: (200, {"items": [weird]})})).get("/").text
+    assert "1 piloto necesita algo de ti" in section(text, "pilotos")
+    assert "Informes listos: no disponible ahora" in section(text, "informes")
 
 
 def test_with_no_pilots_needing_attention_the_card_says_so() -> None:

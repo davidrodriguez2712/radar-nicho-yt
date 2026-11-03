@@ -2,36 +2,45 @@
 """View models for Hoy (M1/M14): four independent cards, each of which may be unavailable."""
 
 import math
+from datetime import datetime
 from typing import Any
 
 from nicheradar.web import niches, subniches
 from nicheradar.web.deps import SHAPE_ERRORS
+from nicheradar.web.pilots_view import CLOSED as PILOT_CLOSED
+from nicheradar.web.pilots_view import PILOT_RE, blockers, next_action
 from nicheradar.web.research import UUID_RE
 
 PAGE = 100  # size of the flow-research and pilots reads: exactly this many may hide older rows
 SHOWN = 3
-PILOT_ATTENTION = {
-    "needs_decision": "Decide si sigue o cierra",
-    "autorizado": "Falta entregar el paquete al canal",
-}
 CLOSED = ("cerrado", "cancelado")
 FAILED = SHAPE_ERRORS
 
 
-def attention_cards(pilots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def attention_cards(
+    pilots: list[dict[str, Any]], now: datetime, timezone: str = "UTC"
+) -> list[dict[str, Any]]:
+    """Open pilots needing something: next action or first blocker, linked to their panel."""
     cards = []
     for pilot in pilots:
-        if pilot.get("needs_decision") is True:
-            text = PILOT_ATTENTION["needs_decision"]
-        elif pilot.get("status") == "autorizado":
-            text = PILOT_ATTENTION["autorizado"]
-        else:
+        if not isinstance(pilot, dict):
             continue
+        status = pilot.get("status")
+        if isinstance(status, str) and status in PILOT_CLOSED:
+            continue
+        action = next_action(pilot)
+        found = blockers(pilot, now, timezone)
+        if pilot.get("needs_decision") is not True and not action and not found:
+            continue
+        pilot_id = pilot.get("pilot_id")
+        valid = isinstance(pilot_id, str) and PILOT_RE.fullmatch(pilot_id) is not None
+        label, channel = pilot.get("niche_label"), pilot.get("target_channel")
         cards.append(
             {
-                "label": str(pilot.get("niche_label") or "—"),
-                "channel": str(pilot.get("target_channel") or "Canal nuevo"),
-                "text": text,
+                "label": label if isinstance(label, str) and label else "—",
+                "channel": channel if isinstance(channel, str) and channel else "Canal nuevo",
+                "text": action or (found[0]["text"] if found else "Hay una decisión pendiente"),
+                "href": f"/pilotos/{pilot_id}" if valid else None,
             }
         )
     return cards
@@ -100,14 +109,16 @@ def _card(build: Any, *sources: list[dict[str, Any]] | None) -> dict[str, Any]:
         return {"ok": False}
 
 
-def today_view(sources: dict[str, list[dict[str, Any]] | None]) -> dict[str, Any]:
+def today_view(
+    sources: dict[str, list[dict[str, Any]] | None], now: datetime, timezone: str = "UTC"
+) -> dict[str, Any]:
     """`sources` maps status/niches/flows/pilots/subniches to its items, or None if it failed."""
     flows, pilots = sources.get("flows"), sources.get("pilots")
     flows_full = flows is not None and len(flows) >= PAGE
     pilots_full = pilots is not None and len(pilots) >= PAGE
 
     def pilot_card() -> dict[str, Any]:
-        cards = attention_cards(pilots or [])
+        cards = attention_cards(pilots or [], now, timezone)
         return {"cards": cards, "count": len(cards), "truncated": pilots_full}
 
     def report_card() -> dict[str, Any]:
