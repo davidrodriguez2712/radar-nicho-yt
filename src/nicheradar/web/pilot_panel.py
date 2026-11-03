@@ -8,9 +8,8 @@ exists when the package carries ``preparation_days``) and every list is capped.
 
 from datetime import datetime, timedelta
 from typing import Any
-from zoneinfo import ZoneInfo
 
-from nicheradar.web.format import es_int, short_date
+from nicheradar.web.format import es_int, short_date, zone
 from nicheradar.web.pilots_view import (
     MAX_PREPARATION_DAYS,
     PILOT_RE,
@@ -163,7 +162,7 @@ def _minutes(value: object) -> str:
 def _stamp(moment: datetime | None, timezone: str) -> str:
     if moment is None:
         return "—"
-    return moment.astimezone(ZoneInfo(timezone)).strftime("%d/%m/%Y %H:%M")
+    return moment.astimezone(zone(timezone)).strftime("%d/%m/%Y %H:%M")
 
 
 def _day(moment: datetime | None, timezone: str) -> str | None:
@@ -436,6 +435,7 @@ def panel_view(
     view: dict[str, Any] = {
         "tab": tab,
         "pilot_id": pid,
+        "is_closed": status == "cerrado",
         "title": _str(detail.get("niche_label")) or "—",
         "status_text": chip_text,
         "status_kind": chip_kind,

@@ -120,7 +120,7 @@ class ApiClient:
                 client.stream(method, "/api/v1" + path, params=params) as response,
             ):
                 declared = response.headers.get("content-length", "")
-                if declared.isdigit() and int(declared) > MAX_TEXT_BYTES:
+                if declared.isascii() and declared.isdigit() and int(declared) > MAX_TEXT_BYTES:
                     raise ApiError("error", response.status_code)
                 raw = bytearray()
                 for chunk in response.iter_bytes():

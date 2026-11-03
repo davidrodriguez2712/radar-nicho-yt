@@ -670,3 +670,15 @@ def test_accessibility_hooks_for_disabled_actions_and_touch_targets() -> None:
     assert '<a class="tap" href="/pilotos">← Volver a Pilotos</a>' in text
     css = open("src/nicheradar/web/static/css/app.css", encoding="utf-8").read()
     assert ".sr-only{" in css and ".tap{" in css and "min-height:44px" in css.split(".tap{")[1]
+
+
+def test_the_closed_notice_links_to_the_closing_summary_only_for_a_closed_pilot() -> None:
+    closed = page(api_with(pilot_detail(status="cerrado")), extra="aviso=cerrado")
+    notice = block(closed, "aviso")
+    assert f'href="/pilotos/{PID}/cierre"' in notice and "Ver resumen de cierre" in flat(notice)
+    other = page(api_with(pilot_detail(status="en_ejecucion")), extra="aviso=cerrado")
+    assert "Ver resumen de cierre" not in block(other, "aviso")
+    for key in ("seguido", "cancelado", "autorizado"):
+        text = page(api_with(pilot_detail(status="cerrado")), extra=f"aviso={key}")
+        assert f"/pilotos/{PID}/cierre?" not in text
+        assert "Ver resumen de cierre" not in block(text, "aviso")

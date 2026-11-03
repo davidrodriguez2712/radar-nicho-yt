@@ -4,7 +4,7 @@
 {% block content %}
 <p class="eyebrow">Piloto</p>
 <h1 class="h1 h1--md">Piloto · {{ v.title }}</h1>
-{% if notice %}<div class="note note--{{ notice[1] }}" id="aviso" role="status">{{ notice[0] }}</div>{% endif %}
+{% if notice %}<div class="note note--{{ notice[1] }}" id="aviso" role="status">{{ notice[0] }}{% if closing_link and v.pilot_id %} <a class="tap" href="/pilotos/{{ v.pilot_id }}/cierre">Ver resumen de cierre</a>{% endif %}</div>{% endif %}
 <div class="tags" id="cabecera">{{ chip(v.status_text, v.status_kind) }}{{ chip(v.format_text, "neutral") }}{% if v.language_text %}{{ chip(v.language_text, "neutral") }}{% endif %}{% if v.channel_name %}<span class="caption">Canal: <span class="pilot__channel">{{ v.channel_name }}</span></span>{% endif %}</div>
 <ol class="steps" id="linea-estados" aria-label="Línea de estados">
 {% for s in v.states %}<li class="step step--{{ s.state }}"{% if s.state == "current" %} aria-current="step"{% endif %}>{% if s.state == "current" %}<span class="sr-only">actual: </span>{% elif s.state == "done" %}<span class="sr-only">hecho: </span>{% endif %}{{ s.label }}</li>

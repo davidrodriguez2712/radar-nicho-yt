@@ -9,7 +9,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from nicheradar.web.app import create_app
-from nicheradar.web.today import attention_cards, ready_reports, top_niches, top_subniches
+from nicheradar.web.today import (
+    attention_cards,
+    open_pilot_keys,
+    ready_reports,
+    top_niches,
+    top_subniches,
+)
 from tests.web_helpers import (
     HOSTILE,
     Api,
@@ -405,11 +411,44 @@ def test_a_malformed_pilot_item_only_degrades_its_own_card() -> None:
     assert ">n0<" in section(text, "nichos") and ">Uno<" in section(text, "subnichos")
 
 
-def test_a_pilot_item_that_breaks_the_reports_crossing_does_not_hide_the_pilots_card() -> None:
+def test_a_pilot_item_that_breaks_the_reports_crossing_does_not_hide_either_card() -> None:
     weird = pilot_item("pil_20261102_w", niche_label=["unhashable"], needs_decision=True)
     text = make_client(full_api({PILOTS: (200, {"items": [weird]})})).get("/").text
     assert "1 piloto necesita algo de ti" in section(text, "pilotos")
-    assert "Informes listos: no disponible ahora" in section(text, "informes")
+    reports = section(text, "informes")
+    assert "no disponible" not in reports
+    assert "No se pudo comprobar si algunos informes ya tienen piloto" in reports
+    assert 'class="list__name"' in reports  # the ready report is still listed
+
+
+@pytest.mark.parametrize(
+    "weird",
+    [
+        {"niche_label": ["u"], "format": "long", "status": "en_ejecucion"},
+        {"niche_label": "rep-label", "format": {"a": 1}, "status": "en_ejecucion"},
+        {"niche_label": "rep-label", "format": "long", "status": ["x"]},
+    ],
+)
+def test_ready_reports_cross_only_well_formed_pilots_and_flag_the_rest(weird: object) -> None:
+    flows = [flow_item("listo", id=REPORT_ID, niche_label="rep-label")]
+    api = full_api({PILOTS: (200, {"items": [weird]})})
+    text = make_client(api).get("/").text
+    reports = section(text, "informes")
+    assert "no disponible" not in reports and 'class="list__name"' in reports
+    assert "algunos informes ya tienen piloto" in reports
+    assert flows  # the flow list itself is the one served by full_api
+
+
+def test_open_pilot_keys_skip_what_is_not_a_readable_pilot_and_say_so() -> None:
+    good = pilot_item("pil_20261102_a", niche_label="a", format="long", status="en_ejecucion")
+    closed = pilot_item("pil_20261102_b", niche_label="b", status="cerrado")
+    assert open_pilot_keys([good, closed]) == ({("a", "long")}, False)
+    assert open_pilot_keys([good, None, "x", {"status": ["s"]}]) == ({("a", "long")}, True)
+
+
+def test_well_formed_pilots_raise_no_crossing_warning() -> None:
+    text = make_client(full_api()).get("/").text
+    assert "algunos informes ya tienen piloto" not in section(text, "informes")
 
 
 def test_with_no_pilots_needing_attention_the_card_says_so() -> None:
@@ -568,3 +607,34 @@ def test_hostile_text_in_any_source_is_escaped() -> None:
     for name in ("nichos", "subnichos", "pilotos", "informes"):
         assert "&lt;script&gt;alert(1)&lt;/script&gt;" in section(text, name), name
     assert "|safe" not in text and "style=" not in text
+
+
+def test_an_invalid_configured_timezone_never_breaks_the_page() -> None:
+    web = make_client(full_api())
+    web.app.state.config.timezone = "No/Such_Zone"  # type: ignore[attr-defined]
+    response = web.get("/")
+    assert response.status_code == 200, response.text
+    assert "de " in response.text and "no disponible" not in section(response.text, "pilotos")
+
+
+def test_hostile_html_in_the_pilot_cards_is_escaped_in_every_field() -> None:
+    check = {"id": "c1", "label": HOSTILE, "ok": False, "detail": HOSTILE, "expires_at": None}
+    blocked = pilot_item(
+        "pil_20261102_a",
+        niche_label=HOSTILE,
+        target_channel=HOSTILE,
+        channel={"reported_at": None, "channel_status": "active", "note": None, "checks": [check]},
+    )
+    decide = pilot_item(
+        "pil_20261102_b",
+        niche_label=HOSTILE,
+        target_channel=HOSTILE,
+        needs_decision=True,
+        status="decision_pendiente",
+    )
+    text = make_client(full_api({PILOTS: (200, {"items": [blocked, decide]})})).get("/").text
+    card = section(text, "pilotos")
+    assert "<script>alert(1)</script>" not in text
+    assert card.count("&lt;script&gt;alert(1)&lt;/script&gt;") >= 4
+    assert 'href="/pilotos/pil_20261102_a"' in card and 'href="/pilotos/pil_20261102_b"' in card
+    assert "javascript:" not in text

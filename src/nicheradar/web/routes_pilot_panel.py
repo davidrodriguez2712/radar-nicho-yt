@@ -75,5 +75,6 @@ def pilot_panel(
         "active_tab": "pilotos",
         "v": view,
         "notice": notice(request.query_params.get("aviso")),
+        "closing_link": request.query_params.get("aviso") == "cerrado" and view["is_closed"],
     }
     return render(request, "pilotos/panel.html", context, session=session)

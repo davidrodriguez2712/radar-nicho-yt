@@ -26,6 +26,7 @@
   <div class="note note--amber">Informes listos: no disponible ahora</div>
   {% else %}
   {% if v.reports.unchecked %}<div class="note note--amber">No se pudo comprobar si ya tienen piloto.</div>{% endif %}
+  {% if v.reports.partial %}<div class="note note--amber">No se pudo comprobar si algunos informes ya tienen piloto.</div>{% endif %}
   {% if v.reports.truncated %}<div class="note note--amber">Puede haber registros más antiguos que no se ven.</div>{% endif %}
   <div class="list">
     {% for r in v.reports.cards %}

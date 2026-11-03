@@ -496,3 +496,13 @@ def test_list_view_survives_non_list_items_non_dict_elements_and_bare_dicts() ->
     assert view["cards"][0]["niche_label"] == "—"
     assert list_view(None, "todos", NOW, "UTC")["cards"] == []  # type: ignore[arg-type]
     assert list_view([pilot_item()], "junk", NOW, "UTC")["filter"] == "todos"
+
+
+def test_a_past_validity_of_an_undelivered_pilot_reads_in_the_past_tense() -> None:
+    past = pilot_item(status="autorizado", delivered_at=None, valid_until="2026-11-01T00:00:00Z")
+    found = blockers(past, NOW)
+    assert [b["kind"] for b in found] == ["vigencia"]
+    assert found[0]["text"].startswith("La vigencia venció el 1 nov")
+    assert "vence" not in found[0]["text"]
+    ahead = pilot_item(status="autorizado", delivered_at=None, valid_until="2026-11-05T00:00:00Z")
+    assert blockers(ahead, NOW)[0]["text"].startswith("La vigencia vence el 5 nov")

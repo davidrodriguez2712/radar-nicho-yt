@@ -327,7 +327,11 @@ def test_an_unavailable_api_gives_a_clear_503_without_a_second_status_call() -> 
 
 
 def test_an_unavailable_api_answers_an_htmx_request_with_a_200_error_fragment() -> None:
-    response = client(_down()).get("/pilotos", headers={"hx-request": "true"})
+    api = _down()
+    web = client(api)
+    before = api.count(*STATUS)
+    response = web.get("/pilotos", headers={"hx-request": "true"})
+    assert api.count(*STATUS) == before  # no second status call after the failed list
     assert response.status_code == 200
     assert '<div class="note note--rose" role="alert">' in response.text
     assert "<html" not in response.text

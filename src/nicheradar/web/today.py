@@ -46,15 +46,30 @@ def attention_cards(
     return cards
 
 
+def open_pilot_keys(pilots: list[Any]) -> tuple[set[tuple[str, str]], bool]:
+    """(label, format) of every open pilot, and whether some pilot could not be read.
+
+    Only dict pilots with a str status, label and format take part; the rest are skipped and
+    reported so the card can say the crossing is incomplete instead of hiding the reports.
+    """
+    keys: set[tuple[str, str]] = set()
+    malformed = False
+    for pilot in pilots:
+        label = pilot.get("niche_label") if isinstance(pilot, dict) else None
+        fmt = pilot.get("format") if isinstance(pilot, dict) else None
+        status = pilot.get("status") if isinstance(pilot, dict) else None
+        if not (isinstance(label, str) and isinstance(fmt, str) and isinstance(status, str)):
+            malformed = True
+        elif status not in CLOSED:
+            keys.add((label, fmt))
+    return keys, malformed
+
+
 def ready_reports(
     flows: list[dict[str, Any]], pilots: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
     """Ready reports whose niche and format have no open pilot yet (at most three)."""
-    busy = {
-        (pilot.get("niche_label"), pilot.get("format"))
-        for pilot in pilots
-        if pilot.get("status") not in CLOSED
-    }
+    busy, _ = open_pilot_keys(pilots)
     cards: list[dict[str, Any]] = []
     for flow in flows:
         report_id = flow.get("id")
@@ -126,6 +141,7 @@ def today_view(
             "cards": ready_reports(flows or [], pilots or []),
             "truncated": flows_full,
             "unchecked": pilots is None,  # without the pilots we cannot tell which have one
+            "partial": bool(pilots) and open_pilot_keys(pilots or [])[1],
         }
 
     def niche_card() -> dict[str, Any]:

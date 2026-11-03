@@ -4,6 +4,7 @@
 import argparse
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -24,6 +25,9 @@ from scripts.web_preview_data import (  # noqa: E402
     ITEMS,
     NICHE_DETAIL,
     NICHES,
+    PILOT_DETAIL,
+    PILOT_ID,
+    PILOT_VIDEOS,
     PILOTS,
     REPORT,
 )
@@ -34,6 +38,7 @@ STATIC = Path(web_app.__file__).parent / "static"
 WIDTH = 390
 MIN_WINDOW = 500
 MAX_HEIGHT = 8000
+PREVIEW_NOW = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)  # the sample data is dated around it
 
 
 def _api(request: httpx.Request) -> httpx.Response:
@@ -55,6 +60,10 @@ def _api(request: httpx.Request) -> httpx.Response:
         body = REPORT
     elif path == "/api/v1/pilots":
         body = {"items": PILOTS}
+    elif path == f"/api/v1/pilots/{PILOT_ID}":
+        body = PILOT_DETAIL
+    elif path == f"/api/v1/pilots/{PILOT_ID}/videos":
+        body = {"items": PILOT_VIDEOS}
     else:
         return httpx.Response(404, json={"detail": "not found"})
     return httpx.Response(200, json=body)
@@ -72,7 +81,9 @@ def render_pages(out: Path) -> dict[str, Path]:
         api_url="http://api.test",
         dashboard_ui="web",
     )
-    app = create_app(config, transport=httpx.MockTransport(_api))
+    app = create_app(
+        config, transport=httpx.MockTransport(_api), clock=lambda: PREVIEW_NOW.timestamp()
+    )
     web = TestClient(app, follow_redirects=False)
     assert web.post("/login", data={"password": PASSWORD}).status_code == 303
     slug = CARD["hypothesis"]["slug"]
@@ -85,6 +96,10 @@ def render_pages(out: Path) -> dict[str, Path]:
         "investigar": f"/nichos/investigar?etiqueta={label}&formato=long",
         "informe": f"/informes/{REPORT['id']}",
         "autorizar": f"/pilotos/autorizar?informe={REPORT['id']}",
+        "pilotos": "/pilotos",
+        "piloto": f"/pilotos/{PILOT_ID}",
+        "preparacion": f"/pilotos/{PILOT_ID}?pestana=preparacion",
+        "confirmar": f"/pilotos/{PILOT_ID}/cancelar",
     }
     written: dict[str, Path] = {}
     for name, path in pages.items():

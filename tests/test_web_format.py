@@ -8,6 +8,7 @@ from nicheradar.web.format import (
     es_int,
     local_datetime,
     pct,
+    short_date,
     spanish_date,
     usd,
     usd_range,
@@ -96,3 +97,11 @@ def test_short_date_is_day_and_spanish_month_in_the_given_timezone() -> None:
     assert short_date(moment, "America/Lima") == "7 nov"  # still the 7th in Lima
     assert short_date(datetime(2026, 1, 31, 12, 0), "UTC") == "31 ene"  # naive means UTC
     assert short_date(datetime(2026, 9, 1, 12, 0, tzinfo=UTC), "UTC") == "1 sep"
+
+
+@pytest.mark.parametrize("zone", ["No/Such_Zone", "", "../etc", "x" * 400])
+def test_an_unknown_timezone_falls_back_to_utc_instead_of_raising(zone: str) -> None:
+    moment = datetime(2026, 11, 2, 3, 0, tzinfo=UTC)  # a Sunday night in Lima, Monday in UTC
+    assert spanish_date(moment, zone) == "Lunes 2 de noviembre"
+    assert short_date(moment, zone) == "2 nov"
+    assert local_datetime("2026-11-02T03:00:00Z", zone) == "02/11/2026 03:00"

@@ -34,3 +34,17 @@ def test_the_preview_renders_the_corte_1_screens_with_local_assets(tmp_path: Pat
         html = (tmp_path / f"{name}.html").read_text()
         assert text in html, name
         assert "file://" in html and 'href="/static/' not in html, name
+
+
+def test_the_preview_renders_the_corte_2a_pilot_screens_with_local_assets(tmp_path: Path) -> None:
+    assert web_preview.main(["--out", str(tmp_path), "--no-screenshots"]) == 0
+    expected = {
+        "pilotos": "ciencia en español",
+        "piloto": "Estado actual",
+        "preparacion": "Carpeta del canal en la Mac",
+        "confirmar": "Confirmar: cancelar piloto",
+    }
+    for name, text in expected.items():
+        html = (tmp_path / f"{name}.html").read_text()
+        assert text in html, name
+        assert "file://" in html and 'href="/static/' not in html, name

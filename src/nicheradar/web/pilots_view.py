@@ -21,7 +21,6 @@ STATUS_CHIP: dict[str, tuple[str, str]] = {
     "cerrado": ("Cerrado", "neutral"),
     "cancelado": ("Cancelado", "neutral"),
 }
-ACTIVE = frozenset({"autorizado", "entregado", "en_ejecucion", "decision_pendiente"})
 CLOSED = frozenset({"cerrado", "cancelado"})
 PILOT_RE = re.compile(r"^pil_[0-9]{8}_[a-z0-9-]{1,40}$")  # pilots/contracts.py PILOT_ID
 FILTERS = ("todos", "activos", "bloqueo", "cerrados")
@@ -118,8 +117,11 @@ def blockers(item: dict[str, Any], now: datetime, timezone: str = "UTC") -> list
         and valid_until is not None
         and valid_until - now <= VALIDITY_WINDOW
     ):
+        day = short_date(valid_until, timezone)
         text = (
-            f"La vigencia vence el {short_date(valid_until, timezone)} si tu Mac no baja el paquete"
+            f"La vigencia venció el {day} y tu Mac no bajó el paquete"
+            if valid_until < now
+            else f"La vigencia vence el {day} si tu Mac no baja el paquete"
         )
         found.append({"text": text, "kind": "vigencia"})
     contact = _moment(item.get("channel_last_contact_at"))

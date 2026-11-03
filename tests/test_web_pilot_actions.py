@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from nicheradar.web.client import MESSAGES
-from nicheradar.web.pilot_actions import allowed
+from nicheradar.web.pilot_actions import allowed, validate_note
 from tests.web_helpers import HOSTILE, Api, csrf_of, make_client, pilot_detail
 
 PID = "pil_20261102_historia"
@@ -553,7 +553,7 @@ def test_the_notice_after_an_action_comes_only_from_fixed_keys() -> None:
     web = make_client(api)
     for key, text in (
         ("seguido", "Decidiste seguir: el piloto continúa."),
-        ("cerrado", "Piloto cerrado."),
+        ("cerrado", "Piloto cerrado. Ver resumen de cierre"),  # the pilot is cerrado
         ("cancelado", "Piloto cancelado."),
     ):
         page = web.get(f"/pilotos/{PID}?aviso={key}")
@@ -589,3 +589,33 @@ def test_the_panel_links_resolve_to_the_new_screens(status: str, needles: list[s
         response = web.get(link)
         assert response.status_code == 200, (link, response.text)
         assert "<textarea" in response.text or "<pre" in response.text
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "\u00a0",
+        "\u200b",
+        "\u2060",
+        "\ufeff",
+        "\u200b \u00a0\n\t",
+        "\u3000",
+        "\u202f",
+        "\x07",
+        "\u200e",
+    ],
+)
+def test_a_note_with_only_invisible_characters_is_rejected(value: str) -> None:
+    assert validate_note(value) is None
+
+
+def test_a_note_needs_one_visible_character_and_keeps_its_inner_newlines() -> None:
+    assert validate_note("x") == "x"
+    assert validate_note("\u200b ok \u200b") == "\u200b ok \u200b"  # visible text inside is kept
+    assert validate_note("  uno\r\ndos\r\n\r\ntres  ") == "uno\ndos\n\ntres"
+    assert validate_note("") is None and validate_note(" \n ") is None
+
+
+def test_the_note_limit_is_1500_characters() -> None:
+    assert validate_note("a" * 1500) == "a" * 1500
+    assert validate_note("a" * 1501) is None

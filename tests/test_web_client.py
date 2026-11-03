@@ -207,3 +207,11 @@ def test_request_text_refuses_bodies_over_the_limit() -> None:
     with pytest.raises(ApiError) as error:
         client_for(text_api(huge_error)).request_text("GET", "/t")
     assert error.value.kind == "error" and error.value.detail is None
+
+
+@pytest.mark.parametrize("declared", ["\u00b2", "\u0663", "\u0661\u0662"])
+def test_request_text_ignores_a_non_ascii_content_length(declared: str) -> None:
+    response = httpx.Response(
+        200, content=b"hola", headers=[(b"content-length", declared.encode())]
+    )
+    assert client_for(text_api(response)).request_text("GET", "/t") == "hola"

@@ -5,6 +5,7 @@ These actions cannot be undone, so the screens state the consequence first and t
 mirror the API's transitions (pilots/service.py: decide and cancel); the API stays the authority.
 """
 
+import unicodedata
 from typing import Any
 
 NOTE_MAX = 1500  # pilots_api.Note: 1..1500 characters, for the note and for the reason
@@ -85,4 +86,11 @@ def note_error(action: str) -> str:
 def validate_note(value: str) -> str | None:
     """The note as it will be sent (line breaks normalised, ends trimmed), or None when invalid."""
     note = value.replace("\r\n", "\n").replace("\r", "\n").strip()
-    return note if 1 <= len(note) <= NOTE_MAX else None
+    if not 1 <= len(note) <= NOTE_MAX:
+        return None
+    return note if any(_visible(char) for char in note) else None
+
+
+def _visible(char: str) -> bool:
+    """A character a person can read: not whitespace, not a space/format/control character."""
+    return not char.isspace() and unicodedata.category(char) not in ("Cf", "Zs", "Cc")

@@ -51,7 +51,7 @@ h2,.h2{margin:0;font-size:18px;line-height:24px;font-weight:700}
 .segmented__item{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 12px;border-radius:99px;font-size:13px;font-weight:500;color:var(--muted);text-decoration:none}
 .segmented__item--on{background:var(--white);color:var(--ink);font-weight:600}
 .segmented__count{font-size:12px;font-weight:600;color:var(--primary)}
-.filters{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
+.filters{display:flex;flex-wrap:wrap;gap:8px}
 .filters::-webkit-scrollbar{display:none}
 .pill{position:relative;display:inline-flex;align-items:center;flex:none;padding:9px 14px;border:1px solid var(--line2);border-radius:99px;background:var(--white);font:400 13px/1.2 "Inter",system-ui,sans-serif;color:var(--ink);white-space:nowrap}
 .pill input{position:absolute;opacity:0;pointer-events:none}
@@ -87,17 +87,20 @@ input[type=radio],input[type=checkbox]{accent-color:var(--primary)}
 .blockers{display:flex;flex-direction:column;gap:4px;margin:0;padding-left:18px;font-size:13px;color:var(--primary)}
 .pilot__next{margin:0;font-size:13px}
 .pilot__contact,.pilot__progress,.pilot__ok{margin:0}
+.card>p{margin:0}
 .card__heading{margin:0;font-size:14px;font-weight:600}
 .pilot__channel{font-weight:600;color:var(--ink);overflow-wrap:anywhere}
-.steps{display:flex;gap:6px;margin:0;padding:0 0 2px;list-style:none;overflow-x:auto}
+.steps{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;list-style:none}
 .step{flex:none;padding:6px 10px;border:1px solid var(--line2);border-radius:99px;background:var(--white);font-size:11px;font-weight:500;color:var(--muted);white-space:nowrap}
 .step--done{background:var(--green);border-color:transparent;color:var(--green-ink)}
 .step--current{background:var(--rose);border-color:var(--primary);color:var(--primary);font-weight:600}
 .step--todo{background:var(--pale)}
-.subtabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.subtabs{display:flex;flex-wrap:wrap;gap:8px}
 .subtab{display:inline-flex;align-items:center;flex:none;min-height:44px;padding:0 16px;border:1px solid var(--line2);border-radius:99px;background:var(--white);font-size:13px;color:var(--ink);text-decoration:none}
 .subtab--on{background:var(--rose);border-color:var(--primary);color:var(--primary);font-weight:600}
 .blocker{line-height:1.35}
+.blocker--falta,.blocker--decision,.blocker--desconocido{color:var(--primary);font-weight:600}
+.blocker--vence,.blocker--vigencia,.blocker--contacto{color:var(--amber-ink)}
 .blocker__owner{display:inline-flex;margin-left:4px;padding:2px 8px;border-radius:99px;background:var(--rose);font-size:11px;font-weight:500;color:var(--primary)}
 .dates,.checks,.rules,.videos,.history,.plain{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
 .plain{padding-left:18px;list-style:disc}

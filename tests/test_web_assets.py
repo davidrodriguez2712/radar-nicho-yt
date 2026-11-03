@@ -154,3 +154,36 @@ def test_radios_use_the_brand_colour_and_row_labels_keep_a_minimum_width() -> No
     css = (ROOT / "static/css/app.css").read_text()
     assert "input[type=radio]" in css and "accent-color:var(--primary)" in css
     assert ".row__label{" in css and "min-width:5.5em" in css
+
+
+DYNAMIC_CLASSES = {
+    "blocker--": ("falta", "vence", "vigencia", "contacto", "desconocido", "decision"),
+    "step--": ("done", "current", "todo"),
+    "btn--": ("primary", "secondary", "danger"),
+    "chip--": ("neutral", "amber", "green", "rose", "blue"),
+    "note--": ("green", "amber", "rose"),
+    "mark--": ("ok", "todo"),
+}
+
+
+def test_every_class_the_pilot_templates_use_has_a_rule_in_the_stylesheet() -> None:
+    css = (STATIC / "css" / "app.css").read_text()
+    missing: set[str] = set()
+    for template in [
+        *(ROOT / "templates" / "pilotos").glob("*.html"),
+        ROOT / "templates" / "hoy.html",
+    ]:
+        text = template.read_text()
+        for attribute in re.findall(r'class="([^"]*)"', text):
+            plain = re.sub(r"\{\{.*", "@", re.sub(r"\{%.*?%\}", " ", attribute))  # may cut at "ok"
+            for token in plain.split():
+                names = [token]
+                if token.endswith("--@") or token.endswith("@"):
+                    prefix = token.rstrip("@")
+                    names = [prefix + kind for kind in DYNAMIC_CLASSES.get(prefix, ())] or [prefix]
+                for name in names:
+                    if "@" in name or not name:
+                        continue
+                    if not re.search(rf"\.{re.escape(name)}(?![\w-])", css):
+                        missing.add(f"{template.name}: {name}")
+    assert not missing, sorted(missing)
