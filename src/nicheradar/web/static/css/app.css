@@ -84,3 +84,6 @@ input[type=radio],input[type=checkbox]{accent-color:var(--primary)}
 .field input{padding:13px 14px;border:1px solid var(--line2);border-radius:12px;background:var(--white);font:400 14px "Inter",system-ui,sans-serif}
 .field input:focus-visible,.btn:focus-visible,.pill:focus-within,.tab:focus-visible,a:focus-visible,.acc summary:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 @media (prefers-reduced-motion:no-preference){.card,.btn,.pill{transition:border-color .15s,background-color .15s}}
+.blockers{display:flex;flex-direction:column;gap:4px;margin:0;padding-left:18px;font-size:13px;color:var(--primary)}
+.pilot__next{margin:0;font-size:13px}
+.pilot__contact,.pilot__progress,.pilot__ok{margin:0}

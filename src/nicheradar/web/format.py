@@ -20,6 +20,7 @@ MONTHS = (
     "noviembre",
     "diciembre",
 )
+MONTHS_SHORT = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")
 
 
 def es_int(value: float) -> str:
@@ -74,3 +75,11 @@ def spanish_date(moment: datetime, timezone: str) -> str:
         moment = moment.replace(tzinfo=ZoneInfo("UTC"))
     local = moment.astimezone(ZoneInfo(timezone))
     return f"{DAYS[local.weekday()]} {local.day} de {MONTHS[local.month - 1]}"
+
+
+def short_date(moment: datetime, timezone: str) -> str:
+    """'8 nov' in the given timezone; a naive moment is taken as UTC."""
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    local = moment.astimezone(ZoneInfo(timezone))
+    return f"{local.day} {MONTHS_SHORT[local.month - 1]}"

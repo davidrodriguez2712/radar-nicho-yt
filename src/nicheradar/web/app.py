@@ -14,6 +14,7 @@ from nicheradar.config import Settings
 from nicheradar.web import (
     routes_auth,
     routes_niches,
+    routes_pilot_list,
     routes_pilots,
     routes_reports,
     routes_research,
@@ -86,6 +87,7 @@ def create_app(
     app.include_router(routes_research.router)
     app.include_router(routes_reports.router)
     app.include_router(routes_pilots.router)
+    app.include_router(routes_pilot_list.router)
     app.include_router(routes_subniches.router)
     app.include_router(routes_today.router)
     return app

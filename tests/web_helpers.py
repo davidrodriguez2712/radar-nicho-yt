@@ -279,5 +279,93 @@ def pilot_item(pilot_id: str = "pil_20261102_historia", **over: object) -> dict[
         },
         "proposal": {"action": "sin_datos_suficientes", "reason": "x"},
         "needs_decision": False,
+        "valid_until": "2026-11-16T03:00:00Z",
+        "delivered_at": "2026-11-03T10:00:00Z",
+        "channel": {
+            "reported_at": "2026-11-03T11:00:00Z",
+            "channel_status": "active",
+            "note": None,
+            "checks": [
+                {
+                    "id": "youtube_oauth",
+                    "label": "Autorizar subida y medición de YouTube",
+                    "ok": True,
+                    "detail": None,
+                    "expires_at": "2026-12-31T00:00:00Z",
+                }
+            ],
+        },
+    }
+    return base | over
+
+
+def pilot_detail(pilot_id: str = "pil_20261102_historia", **over: object) -> dict[str, object]:
+    """A pilot as GET /pilots/{id} returns it; the real package has no preparation/cadence field."""
+    base = pilot_item(pilot_id) | {
+        "language": "en",
+        "authorized_by": "propietario (web)",
+        "first_report_at": None,
+        "closed_at": None,
+        "close_reason": None,
+        "channel": {
+            "reported_at": "2026-11-03T11:00:00Z",
+            "channel_status": "active",
+            "note": None,
+            "checks": [
+                {
+                    "id": "youtube_oauth",
+                    "label": "Autorizar subida y medición de YouTube",
+                    "ok": True,
+                    "detail": None,
+                    "expires_at": "2026-11-10T00:00:00Z",
+                }
+            ],
+        },
+        "package": {
+            "niche": {"label": "historia militar explicada", "format": "long", "language": "en"},
+            "dossier": {
+                "request_id": REPORT_ID,
+                "schema": "dossier-v3",
+                "recommendation": "go",
+                "confidence": "medium",
+                "thesis": "t",
+                "unknowns": [],
+            },
+            "budget": {
+                "currency": "USD",
+                "low": 3,
+                "likely": 19.5,
+                "high": 41,
+                "max_videos": 10,
+                "basis": "x",
+            },
+            "stop_rules": [],
+            "close_after_failed_milestones": 2,
+        },
+        "evaluation": {
+            "rules": [],
+            "milestones": [],
+            "totals": {},
+            "warnings": [],
+            "close_after": 2,
+        },
+        "acknowledged": [],
+        "events": [],
+    }
+    return base | over
+
+
+def pilot_video(video_id: str = "v1", **over: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "video_id": video_id,
+        "source_state": "PUBLICADO",
+        "stage": "published",
+        "visibility": "public",
+        "published_at": "2026-11-05T12:00:00Z",
+        "cost_usd": 0.32,
+        "cost_equivalent_usd": 1.5,
+        "machine_minutes": 70,
+        "failure_code": None,
+        "measurement": None,
     }
     return base | over

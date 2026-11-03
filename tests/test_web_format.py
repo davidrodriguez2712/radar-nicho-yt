@@ -86,3 +86,13 @@ def test_spanish_date_handles_the_year_boundaries_and_every_month_name() -> None
         "enero", "febrero", "marzo", "abril", "mayo", "junio",
         "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
     ]  # fmt: skip
+
+
+def test_short_date_is_day_and_spanish_month_in_the_given_timezone() -> None:
+    from nicheradar.web.format import short_date
+
+    moment = datetime(2026, 11, 8, 0, 0, tzinfo=UTC)
+    assert short_date(moment, "UTC") == "8 nov"
+    assert short_date(moment, "America/Lima") == "7 nov"  # still the 7th in Lima
+    assert short_date(datetime(2026, 1, 31, 12, 0), "UTC") == "31 ene"  # naive means UTC
+    assert short_date(datetime(2026, 9, 1, 12, 0, tzinfo=UTC), "UTC") == "1 sep"
