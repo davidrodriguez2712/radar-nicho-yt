@@ -723,8 +723,8 @@ def test_the_calibration_card_lists_each_pilot_with_streak_and_last_video() -> N
     api = cal_api([cal_pilot(1), cal_pilot(2)], routes)
     card = section(client_page(api), "calibracion")
     assert "2 pilotos en calibración" in card
-    assert "Racha bajo 60 minutos: 1 de 3" in card
-    assert "Racha bajo 60 minutos: 3 de 3" in card
+    assert "Racha de hasta 60 minutos: 1 de 3" in card
+    assert "Racha de hasta 60 minutos: 3 de 3" in card
     assert "Video 2 · 58 min" in card and "Video 3 · 55 min" in card
     assert 'href="/pilotos/pil_20261102_c1"' in card
     assert "Pasa a régimen" in card
@@ -740,7 +740,7 @@ def test_unmeasured_videos_never_show_zero_minutes_in_the_card() -> None:
     api = cal_api([cal_pilot(1)], cal_routes(1, [None, None]))
     card = section(client_page(api), "calibracion")
     assert "sin medir" in card and "Aún sin minutos medidos" in card
-    assert "Racha bajo 60 minutos: 0 de 3" in card
+    assert "Racha de hasta 60 minutos: 0 de 3" in card
     assert not re.search(r"(?<!\d)0 min", card)
 
 

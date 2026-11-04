@@ -860,9 +860,12 @@ PILOT_VIDEOS: list[dict[str, Any]] = [
 ]  # fmt: skip
 
 
-def _human(video_id: str, minutes: int | None, method: str | None = "gate_waits") -> dict[str, Any]:
+def _human(
+    video_id: str, minutes: int | None, method: str | None = "claude_sessions_plus_assumed"
+) -> dict[str, Any]:
     return PILOT_VIDEOS[0] | {
         "video_id": video_id,
+        "published_at": f"2026-10-{26 + int(video_id[1:]):02d}T12:00:00Z",  # before «today» (3 nov)
         "human_minutes": minutes,
         "human_minutes_method": method if minutes is not None else None,
     }

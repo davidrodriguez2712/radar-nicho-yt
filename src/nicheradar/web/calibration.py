@@ -165,6 +165,8 @@ def _hours(value: float) -> str:
 def _method_text(videos: list[dict[str, Any]]) -> str | None:
     methods = []
     for video in videos:
+        if _measure(video.get("human_minutes")) is None:
+            continue  # a not-measured row may still carry a method: it says nothing
         method = _str(video.get("human_minutes_method")).strip()[:METHOD_CAP]
         if method and method not in methods:
             methods.append(method)
@@ -182,7 +184,12 @@ def view(
 ) -> dict[str, Any]:
     """The M13 model. ``now`` is only kept for symmetry with the other views."""
     del now
-    items = [v for v in (videos or []) if isinstance(v, dict)]
+    # Only published videos count: drafts (published_at null) come last and are not calibration.
+    items = [
+        v
+        for v in (videos or [])
+        if isinstance(v, dict) and _moment(v.get("published_at")) is not None
+    ]
     measures = [_measure(v.get("human_minutes")) for v in items]
     limit = calibration.max_minutes
     count = max(calibration.videos_planned, len(items))
@@ -235,7 +242,7 @@ def view(
         "rows": rows,
         "capped": count > ROW_CAP,
         "streak": run,
-        "streak_text": f"Racha bajo {limit} minutos: {run} de {calibration.consecutive}",
+        "streak_text": f"Racha de hasta {limit} minutos: {run} de {calibration.consecutive}",
         "passes": passes,
         "measured": bool(done),
         "incomplete": incomplete,
@@ -253,7 +260,7 @@ def view(
         "statement": calibration.statement,
         "steps": list(calibration.steps),
         "warning": (
-            (f"Los primeros videos pasaron de {limit} minutos", "Es normal en calibración")
+            (f"Algún video pasó de {limit} minutos", "Es normal en calibración")
             if over and not passes
             else None
         ),

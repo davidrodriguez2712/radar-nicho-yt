@@ -184,10 +184,10 @@ def test_view_rows_are_measured_pending_and_unmeasured() -> None:
 def test_view_streak_text_and_the_proposal_to_pass() -> None:
     low = view(calib(), vids(92, 71, 58), NOW, "UTC")
     assert low["streak"] == 1
-    assert low["streak_text"] == "Racha bajo 60 minutos: 1 de 3"
+    assert low["streak_text"] == "Racha de hasta 60 minutos: 1 de 3"
     assert low["passes"] is False
     done = view(calib(), vids(58, 59, 55), NOW, "UTC")
-    assert done["streak_text"] == "Racha bajo 60 minutos: 3 de 3"
+    assert done["streak_text"] == "Racha de hasta 60 minutos: 3 de 3"
     assert done["passes"] is True
 
 
@@ -207,7 +207,7 @@ def test_view_with_no_videos_has_every_row_pending_and_nothing_measured() -> Non
     assert result["measured"] is False
     assert result["hours_text"] is None
     assert result["last_video"] is None
-    assert result["streak_text"] == "Racha bajo 60 minutos: 0 de 3"
+    assert result["streak_text"] == "Racha de hasta 60 minutos: 0 de 3"
     assert result["incomplete"] is False
 
 
@@ -294,7 +294,7 @@ def test_view_last_video_unmeasured() -> None:
 def test_view_warning_only_when_a_measured_video_went_over_and_the_streak_is_short() -> None:
     over = view(calib(), vids(92, 71), NOW, "UTC")
     assert over["warning"] == (
-        "Los primeros videos pasaron de 60 minutos",
+        "Algún video pasó de 60 minutos",
         "Es normal en calibración",
     )
     assert view(calib(), vids(50, 50), NOW, "UTC")["warning"] is None
@@ -303,7 +303,14 @@ def test_view_warning_only_when_a_measured_video_went_over_and_the_streak_is_sho
 
 
 def test_view_tolerates_garbage_videos() -> None:
-    junk: list[Any] = ["x", 3, None, {"human_minutes": "5"}, pilot_video(human_minutes=58)]
+    junk: list[Any] = [
+        "x",
+        3,
+        None,
+        {"human_minutes": "5", "published_at": "2026-11-05T12:00:00Z"},
+        {"human_minutes": 7},  # no published_at: not a published video
+        pilot_video(human_minutes=58),
+    ]
     result = view(calib(), junk, NOW, "UTC")
     assert [r["text"] for r in result["rows"][:2]] == ["sin medir", "58 min"]
 
@@ -327,3 +334,36 @@ def test_view_setup_is_planned_before_that_and_the_hours_say_so() -> None:
         assert result["hours_text"] == (
             "Horas de calibración hasta hoy: 9 h de 17,5 previstas (incluye preparación prevista)"
         )
+
+
+def test_view_uses_only_published_videos_a_draft_at_the_end_does_not_cut_the_streak() -> None:
+    videos = vids(40, 40, 40, 40)
+    videos[3]["published_at"] = None
+    result = view(calib(), videos, NOW, "UTC", status="en_ejecucion")
+    assert result["streak"] == 3 and result["passes"] is True
+    assert [r["text"] for r in result["rows"][:4]] == ["40 min"] * 3 + ["pendiente"]
+    assert result["last_video"] == "Video 3 · 40 min · 5 nov"
+    assert result["incomplete"] is False
+    assert result["hours_text"] == "Horas de calibración hasta hoy: 10 h de 17,5 previstas"
+
+
+def test_view_drops_videos_whose_published_at_is_missing_or_unparseable() -> None:
+    videos = vids(40, 40, 40, 40, 40)
+    videos[0]["published_at"] = None
+    videos[1]["published_at"] = "ayer"
+    videos[2]["published_at"] = 5
+    del videos[3]["published_at"]
+    result = view(calib(), videos, NOW, "UTC")
+    assert result["streak"] == 1
+    assert result["rows"][0]["text"] == "40 min"
+    assert {r["text"] for r in result["rows"][1:]} == {"pendiente"}
+
+
+def test_view_method_comes_only_from_measured_videos() -> None:
+    videos = vids(None, None)
+    videos[0]["human_minutes_method"] = "gate_waits"
+    assert view(calib(), videos, NOW, "UTC")["method_text"] is None
+    videos[1]["human_minutes"] = 50
+    assert view(calib(), videos, NOW, "UTC")["method_text"] is None
+    videos[1]["human_minutes_method"] = "claude_sessions"
+    assert view(calib(), videos, NOW, "UTC")["method_text"] == "estimado (método claude_sessions)"

@@ -772,7 +772,7 @@ def test_calibration_tab_shows_rows_streak_hours_regime_and_method() -> None:
         "Video 3 58 min",
         "Video 4 pendiente",
     ]
-    assert "Racha bajo 60 minutos: 1 de 3" in flat(block(text, "calib-racha"))
+    assert "Racha de hasta 60 minutos: 1 de 3" in flat(block(text, "calib-racha"))
     assert "Horas de calibración hasta hoy: 11,7 h de 17,5 previstas" in flat(
         block(text, "calib-horas")
     )
@@ -782,7 +782,7 @@ def test_calibration_tab_shows_rows_streak_hours_regime_and_method() -> None:
     assert "Pasas a régimen cuando Pasar" not in flat(tab)  # the dossier statement is a sentence
     assert "Criterio de salida: Pasar a régimen" in flat(tab)
     assert "Último video" in tab and "Video 3 · 58 min" in tab
-    assert "Los primeros videos pasaron de 60 minutos" in flat(block(text, "calib-avisos"))
+    assert "Algún video pasó de 60 minutos" in flat(block(text, "calib-avisos"))
     assert "Es normal en calibración" in flat(block(text, "calib-avisos"))
     assert not re.search(r"(?<!\d)0 min", tab)
 
@@ -900,5 +900,16 @@ def test_calibration_tab_renders_a_measured_zero_as_zero_minutes() -> None:
     )
     rows = [flat(r) for r in items(block(text, "calib-filas"))]
     assert rows[:3] == ["Video 1 0 min", "Video 2 0 min", "Video 3 0 min"]
-    assert "Racha bajo 60 minutos: 3 de 3" in flat(block(text, "calib-racha"))
+    assert "Racha de hasta 60 minutos: 3 de 3" in flat(block(text, "calib-racha"))
     assert NO_MEASURE not in flat(block(text, "tab-calibracion"))
+
+
+def test_calibration_tab_ignores_an_unpublished_draft_at_the_end() -> None:
+    videos = measured(40, 40, 40, 40)
+    videos[3]["published_at"] = None
+    detail = detail_with(status="en_ejecucion")
+    text = page(calib_api(videos, detail=detail), "calibracion")
+    assert "Racha de hasta 60 minutos: 3 de 3" in flat(block(text, "calib-racha"))
+    assert "Pasa a régimen" in flat(block(text, "calib-propuesta"))
+    rows = [flat(r) for r in items(block(text, "calib-filas"))]
+    assert rows[:4] == ["Video 1 40 min", "Video 2 40 min", "Video 3 40 min", "Video 4 pendiente"]
