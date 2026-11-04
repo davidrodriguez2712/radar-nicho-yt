@@ -1,0 +1,36 @@
+{% set c = v.calibration %}
+<section class="stack" id="tab-calibracion">
+  {% if c.failed %}<div class="note note--amber" role="alert">{{ c.failed }} El resto del panel sigue disponible.</div>
+  {% else %}
+  <div class="card">
+    <h2 class="card__heading">Calibración: tu tiempo por video</h2>
+    <p class="caption">Criterio de salida: {{ c.statement }}</p>
+    <ul class="videos" id="calib-filas">{% for r in c.rows %}<li class="video"><span class="video__id">{{ r.label }}</span> {{ chip(r.text, r.kind) }}</li>{% endfor %}</ul>
+    {% if c.capped %}<p class="caption">Se muestran los primeros 100 videos.</p>{% endif %}
+    <p id="calib-racha"><strong>{{ c.streak_text }}</strong></p>
+    {% if c.passes %}<p id="calib-propuesta">Pasa a régimen: los últimos videos cumplen el criterio. Es una propuesta; no cambia nada en el sistema.</p>{% endif %}
+  </div>
+  <div class="card">
+    <h2 class="card__heading">Tu tiempo</h2>
+    {% if not c.measured %}<p class="lead">Aún sin minutos medidos</p>{% endif %}
+    <div id="calib-horas">
+      {% if c.hours_text %}<p>{{ c.hours_text }}{% if c.hours_incomplete %} <span class="caption">(incompleto: hay videos sin medir)</span>{% endif %}</p>{% endif %}
+      {% if c.setup_text %}<p>{{ c.setup_label }} <strong>{{ c.setup_text }}</strong></p>{% endif %}
+    </div>
+    {% if c.regime_text %}<p id="calib-regimen">{{ c.regime_text }}</p>{% endif %}
+    {% if c.method_text %}<p class="caption" id="calib-metodo">Minutos humanos: {{ c.method_text }}</p>{% endif %}
+    <p id="calib-ultimo">Último video: {% if c.last_video %}{{ c.last_video }}{% else %}todavía no hay{% endif %}</p>
+  </div>
+  {% if c.warning %}
+  <div class="card" id="calib-avisos">
+    <h2 class="card__heading">Bloqueos y avisos</h2>
+    <p><strong>{{ c.warning[0] }}</strong></p>
+    <p class="caption">{{ c.warning[1] }}</p>
+  </div>
+  {% endif %}
+  <div class="card">
+    <h2 class="card__heading">Minutos previstos por paso</h2>
+    <ul class="plain" id="calib-pasos">{% for name, minutes in c.steps %}<li>{{ name }}: {{ minutes }} min</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+</section>

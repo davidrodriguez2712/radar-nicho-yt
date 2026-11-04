@@ -5,7 +5,7 @@ import math
 from datetime import datetime
 from typing import Any
 
-from nicheradar.web import niches, subniches
+from nicheradar.web import calibration, niches, subniches
 from nicheradar.web.deps import SHAPE_ERRORS
 from nicheradar.web.pilots_view import CLOSED as PILOT_CLOSED
 from nicheradar.web.pilots_view import PILOT_RE, blockers, next_action
@@ -13,6 +13,8 @@ from nicheradar.web.research import UUID_RE
 
 PAGE = 100  # size of the flow-research and pilots reads: exactly this many may hide older rows
 SHOWN = 3
+CALIBRATION_PILOTS = 5  # each one costs three reads: the card looks at a few and says so
+CALIBRATING = ("entregado", "en_ejecucion", "decision_pendiente")
 CLOSED = ("cerrado", "cancelado")
 FAILED = SHAPE_ERRORS
 
@@ -44,6 +46,69 @@ def attention_cards(
             }
         )
     return cards
+
+
+def calibration_candidates(pilots: list[Any]) -> tuple[list[dict[str, Any]], int]:
+    """Active pilots with a valid id (at most five), and how many more were left unchecked."""
+    found = [
+        p
+        for p in pilots
+        if isinstance(p, dict)
+        and p.get("status") in CALIBRATING
+        and isinstance(p.get("pilot_id"), str)
+        and PILOT_RE.fullmatch(p["pilot_id"])
+    ]
+    return found[:CALIBRATION_PILOTS], max(len(found) - CALIBRATION_PILOTS, 0)
+
+
+def calibration_card(
+    entries: list[dict[str, Any]], more: int, now: datetime, timezone: str = "UTC"
+) -> dict[str, Any]:
+    """Pilots in calibration with their streak and last video.
+
+    Each entry is {"pilot", "dossier", "videos"} (dossier/videos None when they could not be
+    read, "skipped" when the pilot has no dossier-v3). A pilot whose dossier has no readable
+    calibration is simply not listed; one that could not be read is counted, and when none could
+    be read at all the card says it is unavailable.
+    """
+    cards: list[dict[str, Any]] = []
+    failed = 0
+    for entry in entries:
+        if entry.get("skipped"):
+            continue
+        dossier, videos = entry.get("dossier"), entry.get("videos")
+        if dossier is None or videos is None:
+            failed += 1
+            continue
+        parsed = calibration.parse_calibration(dossier)
+        if parsed is None:
+            continue
+        pilot = entry["pilot"]
+        shown = calibration.view(parsed, videos, now, timezone)
+        label, channel = pilot.get("niche_label"), pilot.get("target_channel")
+        cards.append(
+            {
+                "label": label if isinstance(label, str) and label else "—",
+                "channel": channel if isinstance(channel, str) and channel else "Canal nuevo",
+                "href": f"/pilotos/{pilot['pilot_id']}",
+                "streak_text": shown["streak_text"],
+                "last_video": shown["last_video"],
+                "passes": shown["passes"],
+                "measured": shown["measured"],
+            }
+        )
+    if not cards and not failed:
+        return {"show": False, "ok": True}
+    if not cards:
+        return {"show": True, "ok": False}
+    return {
+        "show": True,
+        "ok": True,
+        "cards": cards,
+        "count": len(cards),
+        "failed": failed,
+        "more": more,
+    }
 
 
 def open_pilot_keys(pilots: list[Any]) -> tuple[set[tuple[str, str]], bool]:
@@ -125,9 +190,15 @@ def _card(build: Any, *sources: list[dict[str, Any]] | None) -> dict[str, Any]:
 
 
 def today_view(
-    sources: dict[str, list[dict[str, Any]] | None], now: datetime, timezone: str = "UTC"
+    sources: dict[str, list[dict[str, Any]] | None],
+    now: datetime,
+    timezone: str = "UTC",
+    calibration_source: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """`sources` maps status/niches/flows/pilots/subniches to its items, or None if it failed."""
+    """`sources` maps status/niches/flows/pilots/subniches to its items, or None if it failed.
+
+    `calibration_source` is {"entries": [...], "more": n} (see `calibration_card`), or None.
+    """
     flows, pilots = sources.get("flows"), sources.get("pilots")
     flows_full = flows is not None and len(flows) >= PAGE
     pilots_full = pilots is not None and len(pilots) >= PAGE
@@ -154,7 +225,18 @@ def today_view(
     def subniche_card() -> dict[str, Any]:
         return {"cards": top_subniches(sources.get("subniches") or [])}
 
+    def calibration_view() -> dict[str, Any]:
+        if pilots is None or calibration_source is None:
+            return {"show": False, "ok": True}  # the pilots card already reports its own failure
+        try:
+            return calibration_card(
+                calibration_source["entries"], calibration_source["more"], now, timezone
+            )
+        except FAILED:
+            return {"show": True, "ok": False}
+
     return {
+        "calibration": calibration_view(),
         "pilots": _card(pilot_card, pilots),
         "reports": _card(report_card, flows),
         "niches": _card(niche_card, sources.get("niches")),

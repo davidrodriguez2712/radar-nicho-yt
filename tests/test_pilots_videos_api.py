@@ -34,6 +34,8 @@ ITEM_KEYS = {
     "cost_usd",
     "cost_equivalent_usd",
     "machine_minutes",
+    "human_minutes",
+    "human_minutes_method",
     "failure_code",
     "measurement",
 }

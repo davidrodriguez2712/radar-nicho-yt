@@ -9,6 +9,7 @@ exists when the package carries ``preparation_days``) and every list is capped.
 from datetime import datetime, timedelta
 from typing import Any
 
+from nicheradar.web import calibration as calib
 from nicheradar.web.format import money_amount, short_date, zone
 from nicheradar.web.pilots_view import (
     MAX_PREPARATION_DAYS,
@@ -31,10 +32,13 @@ from nicheradar.web.pilots_view import (
 from nicheradar.web.research import LANGUAGE_NAMES
 
 TABS = ("resumen", "preparacion", "videos", "reglas", "historial")
+# Calibración sits after Videos and only appears for a pilot whose dossier is a v3.
+TAB_ORDER = ("resumen", "preparacion", "videos", "calibracion", "reglas", "historial")
 TAB_LABELS = {
     "resumen": "Resumen",
     "preparacion": "Preparación",
     "videos": "Videos",
+    "calibracion": "Calibración",
     "reglas": "Reglas",
     "historial": "Historial",
 }
@@ -127,7 +131,7 @@ NO_BLOCKERS_NEXT = "Nada te espera por ahora"
 
 
 def parse_tab(value: object) -> str:
-    return value if isinstance(value, str) and value in TABS else "resumen"
+    return value if isinstance(value, str) and value in TAB_LABELS else "resumen"
 
 
 def notice(key: object) -> tuple[str, str] | None:
@@ -422,14 +426,29 @@ def _summary(
     }
 
 
+def _calibration_view(
+    dossier: object, videos: list[Any] | None, now: datetime, timezone: str, status: str
+) -> dict[str, Any]:
+    parsed = calib.parse_calibration(dossier)
+    if parsed is None:
+        return {"failed": "No se pudo leer el informe de calibración."}
+    if videos is None:
+        return {"failed": "No se pudieron cargar los videos de calibración."}
+    return {"failed": None, **calib.view(parsed, videos, now, timezone, status)}
+
+
 def panel_view(
     detail: dict[str, Any],
     videos: list[dict[str, Any]] | None,
     now: datetime,
     timezone: str,
     tab: str,
+    dossier: object = None,
 ) -> dict[str, Any]:
     tab = parse_tab(tab)
+    has_calibration = calib.has_calibration_schema(detail)
+    if tab == "calibracion" and not has_calibration:
+        tab = "resumen"
     status = _status(detail)
     chip_text, chip_kind = STATUS_CHIP.get(status, (status or "Estado desconocido", "neutral"))
     raw_id = detail.get("pilot_id")
@@ -453,7 +472,8 @@ def panel_view(
                 "href": f"/pilotos/{pid}?pestana={key}" if pid else None,
                 "current": key == tab,
             }
-            for key in TABS
+            for key in TAB_ORDER
+            if key != "calibracion" or has_calibration
         ],
     }
     if tab == "resumen":
@@ -467,6 +487,8 @@ def panel_view(
             "rows": rows,
             "capped": videos is not None and len(videos) > LIST_CAP,
         }
+    elif tab == "calibracion":
+        view["calibration"] = _calibration_view(dossier, videos, now, timezone, status)
     elif tab == "reglas":
         view["rules"] = {"rows": rule_rows(detail), "capped": len(_rules_source(detail)) > LIST_CAP}
     else:

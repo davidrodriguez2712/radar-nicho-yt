@@ -134,3 +134,17 @@ def report(*videos: dict[str, Any], **over: Any) -> dict[str, Any]:
     }
     body.update(over)
     return body
+
+
+def video_v3(video_id: str = "v_20261103_a1b2", **over: Any) -> dict[str, Any]:
+    """Video largo de channel-report-v3: igual al de v1 más ``human_minutes``."""
+    data = video(video_id, human_minutes=25)
+    data.update(over)
+    return data
+
+
+def report_v3(*videos: dict[str, Any], **over: Any) -> dict[str, Any]:
+    body = report(*(videos or (video_v3(),)))
+    body.update(contract="channel-report-v3", format="long", human_minutes_method="gate_waits")
+    body.update(over)
+    return body

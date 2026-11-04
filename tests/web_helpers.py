@@ -365,6 +365,8 @@ def pilot_video(video_id: str = "v1", **over: object) -> dict[str, object]:
         "cost_usd": 0.32,
         "cost_equivalent_usd": 1.5,
         "machine_minutes": 70,
+        "human_minutes": None,
+        "human_minutes_method": None,
         "failure_code": None,
         "measurement": None,
     }

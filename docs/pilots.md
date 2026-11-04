@@ -5,7 +5,8 @@ Alta de un canal operado por el agente: [`contracts/channel-onboarding-v1.md`](c
 [`runbook-canal-piloto.md`](runbook-canal-piloto.md).
 Formatos exactos (fuente única): [`contracts/pilot-package-v1.md`](contracts/pilot-package-v1.md)
 [`contracts/channel-report-v1.md`](contracts/channel-report-v1.md) (formato largo) y
-[`contracts/channel-report-v2.md`](contracts/channel-report-v2.md) (Shorts). Este documento no los repite:
+[`contracts/channel-report-v2.md`](contracts/channel-report-v2.md) (Shorts) y
+[`contracts/channel-report-v3.md`](contracts/channel-report-v3.md) (v1/v2 más minutos humanos). Este documento no los repite:
 dice **dónde está el código, cómo se usa y en qué se aparta o completa el contrato**.
 
 Estado (2026-10-25): **desplegado** en producción (release
@@ -49,7 +50,7 @@ El estado se guarda con códigos **ASCII**; los documentos usan la forma con til
 | `POST /api/v1/pilots`, `GET /api/v1/pilots` | Humano (token de servicio) | «Lanzar» y listar; cada item de la lista incluye además `valid_until`, `delivered_at` (`null` sin entregar) y `channel` (último bloque reportado: `reported_at`, `channel_status`, `checks`, `note`; `null` sin reportes) |
 | `POST /api/v1/pilots/{id}/decision`, `/cancel`, `GET …/closing-summary` | Humano | `seguir` / `cerrar`; el resumen es markdown `EVD-…` |
 | `GET /api/v1/pilots/pending?channel=` | Canal o humano | Autorizados, vigentes, sin entregar |
-| `GET …/{id}/videos` | Canal o humano | `{"items": [...]}` con los videos reportados (`video_id`, `source_state`, `stage`, `visibility`, `published_at`, `cost_usd`, `cost_equivalent_usd`, `machine_minutes`, `failure_code`, `measurement`), por `published_at` ascendente (sin fecha al final) y luego `video_id`; `measurement` es `null` o solo sus campos con valor (los de Shorts incluidos). Misma visibilidad que el detalle: lo ajeno o inexistente responde `404` |
+| `GET …/{id}/videos` | Canal o humano | `{"items": [...]}` con los videos reportados (`video_id`, `source_state`, `stage`, `visibility`, `published_at`, `cost_usd`, `cost_equivalent_usd`, `machine_minutes`, `human_minutes`, `human_minutes_method`, `failure_code`, `measurement`), por `published_at` ascendente (sin fecha al final) y luego `video_id`; `measurement` es `null` o solo sus campos con valor (los de Shorts incluidos). Misma visibilidad que el detalle: lo ajeno o inexistente responde `404` |
 | `GET …/{id}/package`, `POST …/{id}/delivery`, `POST …/{id}/reports`, `GET …/{id}` | Canal o humano | Un token de canal ve solo lo suyo; lo ajeno responde `404` |
 | `POST/GET /api/v1/channel-tokens`, `DELETE …/{token_id}` | Humano | El token se muestra una sola vez |
 
@@ -135,3 +136,17 @@ respalda con el resto de las tablas de pilotos; la `0020` añade las tablas del 
 `tests/test_pilot_contracts.py`, `test_pilot_rules.py`, `test_pilots_api.py`,
 `test_channel_sync.py`, `test_pilots_dashboard.py`, `test_pilots_cli.py`, `test_pilots_schema.py`
 (las de API y esquema usan PostgreSQL temporal: `NR_TEST_POSTGRES_BIN`).
+
+## Minutos humanos (channel-report-v3)
+
+Contrato: [`contracts/channel-report-v3.md`](contracts/channel-report-v3.md). Solo `channel-report-v3` trae `human_minutes` por video (entero 0..100000 o `null` = no medido, clave obligatoria) y `human_minutes_method` por reporte (migración `0021`).
+
+| Caso | Efecto sobre lo guardado |
+|---|---|
+| `v3` con `reported_at` más nuevo | Reemplaza minutos y método, también con `null` (sobrescribe con NULL: el último reporte es la verdad) |
+| `v3` con `reported_at` igual o anterior | No cambia nada (minutos y método se conservan juntos). Se evalúa por video contra el `reported_at` guardado de cualquier versión: un `v3` más viejo que un `v1`/`v2` posterior del mismo video se ignora |
+| `v1` / `v2` | Nunca tocan los minutos ni el método guardados |
+
+`totals` añade `human_minutes` (suma de los no nulos, 0 si ninguno está medido) y `human_minutes_complete` (verdadero solo si todos los videos tienen dato; con cero videos es vacuamente verdadero y el total es 0). Con un piloto con al menos un video y sin mediciones el total es 0 con `complete = false`: léase «sin medir», nunca 0 minutos. La migración añade un `CHECK` de no negatividad (`human_minutes IS NULL OR >= 0`); el rango 0..100000 lo exige el contrato. El resumen de cierre muestra «Minutos humanos» con «(incompleto…)» en ese caso.
+
+Método decidido (2026-11-03): tiempo activo de los registros de sesión de Claude Code más un supuesto fijo por canal, «medido X · supuesto Y»; el productor `scripts/channel_human_minutes.py` está pendiente de su propio plan.

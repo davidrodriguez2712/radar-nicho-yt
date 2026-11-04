@@ -44,6 +44,7 @@ ROUTES = [
     f"/pilotos/{PID}",
     f"/pilotos/{PID}?pestana=preparacion",
     f"/pilotos/{PID}?pestana=videos",
+    f"/pilotos/{PID}?pestana=calibracion",
     f"/pilotos/{PID}?pestana=reglas",
     f"/pilotos/{PID}?pestana=historial",
     f"/pilotos/{PID}/decidir?accion=seguir",
@@ -102,7 +103,13 @@ def fixtures(route: str = "") -> dict[str, Any]:
         "report": report_detail(dossier=dossier_v3()),
         "pilots": {"items": [pilot_item(PID, status="decision_pendiente", needs_decision=True)]},
         "pilot": pilot_fixture(pilot_status),
-        "videos": {"items": [pilot_video("v1"), pilot_video("v2", stage="measuring")]},
+        "videos": {
+            "items": [
+                pilot_video("v1", human_minutes=0, human_minutes_method="cronometro"),
+                pilot_video("v2", stage="measuring", human_minutes=45),
+                pilot_video("v3", human_minutes=None),
+            ]
+        },
         "closing": "Resumen de cierre\n\n- una linea",
         "subniches": {"items": [subniche_item(research=research())]},
         "card": subniche_card(research=research()),
@@ -460,3 +467,61 @@ def test_huge_numbers_in_the_pilot_payload_never_give_a_500() -> None:
     for route in ROUTES:
         if route.startswith("/pilotos"):
             check_safe(web.get(route), route)
+
+
+CALIBRATION = f"/pilotos/{PID}?pestana=calibracion"
+BAD_MINUTES: list[Any] = ["45", [45], {"a": 1}, True, -3, 4.5, 10**400, None]
+
+
+def test_hostile_human_minutes_shapes_never_give_a_500_on_calibration_and_today() -> None:
+    for bad in BAD_MINUTES:
+        data = fixtures()
+        data["videos"] = {
+            "items": [
+                pilot_video("v1", human_minutes=bad, human_minutes_method=bad),
+                pilot_video("v2", human_minutes=bad),
+            ]
+        }
+        web, _ = client_for(data)
+        for route in (CALIBRATION, "/"):
+            response = web.get(route)
+            check_safe(response, f"{route} <- {bad!r}")
+            assert response.status_code == 200, (route, bad, response.status_code)
+
+
+def test_raw_nan_human_minutes_in_the_videos_body_never_gives_a_500() -> None:
+    class NanVideos(SmokeApi):
+        def __call__(self, request: httpx.Request) -> httpx.Response:
+            if request.url.path == f"/api/v1/pilots/{PID}/videos":
+                body = (
+                    b'{"items": [{"video_id": "v1", "human_minutes": NaN, "stage": "published"}]}'
+                )
+                return httpx.Response(200, content=body)
+            return super().__call__(request)
+
+    web = make_client(NanVideos(fixtures()))
+    for route in (CALIBRATION, f"/pilotos/{PID}?pestana=videos", "/"):
+        check_safe(web.get(route), route)
+
+
+def test_a_calibration_block_of_another_type_degrades_the_tab_without_a_500() -> None:
+    for bad in (None, "x", 7, [], [1], {}, {"videos": "x", "exit_criterion": []}):
+        data = fixtures()
+        data["report"]["dossier"]["calibration"] = bad
+        web, _ = client_for(data)
+        response = web.get(CALIBRATION)
+        check_safe(response, repr(bad))
+        assert response.status_code == 200, (bad, response.status_code)
+        assert "Traceback" not in response.text
+
+
+def test_measured_zero_counts_and_unmeasured_never_reads_as_zero_minutes() -> None:
+    data = fixtures()
+    data["videos"] = {"items": [pilot_video("v1", human_minutes=0, human_minutes_method="x")]}
+    web, _ = client_for(data)
+    assert re.search(r"(?<!\d)0 min\b", web.get(CALIBRATION).text)
+    data["videos"] = {"items": [pilot_video("v1"), pilot_video("v2")]}
+    web, _ = client_for(data)
+    body = web.get(CALIBRATION).text
+    assert "Aún sin minutos medidos" in body
+    assert not re.search(r"(?<!\d)0 min\b", body)

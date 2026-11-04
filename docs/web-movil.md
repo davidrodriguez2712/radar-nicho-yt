@@ -101,9 +101,17 @@ sale de la ruta y el actor lo fija el servidor. Tras una acción se vuelve al pa
 - Un id de piloto con `%2F` no llega a la ruta: responde 404 por defecto.
 - Una zona horaria de configuración inválida cae a UTC en vez de romper la pantalla.
 
-### Siguiente: corte 2b
+### Corte 2b: calibración (M13) y pilotos en calibración (M14)
 
-Contrato `channel-report-v3`, minutos humanos, M13 y la tarjeta de pilotos en calibración de M14.
+- Pestaña **Calibración** del panel: aparece solo si el paquete del piloto trae un dossier v3; solo ella lee `GET /flow-research/{id}` (el dossier) y `GET /pilots/{id}/videos`. Si el dossier o los videos no se pueden leer, la pestaña lo dice y el resto del panel sigue.
+- La calibración se calcula al leer, en la web, y es una sugerencia en texto («Pasa a régimen»): el servidor no evalúa nada y no hay botones nuevos.
+- El criterio de salida `max_minutes_per_video` es **inclusivo**: un video lo cumple con `human_minutes <= max`. La racha cuenta los últimos videos consecutivos que cumplen; un video sin medir (`null` o un valor inválido: negativo, no finito o no entero) la corta; un cero medido es válido y cuenta («0 min»).
+- La calibración usa solo videos publicados (`published_at` legible): un borrador sin publicar no cuenta ni corta la racha. El texto de la racha es «Racha de hasta N minutos» (criterio inclusivo) y el método se toma solo de videos con minutos medidos.
+- Las horas de preparación del dossier son un plan: se rotulan «Preparación del canal (hecha)» solo con el piloto en ejecución, con decisión pendiente o cerrado; antes se rotulan «(prevista)» y las horas de calibración dicen «(incluye preparación prevista)».
+- Nunca se muestra «0 min» por datos sin medir: se dice «Aún sin minutos medidos» (el total de la API suma solo los medidos). La etiqueta del método sale de `human_minutes_method` de los videos («estimado (método X)»; varios métodos, «métodos mezclados»). Hasta que exista el productor de minutos, en producción todos los videos aparecen «sin medir».
+- Cada cifra: los minutos por video salen de `human_minutes` de `GET /pilots/{id}/videos`; la meta, la racha exigida, las horas de preparación y los minutos previstos por paso, del bloque `calibration` del dossier v3; el régimen, de los minutos por video de la automatización del dossier; la racha y las horas, calculadas en la web. Un `human_minutes` fuera del rango del contrato (0..100000) o de otro tipo se lee como «sin medir».
+- El rótulo del método sale de `human_minutes_method`; sin ningún productor de minutos humanos la pantalla dice «Aún sin minutos medidos».
+- Hoy: tarjeta «N pilotos en calibración» con la racha y el último video, solo para pilotos activos con calibración legible; mira como máximo 5 pilotos (tres lecturas cada uno) y avisa «y N más».
 
 ## Comprobación visual contra el Figma
 
@@ -111,9 +119,9 @@ Contrato `channel-report-v3`, minutos humanos, M13 y la tarjeta de pilotos en ca
 uv run python scripts/web_preview.py --out /tmp/web-preview
 ```
 
-Renderiza Subnichos (lista y ficha), Hoy, Nichos, Investigar, Informe v3, Autorizar y, del corte 2a, Pilotos, Piloto (Resumen), Preparación y Confirmar con datos de ejemplo
+Renderiza Subnichos (lista y ficha), Hoy, Nichos, Investigar, Informe v3, Autorizar y, del corte 2a, Pilotos, Piloto (Resumen), Preparación y Confirmar y, del corte 2b, Calibración (piloto en ejecución) con datos de ejemplo
 (`scripts/web_preview_data.py`, sin API real) y guarda `lista`, `ficha`, `hoy`, `nichos`, `investigar`,
-`informe`, `autorizar`, `pilotos`, `piloto`, `preparacion` y `confirmar` como `.html` y, si hay Chrome (`--chrome RUTA`), como `.png` a 390 px de ancho con
+`informe`, `autorizar`, `pilotos`, `piloto`, `preparacion`, `calibracion` y `confirmar` como `.html` y, si hay Chrome (`--chrome RUTA`), como `.png` a 390 px de ancho con
 escala 2. Compárense con el Figma M9 (`29:2`) y M10 (`30:2`) y los demás marcos del archivo. Los estados de investigación de la lista son
 ilustrativos, como en el Figma. Las rutas `file://` solo existen en esta vista previa. Chrome headless no
 baja de 500 px de ventana, por eso la página se mide dentro de un `iframe` de 390 px y se recorta con `sips`

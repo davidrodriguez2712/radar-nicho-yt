@@ -129,6 +129,7 @@ def _totals(videos: Sequence[Video], max_videos: int) -> tuple[dict[str, Any], l
     minutes = [
         video["machine_minutes"] for video in videos if video.get("machine_minutes") is not None
     ]
+    human = [video["human_minutes"] for video in videos if video.get("human_minutes") is not None]
     published = sum(1 for video in videos if video.get("published_at") is not None)
     totals = {
         "videos": len(videos),
@@ -141,6 +142,8 @@ def _totals(videos: Sequence[Video], max_videos: int) -> tuple[dict[str, Any], l
         "equivalent_usd": sum(equivalent, Decimal(0)),
         "machine_minutes": sum(minutes),
         "machine_minutes_complete": len(minutes) == len(videos),
+        "human_minutes": sum(human),
+        "human_minutes_complete": len(human) == len(videos),
     }
     warnings = []
     unknown = by_stage.get("unknown", 0)

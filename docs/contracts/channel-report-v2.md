@@ -4,7 +4,7 @@ Estado: **implementado en local y sin desplegar** (propuesto el 2026-10-25; impl
 Nace de la decisión del propietario: el reporte de los pilotos de **Shorts** es una `v2`; el [`v1`](channel-report-v1.md)
 queda como el reporte del formato largo. Sustento de las métricas: [`../bench-shorts-metrics.md`](../bench-shorts-metrics.md).
 Contexto: [`../ecosistema-youtube.md`](../ecosistema-youtube.md) y [`../pilots.md`](../pilots.md).
-Contrato hermano: [`pilot-package-v1.md`](pilot-package-v1.md).
+Contrato hermano: [`pilot-package-v1.md`](pilot-package-v1.md). Ver también [`channel-report-v3.md`](channel-report-v3.md) (v1/v2 más minutos humanos por video).
 
 ## Qué es
 

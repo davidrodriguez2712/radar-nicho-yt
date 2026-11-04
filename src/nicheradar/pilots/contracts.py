@@ -30,6 +30,7 @@ from nicheradar.pilots.translation import translate
 
 PACKAGE_CONTRACT = "pilot-package-v1"
 REPORT_CONTRACT = "channel-report-v1"
+REPORT_CONTRACT_V3 = "channel-report-v3"
 CLOCK_SKEW = timedelta(minutes=5)
 MAX_PROBLEMS = 50
 MAX_REPORT_VIDEOS = 100
@@ -318,6 +319,16 @@ class ShortsVideo(VideoBase):
     measurement: ShortsMeasurement | None
 
 
+class VideoV3(Video):
+    """Video largo de channel-report-v3. ``None`` es "no medido", nunca 0."""
+
+    human_minutes: Annotated[int, Field(ge=0, le=100000, strict=True)] | None
+
+
+class ShortsVideoV3(ShortsVideo):
+    human_minutes: Annotated[int, Field(ge=0, le=100000, strict=True)] | None
+
+
 class Check(Contract):
     id: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,40}$")]
     label: Label
@@ -346,11 +357,36 @@ class ReportV2(ReportBase):
     videos: Annotated[list[ShortsVideo], Field(max_length=MAX_REPORT_VIDEOS)]
 
 
-AnyReport = Report | ReportV2
+class ReportV3(ReportBase):
+    """channel-report-v3: v1/v2 más minutos humanos por video y el método declarado.
+
+    ``validate_report`` instancia ``_ReportV3Long`` o ``_ReportV3Shorts`` según ``format``, de modo
+    que los videos son siempre del tipo correcto y los errores llevan rutas limpias.
+    """
+
+    contract: Literal["channel-report-v3"]
+    format: Literal["long", "shorts"]
+    human_minutes_method: Annotated[str, StringConstraints(pattern=r"^[a-z0-9_]{1,60}$")]
+    videos: Annotated[list[VideoV3] | list[ShortsVideoV3], Field(max_length=MAX_REPORT_VIDEOS)]
+
+
+class _ReportV3Long(ReportV3):
+    format: Literal["long"]
+    videos: Annotated[list[VideoV3], Field(max_length=MAX_REPORT_VIDEOS)]
+
+
+class _ReportV3Shorts(ReportV3):
+    format: Literal["shorts"]
+    videos: Annotated[list[ShortsVideoV3], Field(max_length=MAX_REPORT_VIDEOS)]
+
+
+AnyReport = Report | ReportV2 | ReportV3
 REPORT_FORMAT = {"channel-report-v1": "long", "channel-report-v2": "shorts"}
 
 
 def report_format(report: AnyReport) -> str:
+    if isinstance(report, ReportV3):
+        return report.format
     return REPORT_FORMAT[report.contract]
 
 
@@ -433,9 +469,12 @@ def report_problems(report: AnyReport, now: datetime) -> list[Problem]:
 
 def validate_report(payload: object, now: datetime) -> tuple[AnyReport | None, list[Problem]]:
     """El campo ``contract`` elige el validador; sin él (o desconocido) rige el de v1."""
-    model: type[Report] | type[ReportV2] = Report
-    if isinstance(payload, dict) and payload.get("contract") == "channel-report-v2":
-        model = ReportV2
+    model: type[Report] | type[ReportV2] | type[ReportV3] = Report
+    if isinstance(payload, dict):
+        if payload.get("contract") == "channel-report-v2":
+            model = ReportV2
+        elif payload.get("contract") == REPORT_CONTRACT_V3:
+            model = _ReportV3Shorts if payload.get("format") == "shorts" else _ReportV3Long
     try:
         report = model.model_validate(payload)
     except ValidationError as error:

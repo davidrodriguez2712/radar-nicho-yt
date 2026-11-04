@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from nicheradar.web.app import create_app
 from nicheradar.web.today import (
     attention_cards,
+    calibration_candidates,
     open_pilot_keys,
     ready_reports,
     top_niches,
@@ -20,13 +21,18 @@ from tests.web_helpers import (
     HOSTILE,
     Api,
     Route,
+    dossier_v3,
     flow_item,
     make_client,
     niche_item,
+    pilot_detail,
     pilot_item,
+    pilot_video,
+    report_detail,
     settings,
     subniche_item,
 )
+from tests.web_helpers import REPORT_ID as DOSSIER_ID
 
 NICHES = ("GET", "/api/v1/market/niches")
 FLOW = ("GET", "/api/v1/flow-research")
@@ -76,6 +82,8 @@ def full_api(extra: dict[tuple[str, str], Route] | None = None) -> Api:
             },
         ),
         SUBS: (200, {"items": [subniche_item("uno"), subniche_item("dos", finalist=False)]}),
+        # The active pilot is read for its calibration: its package has no dossier-v3, so no card.
+        ("GET", "/api/v1/pilots/pil_20261102_a"): (200, pilot_detail("pil_20261102_a", package={})),
     }
     return Api(routes | (extra or {}))
 
@@ -638,3 +646,177 @@ def test_hostile_html_in_the_pilot_cards_is_escaped_in_every_field() -> None:
     assert card.count("&lt;script&gt;alert(1)&lt;/script&gt;") >= 4
     assert 'href="/pilotos/pil_20261102_a"' in card and 'href="/pilotos/pil_20261102_b"' in card
     assert "javascript:" not in text
+
+
+# ---- pilotos en calibración (M14) -----------------------------------------------------------
+
+
+def client_page(api: Api) -> str:
+    return str(make_client(api).get("/").text)
+
+
+def cal_pilot(index: int, **over: object) -> dict[str, object]:
+    return (
+        pilot_item(f"pil_20261102_c{index}", status="en_ejecucion", niche_label=f"cal-{index}")
+        | over
+    )
+
+
+def cal_routes(
+    index: int, minutes: list[int | None], schema: str = "dossier-v3", rid: str = DOSSIER_ID
+) -> dict[tuple[str, str], Route]:
+    pid = f"pil_20261102_c{index}"
+    detail = pilot_detail(pid, status="en_ejecucion")
+    package = detail["package"]
+    assert isinstance(package, dict)
+    detail["package"] = package | {
+        "dossier": package["dossier"] | {"schema": schema, "request_id": rid}
+    }
+    return {
+        ("GET", f"/api/v1/pilots/{pid}"): (200, detail),
+        ("GET", f"/api/v1/pilots/{pid}/videos"): (
+            200,
+            {
+                "items": [
+                    pilot_video(f"v{i}", human_minutes=m, human_minutes_method="gate_waits")
+                    for i, m in enumerate(minutes, 1)
+                ]
+            },
+        ),
+    }
+
+
+REPORT_ROUTE = ("GET", f"/api/v1/flow-research/{DOSSIER_ID}")
+
+
+def cal_api(pilots: list[dict[str, object]], extra: dict[tuple[str, str], Route]) -> Api:
+    routes = {
+        REPORT_ROUTE: (200, report_detail(dossier=dossier_v3())),
+        PILOTS: (200, {"items": pilots}),
+    }
+    return full_api(routes | extra)
+
+
+def test_calibration_candidates_are_active_pilots_with_a_valid_id_capped_at_five() -> None:
+    pilots = [
+        cal_pilot(1),
+        cal_pilot(2, status="cerrado"),
+        cal_pilot(3, status="cancelado"),
+        cal_pilot(4, pilot_id="../x"),
+        cal_pilot(5, pilot_id="pil_20261102_x\n"),
+        cal_pilot(6, status="autorizado"),
+        cal_pilot(7, status="entregado"),
+        cal_pilot(8, status="decision_pendiente"),
+        cal_pilot(9),
+        cal_pilot(10),
+        cal_pilot(11),
+        cal_pilot(12),
+        "x",
+    ]
+    chosen, more = calibration_candidates(pilots)
+    assert [p["pilot_id"] for p in chosen] == [f"pil_20261102_c{i}" for i in (1, 7, 8, 9, 10)]
+    assert more == 2
+
+
+def test_the_calibration_card_lists_each_pilot_with_streak_and_last_video() -> None:
+    routes = cal_routes(1, [92, 58]) | cal_routes(2, [58, 59, 55])
+    api = cal_api([cal_pilot(1), cal_pilot(2)], routes)
+    card = section(client_page(api), "calibracion")
+    assert "2 pilotos en calibración" in card
+    assert "Racha de hasta 60 minutos: 1 de 3" in card
+    assert "Racha de hasta 60 minutos: 3 de 3" in card
+    assert "Video 2 · 58 min" in card and "Video 3 · 55 min" in card
+    assert 'href="/pilotos/pil_20261102_c1"' in card
+    assert "Pasa a régimen" in card
+    assert "<form" not in card and "<button" not in card
+
+
+def test_one_pilot_in_calibration_uses_the_singular() -> None:
+    api = cal_api([cal_pilot(1)], cal_routes(1, [58]))
+    assert "1 piloto en calibración" in section(client_page(api), "calibracion")
+
+
+def test_unmeasured_videos_never_show_zero_minutes_in_the_card() -> None:
+    api = cal_api([cal_pilot(1)], cal_routes(1, [None, None]))
+    card = section(client_page(api), "calibracion")
+    assert "sin medir" in card and "Aún sin minutos medidos" in card
+    assert "Racha de hasta 60 minutos: 0 de 3" in card
+    assert not re.search(r"(?<!\d)0 min", card)
+
+
+def test_without_pilots_in_calibration_the_card_is_absent() -> None:
+    for pilots, extra in (
+        ([], {}),
+        ([cal_pilot(1, status="cerrado")], cal_routes(1, [50])),
+        ([cal_pilot(1)], cal_routes(1, [50], schema="dossier-v2")),
+    ):
+        api = cal_api(pilots, extra)
+        text = client_page(api)
+        assert "hoy-calibracion" not in text and "en calibración" not in text
+
+
+def test_a_dossier_without_calibration_is_skipped_silently() -> None:
+    api = cal_api([cal_pilot(1)], cal_routes(1, [50]))
+    api.routes[REPORT_ROUTE] = (200, report_detail(dossier=dossier_v3() | {"calibration": 3}))
+    text = client_page(api)
+    assert "hoy-calibracion" not in text and "no disponible" not in text
+
+
+def test_a_failing_source_degrades_only_the_calibration_card() -> None:
+    for broken in (
+        REPORT_ROUTE,
+        ("GET", "/api/v1/pilots/pil_20261102_c1"),
+        ("GET", "/api/v1/pilots/pil_20261102_c1/videos"),
+    ):
+        api = cal_api([cal_pilot(1)], cal_routes(1, [50]))
+        api.routes[broken] = (500, {"detail": "x"})
+        text = client_page(api)
+        assert "Pilotos en calibración: no disponible ahora" in section(text, "calibracion")
+        assert text.count("no disponible") == 1
+        assert "Informes listos" in text and "Subnichos medidos" in text
+
+
+def test_a_readable_pilot_stays_when_another_one_fails() -> None:
+    routes = cal_routes(1, [58]) | cal_routes(2, [58])
+    api = cal_api([cal_pilot(1), cal_pilot(2)], routes)
+    api.routes[("GET", "/api/v1/pilots/pil_20261102_c2")] = (500, {"detail": "x"})
+    card = section(client_page(api), "calibracion")
+    assert "1 piloto en calibración" in card and "No se pudo leer 1 piloto" in card
+
+
+def test_more_than_five_pilots_are_cut_with_a_notice() -> None:
+    routes: dict[tuple[str, str], Route] = {}
+    for i in range(1, 8):
+        routes |= cal_routes(i, [58])
+    api = cal_api([cal_pilot(i) for i in range(1, 8)], routes)
+    card = section(client_page(api), "calibracion")
+    assert "5 pilotos en calibración" in card and "y 2 más" in card
+    assert api.count("GET", "/api/v1/pilots/pil_20261102_c6") == 0
+    assert api.count(*REPORT_ROUTE) == 5
+
+
+def test_calibration_requests_are_only_for_active_pilots_with_calibration() -> None:
+    api = cal_api(
+        [cal_pilot(1, status="cerrado"), cal_pilot(2, status="autorizado")],
+        cal_routes(1, [50]) | cal_routes(2, [50]),
+    )
+    client_page(api)
+    assert api.count(*REPORT_ROUTE) == 0
+    assert api.count("GET", "/api/v1/pilots/pil_20261102_c1") == 0
+
+
+def test_the_calibration_card_is_absent_when_the_pilots_source_fails() -> None:
+    api = cal_api([cal_pilot(1)], cal_routes(1, [50]))
+    api.routes[PILOTS] = (500, {"detail": "x"})
+    text = client_page(api)
+    assert "hoy-calibracion" not in text and api.count(*REPORT_ROUTE) == 0
+
+
+def test_hostile_text_in_the_calibration_card_is_escaped() -> None:
+    dossier = dossier_v3()
+    dossier["calibration"]["exit_criterion"]["statement"] = HOSTILE
+    api = cal_api([cal_pilot(1, niche_label=HOSTILE, target_channel=HOSTILE)], cal_routes(1, [50]))
+    api.routes[REPORT_ROUTE] = (200, report_detail(dossier=dossier))
+    text = client_page(api)
+    assert "<script>" not in text
+    assert "&lt;script&gt;" in section(text, "calibracion")

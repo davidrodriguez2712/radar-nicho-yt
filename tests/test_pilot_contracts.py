@@ -9,15 +9,32 @@ import pytest
 
 from nicheradar.pilots.contracts import (
     Problem,
+    ReportV3,
     canonical_json,
     package_sha256,
+    report_format,
     stage_of,
     validate_package,
     validate_report,
     with_sha256,
 )
 from nicheradar.pilots.translation import translate
-from tests.pilot_samples import NOW, iso, package, package_body, report, video
+from tests.pilot_samples import (
+    NOW,
+    iso,
+    package,
+    package_body,
+    report,
+    report_v3,
+    video,
+    video_v3,
+)
+from tests.shorts_report_samples import (
+    shorts_report,
+    shorts_report_v3,
+    shorts_video,
+    shorts_video_v3,
+)
 
 
 def paths(problems: Sequence[Problem]) -> set[str]:
@@ -224,3 +241,132 @@ def test_the_evidence_carries_the_language_mix_and_it_must_add_up() -> None:
     del body["evidence"]["language_mix"]
     _, problems = validate_package(with_sha256(body), NOW)
     assert "evidence.language_mix" in paths(problems)
+
+
+# ---- channel-report-v3 -----------------------------------------------------------
+
+
+def test_a_v3_long_report_is_accepted_with_integer_or_null_human_minutes() -> None:
+    parsed, problems = validate_report(
+        report_v3(video_v3(), video_v3("v2", human_minutes=None)), NOW
+    )
+    assert problems == [] and isinstance(parsed, ReportV3)
+    assert report_format(parsed) == "long"
+    assert [item.human_minutes for item in parsed.videos] == [25, None]
+    assert parsed.human_minutes_method == "gate_waits"
+
+
+def test_a_v3_shorts_report_is_accepted() -> None:
+    parsed, problems = validate_report(shorts_report_v3(), NOW)
+    assert problems == [] and isinstance(parsed, ReportV3)
+    assert report_format(parsed) == "shorts"
+    assert parsed.videos[0].human_minutes == 12
+
+
+@pytest.mark.parametrize("bad", [-1, 1.5, True, "10"])
+def test_v3_rejects_invalid_human_minutes(bad: Any) -> None:
+    _, problems = validate_report(report_v3(video_v3(human_minutes=bad)), NOW)
+    assert paths(problems) == {"videos.0.human_minutes"}
+
+
+@pytest.mark.parametrize("raw", ["NaN", "Infinity", "-Infinity"])
+def test_v3_rejects_non_finite_human_minutes(raw: str) -> None:
+    payload = json.loads(
+        json.dumps(report_v3()).replace('"human_minutes": 25', f'"human_minutes": {raw}')
+    )
+    _, problems = validate_report(payload, NOW)
+    assert paths(problems) == {"videos.0.human_minutes"}
+
+
+def test_v3_requires_human_minutes_on_every_video() -> None:
+    sent = video_v3()
+    del sent["human_minutes"]
+    _, problems = validate_report(report_v3(sent), NOW)
+    assert paths(problems) == {"videos.0.human_minutes"}
+
+
+@pytest.mark.parametrize("bad", ["", "Gate Waits", "x" * 61])
+def test_v3_rejects_an_invalid_method(bad: str) -> None:
+    _, problems = validate_report(report_v3(human_minutes_method=bad), NOW)
+    assert paths(problems) == {"human_minutes_method"}
+
+
+def test_v3_requires_the_method() -> None:
+    sent = report_v3()
+    del sent["human_minutes_method"]
+    _, problems = validate_report(sent, NOW)
+    assert paths(problems) == {"human_minutes_method"}
+
+
+def test_v3_accepts_the_method_boundaries() -> None:
+    for good in ("x", "x" * 60, "a_b9"):
+        _, problems = validate_report(report_v3(human_minutes_method=good), NOW)
+        assert problems == []
+
+
+def test_v3_requires_a_known_format() -> None:
+    sent = report_v3()
+    del sent["format"]
+    _, problems = validate_report(sent, NOW)
+    assert paths(problems) == {"format"}
+    _, problems = validate_report(report_v3(format="other"), NOW)
+    assert paths(problems) == {"format"}
+
+
+def test_v3_rejects_extra_keys_in_report_and_video() -> None:
+    _, problems = validate_report(report_v3(extra_secret="x"), NOW)
+    assert paths(problems) == {"(campo no permitido)"}
+    _, problems = validate_report(report_v3(video_v3(extra_secret="x")), NOW)
+    assert paths(problems) == {"videos.0.(campo no permitido)"}
+
+
+def test_v3_rejects_videos_of_the_other_format() -> None:
+    _, problems = validate_report(report_v3(format="long", videos=[shorts_video_v3(1)]), NOW)
+    assert problems and all(p.startswith("videos.0") for p in paths(problems))
+    _, problems = validate_report(shorts_report_v3([video_v3()]), NOW)
+    assert problems and all(p.startswith("videos.0") for p in paths(problems))
+
+
+def test_v3_keeps_the_coherence_rules() -> None:
+    _, problems = validate_report(report_v3(video_v3(published_at=None)), NOW)
+    assert "videos.0.published_at" in paths(problems)
+    broken = shorts_video_v3(1)
+    broken["measurement"]["engaged_views"] = 99999
+    _, problems = validate_report(shorts_report_v3([broken]), NOW)
+    assert "videos.0.measurement.engaged_views" in paths(problems)
+
+
+def test_v1_and_v2_reject_the_v3_fields() -> None:
+    _, problems = validate_report(report(video(human_minutes=5)), NOW)
+    assert paths(problems) == {"videos.0.(campo no permitido)"}
+    _, problems = validate_report(report(human_minutes_method="gate_waits"), NOW)
+    assert paths(problems) == {"(campo no permitido)"}
+    _, problems = validate_report(shorts_report([shorts_video(1, human_minutes=5)]), NOW)
+    assert paths(problems) == {"videos.0.(campo no permitido)"}
+    _, problems = validate_report(shorts_report(human_minutes_method="gate_waits"), NOW)
+    assert paths(problems) == {"(campo no permitido)"}
+
+
+def test_an_unknown_contract_still_falls_back_to_v1() -> None:
+    _, problems = validate_report(report(contract="channel-report-v9"), NOW)
+    assert paths(problems) == {"contract"}
+
+
+@pytest.mark.parametrize("big", [100001, 10**30])
+def test_v3_rejects_human_minutes_above_the_cap_long_and_shorts(big: int) -> None:
+    _, problems = validate_report(report_v3(video_v3(human_minutes=big)), NOW)
+    assert paths(problems) == {"videos.0.human_minutes"}
+    _, problems = validate_report(shorts_report_v3([shorts_video_v3(1, human_minutes=big)]), NOW)
+    assert paths(problems) == {"videos.0.human_minutes"}
+
+
+def test_v3_accepts_human_minutes_at_the_cap_long_and_shorts() -> None:
+    _, problems = validate_report(report_v3(video_v3(human_minutes=100000)), NOW)
+    assert problems == []
+    _, problems = validate_report(shorts_report_v3([shorts_video_v3(1, human_minutes=100000)]), NOW)
+    assert problems == []
+
+
+def test_v3_rejects_a_whole_json_float_for_human_minutes() -> None:
+    _, problems = validate_report(report_v3(video_v3(human_minutes=25.0)), NOW)
+    assert paths(problems) == {"videos.0.human_minutes"}

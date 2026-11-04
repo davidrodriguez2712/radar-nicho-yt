@@ -566,6 +566,8 @@ pilot_videos = sa.Table(
     sa.Column("cost_usd", sa.Numeric(12, 2), nullable=False),
     sa.Column("cost_equivalent_usd", sa.Numeric(12, 2)),
     sa.Column("machine_minutes", sa.Integer),
+    sa.Column("human_minutes", sa.Integer),
+    sa.Column("human_minutes_method", sa.String(60)),
     sa.Column("failure_code", sa.String(60)),
     sa.Column("measured_at", sa.DateTime(timezone=True)),
     sa.Column("window_days", sa.Integer),
@@ -575,6 +577,9 @@ pilot_videos = sa.Table(
     sa.Column("subscribers_gained", sa.Integer),
     sa.Column("reported_at", sa.DateTime(timezone=True), nullable=False),
     sa.UniqueConstraint("pilot_pk", "video_id", name="uq_pilot_videos_key"),
+    sa.CheckConstraint(
+        "human_minutes IS NULL OR human_minutes >= 0", name="pilot_videos_human_minutes_nonneg"
+    ),
 )
 PILOT_SHORTS_PERCENTAGES = (
     "engaged_view_ratio_pct",
