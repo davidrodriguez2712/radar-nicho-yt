@@ -4,7 +4,7 @@
   {% else %}
   <div class="card">
     <h2 class="card__heading">Calibración: tu tiempo por video</h2>
-    <p class="caption">Pasas a régimen cuando {{ c.statement }}</p>
+    <p class="caption">Criterio de salida: {{ c.statement }}</p>
     <ul class="videos" id="calib-filas">{% for r in c.rows %}<li class="video"><span class="video__id">{{ r.label }}</span> {{ chip(r.text, r.kind) }}</li>{% endfor %}</ul>
     {% if c.capped %}<p class="caption">Se muestran los primeros 100 videos.</p>{% endif %}
     <p id="calib-racha"><strong>{{ c.streak_text }}</strong></p>
@@ -18,7 +18,7 @@
       {% if c.setup_text %}<p>{{ c.setup_label }} <strong>{{ c.setup_text }}</strong></p>{% endif %}
     </div>
     {% if c.regime_text %}<p id="calib-regimen">{{ c.regime_text }}</p>{% endif %}
-    {% if c.method_text %}<p class="caption" id="calib-metodo">Minutos {{ c.method_text }}</p>{% endif %}
+    {% if c.method_text %}<p class="caption" id="calib-metodo">Minutos humanos: {{ c.method_text }}</p>{% endif %}
     <p id="calib-ultimo">Último video: {% if c.last_video %}{{ c.last_video }}{% else %}todavía no hay{% endif %}</p>
   </div>
   {% if c.warning %}

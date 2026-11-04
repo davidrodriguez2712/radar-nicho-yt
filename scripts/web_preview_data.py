@@ -719,6 +719,7 @@ REPORT: dict[str, Any] = {
 }
 
 PILOT_ID = "pil_20261102_historia"
+CALIBRATING_ID = "pil_20261026_finanzas"
 _NOW = "2026-11-03T12:00:00Z"
 
 
@@ -798,6 +799,11 @@ PILOTS: list[dict[str, Any]] = [
         valid_until="2026-11-05T03:00:00Z",
     ),
     _pilot("pil_20261020_viejo", "viajes baratos", "cerrado"),
+    _pilot(
+        CALIBRATING_ID, "finanzas personales explicadas", "en_ejecucion",
+        last_report_at="2026-11-03T09:00:00Z", channel_last_contact_at="2026-11-03T09:00:00Z",
+        totals=_totals(videos=5, published=5, measured=3, spent_usd=2.4, machine_minutes=310),
+    ),
 ]  # fmt: skip
 
 PILOT_DETAIL: dict[str, Any] = PILOTS[0] | {
@@ -852,3 +858,23 @@ PILOT_VIDEOS: list[dict[str, Any]] = [
         "measurement": None,
     }
 ]  # fmt: skip
+
+
+def _human(video_id: str, minutes: int | None, method: str | None = "gate_waits") -> dict[str, Any]:
+    return PILOT_VIDEOS[0] | {
+        "video_id": video_id,
+        "human_minutes": minutes,
+        "human_minutes_method": method if minutes is not None else None,
+    }
+
+
+# A pilot in calibration: two videos over the 60-minute criterion, a measured zero, then a run of
+# two under it, and one not measured yet (never shown as 0 min).
+CALIBRATION_VIDEOS: list[dict[str, Any]] = [
+    _human("v1", 85), _human("v2", 70), _human("v3", 0), _human("v4", 48), _human("v5", None),
+]  # fmt: skip
+CALIBRATION_DETAIL: dict[str, Any] = PILOT_DETAIL | {
+    "pilot_id": CALIBRATING_ID,
+    "status": "en_ejecucion",
+    "niche_label": "finanzas personales explicadas",
+}

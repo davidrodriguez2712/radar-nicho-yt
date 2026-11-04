@@ -27,6 +27,7 @@ from nicheradar.web.research import UUID_RE
 ROW_CAP = 100
 MAX_VIDEOS = 100  # the contract allows at most 12; this bounds a hostile payload
 METHOD_CAP = 60
+MAX_MEASURE = 100_000  # the contract's range for human_minutes; beyond it is not a measure
 STATEMENT_CAP = 500
 STEP_CAP = 15
 # The setup hours are the dossier's plan: they only count as done once the pilot is running.
@@ -135,7 +136,7 @@ def parse_calibration(dossier: object) -> Calibration | None:
 
 def _measure(value: object) -> int | None:
     """Human minutes of one video: an int >= 0 (a measured zero is valid); else not measured."""
-    ok = isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    ok = isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= MAX_MEASURE
     return value if ok and isinstance(value, int) else None
 
 

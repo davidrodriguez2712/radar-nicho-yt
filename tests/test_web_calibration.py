@@ -149,6 +149,14 @@ def test_streak_ignores_negative_and_non_finite_values_as_not_measured() -> None
     assert streak([58, "59", 55], 60) == 1
 
 
+def test_a_huge_or_out_of_contract_minute_count_is_not_measured_and_never_overflows() -> None:
+    assert streak([58, 10**400, 55], 60) == 1  # above the contract range 0..100000: not measured
+    assert streak([58, 100_001, 55], 60) == 1
+    result = view(calib(), vids(10**400, 100_000), NOW, "UTC")
+    assert result["rows"][0]["text"] == "sin medir"
+    assert result["rows"][1]["text"] == "100000 min"
+
+
 # ---- view -----------------------------------------------------------------------------------
 
 

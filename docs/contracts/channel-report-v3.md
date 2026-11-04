@@ -100,7 +100,9 @@ reportado. Misma ruta `POST /api/v1/pilots/{pilot_id}/reports`; el campo `contra
 
 - **Gana el reporte más reciente, también cuando trae `null`.** Un `v3` con `reported_at` más nuevo y
   `human_minutes = null` **sobrescribe con `NULL`** los minutos medidos antes: el último reporte es la verdad.
-- **Un `v3` con `reported_at` igual o anterior no cambia nada**: ni los minutos ni el método (se conservan juntos).
+- **Un `v3` con `reported_at` igual o anterior no cambia nada**: ni los minutos ni el método (se conservan juntos). La
+  comparación es por video, contra el `reported_at` guardado de ese video por **cualquier** versión de reporte: un `v3`
+  más viejo que un `v1`/`v2` posterior del mismo video se ignora.
 - **`v1` y `v2` nunca tocan** los minutos ni el método guardados: un `v1`/`v2` posterior no los borra.
 
 ## Totales
@@ -110,15 +112,16 @@ reportado. Misma ruta `POST /api/v1/pilots/{pilot_id}/reports`; el campo `contra
 | Campo | Significado |
 |---|---|
 | `human_minutes` | Suma de los `human_minutes` no nulos de los videos del piloto. **Es 0 cuando ninguno está medido** |
-| `human_minutes_complete` | `true` solo si **todos** los videos tienen dato |
+| `human_minutes_complete` | `true` solo si **todos** los videos tienen dato (con cero videos es vacuamente `true` y el total es `0`) |
 
-Para un piloto sin mediciones, el total es `0` con `human_minutes_complete = false` y **debe leerse como «sin medir», nunca
+Para un piloto con al menos un video y sin mediciones, el total es `0` con `human_minutes_complete = false` y **debe leerse como «sin medir», nunca
 como 0 minutos**. El resumen de cierre muestra «Minutos humanos» y, si falta algún dato, «(incompleto: faltan videos sin
 dato)».
 
 ## Migración
 
-- Migración `0021` (aditiva): columnas `human_minutes` y `human_minutes_method` en `pilot_videos`, con `CHECK` de rango.
+- Migración `0021` (aditiva): columnas `human_minutes` y `human_minutes_method` en `pilot_videos`, con un `CHECK` de no negatividad (`human_minutes IS NULL OR human_minutes >= 0`). El rango 0..100000 lo exige el
+  contrato, no la base.
   Los videos existentes quedan en `NULL` («no medido»).
 - Los canales actuales siguen con `v1`/`v2` sin cambios; pasan a `v3` cuando su exportador sepa medir.
 - `channel_sync.py report` sube el archivo tal cual, así que no cambia.

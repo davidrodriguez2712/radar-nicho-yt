@@ -764,7 +764,7 @@ def test_calibration_tab_shows_rows_streak_hours_regime_and_method() -> None:
     text = page(api, "calibracion")
     tab = flat(block(text, "tab-calibracion"))
     assert "Calibración: tu tiempo por video" in tab
-    assert "Pasas a régimen cuando" in tab
+    assert "Criterio de salida:" in tab
     rows = [flat(r) for r in items(block(text, "calib-filas"))]
     assert rows[:4] == [
         "Video 1 92 min",
@@ -778,7 +778,9 @@ def test_calibration_tab_shows_rows_streak_hours_regime_and_method() -> None:
     )
     assert "Preparación del canal (hecha) 8 h" in flat(block(text, "calib-horas"))
     assert "Régimen que buscamos: 55 min por video" in flat(block(text, "calib-regimen"))
-    assert "estimado (método gate_waits)" in flat(block(text, "calib-metodo"))
+    assert "Minutos humanos: estimado (método gate_waits)" in flat(block(text, "calib-metodo"))
+    assert "Pasas a régimen cuando Pasar" not in flat(tab)  # the dossier statement is a sentence
+    assert "Criterio de salida: Pasar a régimen" in flat(tab)
     assert "Último video" in tab and "Video 3 · 58 min" in tab
     assert "Los primeros videos pasaron de 60 minutos" in flat(block(text, "calib-avisos"))
     assert "Es normal en calibración" in flat(block(text, "calib-avisos"))

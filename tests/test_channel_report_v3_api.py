@@ -129,11 +129,17 @@ def test_the_newest_report_wins_for_human_minutes_and_a_tie_keeps_the_stored(
     api, pilot_id, token = launched(isolated_engine)
     deliver(api, pilot_id, token)
     send(api, token, pilot_id, long_v3(pilot_id, [v3_video(1, 25)]))
-    older = long_v3(pilot_id, [v3_video(1, 99)], reported_at=iso(NOW - timedelta(minutes=5)))
+    older = long_v3(
+        pilot_id,
+        [v3_video(1, 99)],
+        reported_at=iso(NOW - timedelta(minutes=5)),
+        human_minutes_method="older_method",
+    )
     assert send(api, token, pilot_id, older).json()["videos_ignored"] == 1
     tie = long_v3(pilot_id, [v3_video(1, 88)], human_minutes_method="other_method")
     assert send(api, token, pilot_id, tie).json()["videos_ignored"] == 1
-    assert rows(isolated_engine)["v_01"]["human_minutes"] == 25
+    kept = rows(isolated_engine)["v_01"]
+    assert kept["human_minutes"] == 25 and kept["human_minutes_method"] == "gate_waits"
     newer = long_v3(
         pilot_id,
         [v3_video(1, 40)],
@@ -143,6 +149,18 @@ def test_the_newest_report_wins_for_human_minutes_and_a_tie_keeps_the_stored(
     assert send(api, token, pilot_id, newer).json()["videos_upserted"] == 1
     stored = rows(isolated_engine)["v_01"]
     assert stored["human_minutes"] == 40 and stored["human_minutes_method"] == "stopwatch"
+
+
+def test_a_newer_v3_report_with_null_human_minutes_overwrites_measured_with_null(
+    isolated_engine: Engine,
+) -> None:
+    api, pilot_id, token = launched(isolated_engine)
+    deliver(api, pilot_id, token)
+    send(api, token, pilot_id, long_v3(pilot_id, [v3_video(1, 25)]))
+    assert rows(isolated_engine)["v_01"]["human_minutes"] == 25
+    newer = long_v3(pilot_id, [v3_video(1, None)], reported_at=iso(NOW + timedelta(minutes=1)))
+    assert send(api, token, pilot_id, newer).json()["videos_upserted"] == 1
+    assert rows(isolated_engine)["v_01"]["human_minutes"] is None
 
 
 def test_a_later_v1_report_does_not_erase_stored_human_minutes(isolated_engine: Engine) -> None:

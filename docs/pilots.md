@@ -144,9 +144,9 @@ Contrato: [`contracts/channel-report-v3.md`](contracts/channel-report-v3.md). So
 | Caso | Efecto sobre lo guardado |
 |---|---|
 | `v3` con `reported_at` más nuevo | Reemplaza minutos y método, también con `null` (sobrescribe con NULL: el último reporte es la verdad) |
-| `v3` con `reported_at` igual o anterior | No cambia nada (minutos y método se conservan juntos) |
+| `v3` con `reported_at` igual o anterior | No cambia nada (minutos y método se conservan juntos). Se evalúa por video contra el `reported_at` guardado de cualquier versión: un `v3` más viejo que un `v1`/`v2` posterior del mismo video se ignora |
 | `v1` / `v2` | Nunca tocan los minutos ni el método guardados |
 
-`totals` añade `human_minutes` (suma de los no nulos, 0 si ninguno está medido) y `human_minutes_complete` (verdadero solo si todos los videos tienen dato). Con un piloto sin mediciones el total es 0 con `complete = false`: léase «sin medir», nunca 0 minutos. El resumen de cierre muestra «Minutos humanos» con «(incompleto…)» en ese caso.
+`totals` añade `human_minutes` (suma de los no nulos, 0 si ninguno está medido) y `human_minutes_complete` (verdadero solo si todos los videos tienen dato; con cero videos es vacuamente verdadero y el total es 0). Con un piloto con al menos un video y sin mediciones el total es 0 con `complete = false`: léase «sin medir», nunca 0 minutos. La migración añade un `CHECK` de no negatividad (`human_minutes IS NULL OR >= 0`); el rango 0..100000 lo exige el contrato. El resumen de cierre muestra «Minutos humanos» con «(incompleto…)» en ese caso.
 
 Método decidido (2026-11-03): tiempo activo de los registros de sesión de Claude Code más un supuesto fijo por canal, «medido X · supuesto Y»; el productor `scripts/channel_human_minutes.py` está pendiente de su propio plan.

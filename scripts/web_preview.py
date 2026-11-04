@@ -20,6 +20,9 @@ if __package__ in (None, ""):  # run as `python scripts/web_preview.py`
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.web_preview_data import (  # noqa: E402
+    CALIBRATING_ID,
+    CALIBRATION_DETAIL,
+    CALIBRATION_VIDEOS,
     CARD,
     FLOWS,
     ITEMS,
@@ -60,6 +63,18 @@ def _api(request: httpx.Request) -> httpx.Response:
         body = REPORT
     elif path == "/api/v1/pilots":
         body = {"items": PILOTS}
+    elif path == f"/api/v1/pilots/{CALIBRATING_ID}":
+        body = CALIBRATION_DETAIL
+    elif path == f"/api/v1/pilots/{CALIBRATING_ID}/videos":
+        body = {"items": CALIBRATION_VIDEOS}
+    elif path == "/api/v1/pilots/pil_20261030_ciencia":
+        body = CALIBRATION_DETAIL | {
+            "pilot_id": "pil_20261030_ciencia",
+            "status": "decision_pendiente",
+            "niche_label": "ciencia en español",
+        }
+    elif path == "/api/v1/pilots/pil_20261030_ciencia/videos":
+        body = {"items": CALIBRATION_VIDEOS[:3]}
     elif path == f"/api/v1/pilots/{PILOT_ID}":
         body = PILOT_DETAIL
     elif path == f"/api/v1/pilots/{PILOT_ID}/videos":
@@ -99,6 +114,7 @@ def render_pages(out: Path) -> dict[str, Path]:
         "pilotos": "/pilotos",
         "piloto": f"/pilotos/{PILOT_ID}",
         "preparacion": f"/pilotos/{PILOT_ID}?pestana=preparacion",
+        "calibracion": f"/pilotos/{CALIBRATING_ID}?pestana=calibracion",
         "confirmar": f"/pilotos/{PILOT_ID}/cancelar",
     }
     written: dict[str, Path] = {}
