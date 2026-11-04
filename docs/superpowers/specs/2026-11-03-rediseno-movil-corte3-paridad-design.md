@@ -27,7 +27,7 @@ contenedor con una dependencia pesada (`streamlit`). El objetivo del rediseño e
   `flow_research.evidence.REASONS/ineligible_reason`); la web ya importa `flow_research.contracts` y `gates`.
 - No usa caché, ni refresco automático, ni gráficos, ni descargas: solo tablas, métricas, JSON y texto. **No hay gráficos
   ni descargas que migrar.**
-- **No falta ninguna API:** todas las funciones tienen endpoint. Hay una salvedad en el cliente web: `POST /runs` y
+- **No falta ninguna API** (salvo «Proponer subnicho», 3d, que hoy solo es un comando y necesita endpoints nuevos): todas las funciones tienen endpoint. Hay una salvedad en el cliente web: `POST /runs` y
   `POST /channel-analyses` exigen la cabecera `Idempotency-Key` (8 a 100 caracteres) y `ApiClient.request` no admite
   cabeceras todavía.
 - Lo que Streamlit hace y la web **ya cubre**: acceso con contraseña, Mercado (lista, decisión, investigación de flujo,
@@ -46,9 +46,9 @@ retiro.
 | Entrega | Pantallas | API principal |
 |---|---|---|
 | **3a Operación y estado** | Avisos de estado (modo, scraper pausado o con última ejecución parcial o fallida); **Operación**: scraper de mercado (estado, horario, pausar y reanudar con confirmación, ejecuciones) y resumen de subnichos (activas, propuestas por aprobar, pausadas, sin primera medición, última medición). **Sin el radar** (ver «Decisiones del propietario», 5) | `GET /status`, `GET/PUT /market/schedule`, `GET /market/runs`, `GET /subniches?include_inactive=true` |
-| **3b Detalle de nicho** | Detalle de nicho (fichas del mercado, «cómo se calculó», descartados visibles, enlace «Analizar canal»). **Resumen y Consumo quedan fuera** (eran del radar) | `GET /market/niches/{label}`, `GET /market/niches?include_discarded` |
+| **3b Detalle de nicho** | Detalle de nicho (fichas del mercado, «cómo se calculó», descartados visibles). **Resumen y Consumo quedan fuera** (eran del radar) | `GET /market/niches/{label}`, `GET /market/niches?include_discarded` |
 | ~~3c Backlog de oportunidades~~ | **Fuera de alcance:** el radar de oportunidades se quita de la web móvil (decisión 5). El código del servidor y Streamlit no se tocan hasta el retiro | — |
-| **3d Análisis de canal** | Analizar, lista comparativa, detalle, historial completo (con estimación de cuota y confirmación), eliminar | `POST/GET /channel-analyses`, `/{id}`, `/deep-history/estimate`, `POST /deep-history`, `DELETE` |
+| **3d Proponer subnicho** | Pantallas de Figma M25 a M28: formulario (consulta, video o canal; modo manual), propuesta en preparación, propuesta lista y confirmación de aprobación. **Requiere API nueva** (hoy `subniche add/approve` solo existe como comando): ver «Decisiones del propietario», 6. Reemplaza al Análisis de canal | por definir en su plan de API (alta de propuesta por cola, aprobar, descartar) |
 | ~~3e Escenarios y Configuración~~ | **Fuera de alcance:** Escenarios y Configuración (perfil y receta de producción por defecto) eran del radar (decisión 5, ampliada el 2026-11-04) | — |
 | **3f Retiro de Streamlit** | Ver sección 4 | — |
 
@@ -63,9 +63,9 @@ retiro.
   (y la cifra cuando existe): reanudar el radar, solicitar exploración (consume créditos/cuota), historial completo de un
   canal (cuota de YouTube real: se muestra `quota_units` de la estimación), pausar o reanudar el scraper, eliminar un
   análisis. La confirmación es un GET; el POST valida el CSRF y el estado antes de llamar a la API.
-- **Idempotencia:** los formularios que llaman a `POST /runs` y `POST /channel-analyses` llevan una clave de idempotencia
-  generada por el servidor al pintar la confirmación y firmada con el mismo HMAC de la sesión (para que un doble envío
-  repita la misma clave y no cree dos trabajos). `ApiClient.request` gana un parámetro `headers`.
+- **Idempotencia:** el formulario de propuesta de subnicho (3d) llevará una clave de idempotencia generada por el servidor
+  y firmada con el mismo HMAC de la sesión, para que un doble envío no cree dos propuestas; su forma exacta se define en el
+  plan de API de 3d. (Ya no aplica a `POST /runs` ni a `POST /channel-analyses`: quedan fuera del alcance.)
 - **Ediciones con versión** (decisión por oportunidad, producción, puntuación, perfil, recetas): el formulario lleva
   `expected_version`; un 409 «Los datos cambiaron» se muestra con un botón «Recargar» y **conserva lo escrito**.
 - **Móvil primero:** tablas anchas se convierten en tarjetas de lista; los filtros son pastillas; las pestañas del
@@ -141,3 +141,9 @@ privada (no hacen falta); cambios de proveedor o de infraestructura.
    radar, solicitar exploración, requisitos del piloto real, ejecuciones y proveedores del radar, Resumen, Consumo, Backlog
    y Escenarios. El backend y Streamlit permanecen hasta el retiro (3f); al retirar Streamlit esas pantallas dejan de existir
    en la interfaz. El propietario confirmó el 2026-11-04 que también se quita «Configuración». Además, el chip «Radar pausado» de la cabecera de la web deja de existir (el estado que importa vive en Operación). No se borra código del servidor en este corte.
+6. **Análisis de canal se quita; se añade «Proponer subnicho» (3d).** Decidido el 2026-11-04. El Análisis de canal dependía de la
+   cola del radar y de vidIQ y no generaba hipótesis. Lo que se quería (dar un canal y obtener una hipótesis de nicho) es
+   `subniche add` con un canal; la web lo expone como «Proponer subnicho». Como el sistema no llama a proveedores desde una
+   petición web, la propuesta se prepara en el servidor (estado «En cola») y aprobar pide una pantalla de confirmación con la
+   cuota de búsqueda. Antes de implementarlo hace falta un plan de API (endpoints nuevos para proponer, aprobar y descartar).
+   La lectura de enlaces de X (subproyecto C) sigue sin existir y no forma parte de este corte.
