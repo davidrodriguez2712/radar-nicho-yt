@@ -130,7 +130,7 @@ DYNAMIC_CLASSES = {
     "blocker--": ("falta", "vence", "vigencia", "contacto", "desconocido", "decision"),
     "step--": ("done", "current", "todo"),
     "btn--": ("primary", "secondary", "danger"),
-    "chip--": ("neutral", "amber", "green", "rose", "blue"),
+    "chip--": ("neutral", "amber", "green", "rose", "blue", "gray"),
     "note--": ("green", "amber", "rose"),
     "mark--": ("ok", "todo"),
 }
@@ -141,6 +141,7 @@ def test_every_class_the_pilot_templates_use_has_a_rule_in_the_stylesheet() -> N
     missing: set[str] = set()
     for template in [
         *(ROOT / "templates" / "pilotos").glob("*.html"),
+        *(ROOT / "templates" / "operacion").glob("*.html"),
         ROOT / "templates" / "hoy.html",
     ]:
         text = template.read_text()
