@@ -253,3 +253,12 @@ def test_a_non_ascii_csrf_on_logout_is_forbidden() -> None:
     web = client()
     login(web)
     assert web.post("/salir", data={"csrf": "é"}).status_code == 403
+
+
+def test_the_login_form_states_the_five_day_session_and_pending_access_does_not() -> None:
+    note = (
+        "En este teléfono la sesión dura 5 días. "
+        "Para entrar solo hace falta la contraseña de la app."
+    )
+    assert note in client().get("/login").text
+    assert note not in client(dashboard_password=None).get("/login").text

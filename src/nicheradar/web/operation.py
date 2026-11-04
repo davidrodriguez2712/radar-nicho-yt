@@ -41,6 +41,7 @@ STAGE_LABEL = {
 MODE_LABEL = {"live": "Real", "synthetic": "De ejemplo"}
 DASH = "—"
 ERROR_CODE_MAX = 60
+MAX_RUN_SECONDS = 24 * 3600  # a longer span is a bad clock, not a duration worth showing
 LAST_RUN_WARNING = {
     "partial": "La última ejecución del scraper salió parcial.",
     "failed": "La última ejecución del scraper falló.",
@@ -83,7 +84,9 @@ def _minutes(run: dict[str, Any]) -> int | None:
         seconds = (parse_utc(finished) - parse_utc(started)).total_seconds()
     except (ValueError, OverflowError):
         return None
-    return math.ceil(seconds / 60) if math.isfinite(seconds) and seconds > 0 else None
+    if not math.isfinite(seconds) or seconds <= 0 or seconds > MAX_RUN_SECONDS:
+        return None
+    return math.ceil(seconds / 60)
 
 
 def _run_row(run: dict[str, Any], tz: str) -> dict[str, str]:
@@ -134,7 +137,9 @@ def _last_status(runs: object) -> object:
 def scraper_card(schedule: object, runs: object, now: datetime, tz: str) -> dict[str, Any]:
     if not isinstance(schedule, dict):
         return dict(UNAVAILABLE)
-    paused = schedule.get("paused") is True
+    paused = schedule.get("paused")
+    if not isinstance(paused, bool):
+        return dict(UNAVAILABLE)
     mode = schedule.get("mode")
     warnings: list[str] = []
     if paused:
@@ -175,6 +180,8 @@ def subniches_card(items: object, now: datetime) -> dict[str, Any]:
                 try:
                     moment = parse_utc(at)
                 except (ValueError, OverflowError):
+                    continue
+                if moment > now:  # a future date is a bad clock: it never wins as the latest
                     continue
                 if latest is None or moment > latest[0]:
                     latest = (moment, at)

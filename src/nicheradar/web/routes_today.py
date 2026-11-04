@@ -52,7 +52,7 @@ def _calibration_entry(api: ApiClient, pilot: dict[str, Any]) -> dict[str, Any]:
 @shape_guard
 def today(request: Request, session: Annotated[Session, Depends(current_session)]) -> Response:
     api: ApiClient = request.app.state.api
-    # The topbar badge already reads /status (cached); the timezone is the configured one.
+    # The timezone is the configured one; the page reads only its own sources.
     sources = {
         "niches": _items(api, "/market/niches", {"limit": NICHE_POOL, "order": "opportunity"}),
         "flows": _items(api, "/flow-research", {"limit": str(PAGE)}),

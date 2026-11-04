@@ -138,7 +138,7 @@ sale de la ruta y el actor lo fija el servidor. Tras una acción se vuelve al pa
 uv run python scripts/web_preview.py --out /tmp/web-preview
 ```
 
-Renderiza Subnichos (lista y ficha), Hoy, Nichos, Investigar, Informe v3, Autorizar y, del corte 2a, Pilotos, Piloto (Resumen), Preparación y Confirmar del corte 2b, Calibración (piloto en ejecución) y, del corte 3a, Operación, Ejecuciones, Más y Confirmar scraper con datos de ejemplo
+Renderiza Subnichos (lista y ficha), Hoy, Nichos, Investigar, Informe v3, Autorizar y, del corte 2a, Pilotos, Piloto (Resumen), Preparación y Confirmar, del corte 2b, Calibración (piloto en ejecución) y, del corte 3a, Operación, Ejecuciones, Más y Confirmar scraper con datos de ejemplo
 (`scripts/web_preview_data.py`, sin API real) y guarda `lista`, `ficha`, `hoy`, `nichos`, `investigar`,
 `informe`, `autorizar`, `pilotos`, `piloto`, `preparacion`, `calibracion`, `confirmar`, `operacion`, `ejecuciones`, `mas` y `confirmar-scraper` como `.html` y, si hay Chrome (`--chrome RUTA`), como `.png` a 390 px de ancho con
 escala 2. Compárense con el Figma M9 (`29:2`) y M10 (`30:2`) y los demás marcos del archivo. Los estados de investigación de la lista son

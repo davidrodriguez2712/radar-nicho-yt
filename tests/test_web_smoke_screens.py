@@ -42,6 +42,8 @@ ROUTES = [
     "/operacion",
     "/operacion/ejecuciones",
     "/mas",
+    "/operacion/scraper/pausar",
+    "/operacion/scraper/reanudar",
     f"/informes/{REPORT_ID}",
     f"/pilotos/autorizar?informe={REPORT_ID}",
     "/pilotos",
@@ -65,7 +67,8 @@ STRUCTURAL = {
     "channel_id", "pilot_id", "report_id", "action", "code",
     "path", "unit", "currency", "kind_of", "classification", "rights", "automation", "mode",
 }  # fmt: skip
-STATIC_ROUTES = {"/mas"}  # the menu reads no API: nothing hostile or malformed can reach it
+STATIC_ROUTES = {"/mas"}  # the menu reads no API at all
+ECHO_FREE = STATIC_ROUTES | {"/operacion/scraper/pausar", "/operacion/scraper/reanudar"}
 SCRIPT = "<script>alert(1)</script>"
 
 
@@ -219,7 +222,7 @@ def test_hostile_text_is_escaped_on_every_screen(route: str) -> None:
     assert SCRIPT not in body
     assert not re.search(r"""href\s*=\s*["']\s*javascript:""", body, re.I)
     assert not re.search(r"""href\s*=\s*["']https?://[^"']*evil""", body, re.I)
-    if not route.startswith("/nichos/investigar") and route not in STATIC_ROUTES:
+    if not route.startswith("/nichos/investigar") and route not in ECHO_FREE:
         # that form only echoes the query label; the menu shows no API text
         assert "&lt;script&gt;" in body or response.status_code != 200, route
 

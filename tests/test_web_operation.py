@@ -13,6 +13,7 @@ from tests.web_helpers import (
     Api,
     Route,
     make_client,
+    measurement,
     schedule,
     scrape_run,
     settings,
@@ -203,11 +204,13 @@ def test_one_failing_source_degrades_only_its_card(down: tuple[str, str]) -> Non
     assert "Traceback" not in page.text
     assert "no disponible" in page.text.lower()
     # las otras dos tarjetas siguen presentes
-    present = sum(
-        t in page.text
-        for t in ("Scraper de mercado", "Últimas ejecuciones del scraper", "Subnichos")
-    )
-    assert present >= 2
+    specific = {
+        SCHEDULE: "Scraper de mercado no disponible.",
+        RUNS: "Ejecuciones no disponibles.",
+        SUBNICHES: "Subnichos no disponible.",
+    }
+    for source, text in specific.items():
+        assert (text in page.text) is (source == down), (source, text)
 
 
 def test_hostile_text_in_runs_is_escaped() -> None:
@@ -215,3 +218,65 @@ def test_hostile_text_in_runs_is_escaped() -> None:
     api.routes[RUNS] = (200, {"items": [scrape_run("failed", error_code=HOSTILE)]})
     page = make_client(api).get("/operacion")
     assert "<script>" not in page.text and "&lt;script&gt;" in page.text
+
+
+@pytest.mark.parametrize("bad", ["x", 1, None, [], {}])
+def test_scraper_card_with_a_non_boolean_paused_is_unavailable(bad: object) -> None:
+    card = op.scraper_card(schedule(paused=bad), [], NOW, "UTC")
+    assert card == {"ok": False}
+
+
+def test_the_screen_shows_no_state_when_paused_is_not_a_boolean() -> None:
+    api = api_with()
+    api.routes[SCHEDULE] = (200, schedule(paused="x"))
+    page = make_client(api).get("/operacion")
+    assert page.status_code == 200
+    assert "Scraper de mercado no disponible." in page.text
+    assert "Activo" not in page.text and "Pausar scraper" not in page.text
+
+
+def test_a_future_measurement_never_wins_as_the_last_one() -> None:
+    items = [
+        subniche_item("a", measurement=measurement(measured_at="2030-01-01T00:00:00Z")),
+        subniche_item("b", measurement=measurement(measured_at="2026-11-04T06:00:00Z")),
+    ]
+    assert op.subniches_card(items, NOW)["last_measured_text"] == "hace 6 h"
+
+
+def test_only_future_naive_or_garbage_measurements_read_as_none() -> None:
+    for at in ("2030-01-01T00:00:00Z", "2030-01-01T00:00:00", "basura", 7, None):
+        items = [subniche_item("a", measurement=measurement(measured_at=at))]
+        assert op.subniches_card(items, NOW)["last_measured_text"] == "sin mediciones", at
+    naive = [subniche_item("a", measurement=measurement(measured_at="2026-11-04T11:55:00"))]
+    assert op.subniches_card(naive, NOW)["last_measured_text"] == "hace 5 min"
+
+
+def test_a_run_longer_than_a_day_omits_the_duration() -> None:
+    long_run = scrape_run(finished_at="2026-11-05T12:00:00+00:00")
+    row = op.runs_card([long_run], NOW, "UTC", 20)["rows"][0]
+    assert row["detail"] == "etapa: captura"
+
+
+def test_a_run_of_exactly_a_day_keeps_the_duration() -> None:
+    run = scrape_run(finished_at="2026-11-04T11:00:00+00:00")
+    assert "1440 min" in op.runs_card([run], NOW, "UTC", 20)["rows"][0]["detail"]
+
+
+@pytest.mark.parametrize("body", [{}, {"items": "x"}, {"items": 7}, {"items": {"a": 1}}, []])
+def test_runs_bodies_without_a_list_of_items_degrade_the_runs_card(body: object) -> None:
+    api = api_with()
+    api.routes[RUNS] = (200, body)
+    page = make_client(api).get("/operacion")
+    assert page.status_code in (200, 503) and "Traceback" not in page.text
+    if page.status_code == 200:
+        assert "Ejecuciones no disponibles." in page.text
+
+
+def test_101_subniches_are_counted_without_a_500() -> None:
+    items = [subniche_item(f"s{i}", status="active") for i in range(101)]
+    api = api_with()
+    api.routes[SUBNICHES] = (200, {"items": items})
+    page = make_client(api).get("/operacion")
+    assert page.status_code == 200
+    assert op.subniches_card(items, NOW)["active"] == 101
+    assert ">101<" in page.text

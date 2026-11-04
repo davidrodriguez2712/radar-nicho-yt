@@ -87,7 +87,6 @@ def _screen(
         },
         status_code=409 if blocked and status == 200 else status,
         session=session,
-        # After a call the API already answered: skip the radar badge's extra call.
     )
 
 

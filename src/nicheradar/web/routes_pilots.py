@@ -163,7 +163,6 @@ def _page(
         },
         status_code=status,
         session=session,
-        # After a failed call the API already answered: skip the radar badge's extra call.
     )
 
 
