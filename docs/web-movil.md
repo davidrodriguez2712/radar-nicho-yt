@@ -56,7 +56,7 @@ Todas las pantallas de datos son `GET` protegidos por sesión; todo `POST` exige
 2. «Descartar» solo aparece para nichos de backlog (no subnichos).
 3. Autorizar un piloto no pide cadencia, preparación ni receta.
 4. `authorized_by` es un valor fijo.
-5. La pestaña Pilotos se activa en el corte 2a; «Más» sigue desactivada hasta el corte 3.
+5. La pestaña Pilotos se activa en el corte 2a; «Más» se activa en el corte 3a (menú con Operación y Salir).
 
 ### Límites conocidos
 
@@ -68,11 +68,11 @@ Todas las pantallas de datos son `GET` protegidos por sesión; todo `POST` exige
 
 ### Lo que no se muestra a propósito
 
-Porque la API no entrega el dato o el diseño lo difiere: Fit, Demanda y Volumen de un nicho; el idioma en la lista de nichos (y su filtro); Cadencia, Preparación y Receta al autorizar; la barra de proporción por etapa del informe; «Descartar» en subnichos; «Más» (corte 3). No se inventa ningún valor para estos huecos.
+Porque la API no entrega el dato o el diseño lo difiere: Fit, Demanda y Volumen de un nicho; el idioma en la lista de nichos (y su filtro); Cadencia, Preparación y Receta al autorizar; la barra de proporción por etapa del informe; «Descartar» en subnichos. No se inventa ningún valor para estos huecos.
 
 ### Pruebas transversales
 
-`tests/test_web_smoke_screens.py` recorre las rutas de los cortes 1 y 2a (incluidas las cinco pestañas del piloto, las confirmaciones y el cierre) con texto hostil en todas las cadenas, con la API caída, con cuerpos mal formados (cada campo reemplazado por `null`, texto, número, `NaN`, infinito, listas y objetos vacíos), con fechas sin zona horaria, y comprueba que no haya orígenes de terceros, código en línea, CSP distinto entre rutas ni `POST` sin CSRF que toque la API (también los de pilotos), y que un `POST` con CSRF en un estado no permitido no escriba nada.
+`tests/test_web_smoke_screens.py` recorre las rutas de los cortes 1, 2a y 3a (Operación, Ejecuciones y Más; los dos `POST` del scraper sin CSRF o en estado no permitido no escriben; `/mas` no lee la API) (incluidas las cinco pestañas del piloto, las confirmaciones y el cierre) con texto hostil en todas las cadenas, con la API caída, con cuerpos mal formados (cada campo reemplazado por `null`, texto, número, `NaN`, infinito, listas y objetos vacíos), con fechas sin zona horaria, y comprueba que no haya orígenes de terceros, código en línea, CSP distinto entre rutas ni `POST` sin CSRF que toque la API (también los de pilotos), y que un `POST` con CSRF en un estado no permitido no escriba nada.
 
 
 ## Pantallas del corte 2a (pilotos)
@@ -115,15 +115,32 @@ sale de la ruta y el actor lo fija el servidor. Tras una acción se vuelve al pa
 - El rótulo del método sale de `human_minutes_method`; si ningún video trae minutos medidos la pantalla dice «Aún sin minutos medidos».
 - Hoy: tarjeta «N pilotos en calibración» con la racha y el último video, solo para pilotos activos con calibración legible; mira como máximo 5 pilotos (tres lecturas cada uno) y avisa «y N más».
 
+## Corte 3a: Operación, menú Más y cabecera
+
+| Pantalla | Ruta | API que usa |
+|---|---|---|
+| Menú Más (M18) | `/mas` | ninguna: enlaza a Operación y trae el botón Salir (`POST /salir`, con CSRF) |
+| Operación (M15) | `/operacion?aviso=` | `GET /market/schedule`, `GET /market/runs?limit=20`, `GET /subniches?include_inactive=true`; cada tarjeta (scraper, últimas ejecuciones, subnichos) degrada sola si su fuente falla |
+| Ejecuciones | `/operacion/ejecuciones` | `GET /market/runs?limit=20` |
+| Pausar o reanudar el scraper | `/operacion/scraper/pausar\|reanudar`, `POST` | `GET /market/schedule` y `PUT /market/schedule` con `{"paused": bool}` |
+
+- **Confirmación del scraper**: pausar y reanudar pasan por una pantalla de confirmación con la consecuencia en texto. El `POST` valida CSRF, relee el estado y solo entonces escribe; la acción sale de la ruta, nunca del formulario. Si ya estaba en ese estado, vuelve a Operación con «El scraper ya estaba en ese estado.»; si el modo es real y el scraper en vivo no está habilitado en el servidor, reanudar se bloquea (409, sin escritura). Los avisos de la pantalla usan claves fijas (`?aviso=`), nunca texto de la URL.
+- **Avisos de Operación**: scraper pausado, última ejecución parcial, fallida o bloqueada, y modo real sin scraper en vivo habilitado.
+- **Subnichos**: resumen de activas, propuestas, pausadas, sin primera medición y última medición.
+- **Cabecera sin radar**: la cabecera ya no muestra ni consulta el estado del radar; la web no llama a `/status`.
+- **Sesión de 5 días**: la cookie dura 5 días (ver Sesión y seguridad).
+- **Calibración como mínimo estimado**: la cifra de minutos de `claude_sessions_plus_assumed` se rotula como mínimo (ver corte 2b).
+- **El radar de oportunidades no está en la web**, ni tampoco «Análisis de canal»: siguen solo en Streamlit hasta su retiro (3f). No se mostrará su estado, no se pausa ni se reanuda desde la web.
+
 ## Comprobación visual contra el Figma
 
 ```
 uv run python scripts/web_preview.py --out /tmp/web-preview
 ```
 
-Renderiza Subnichos (lista y ficha), Hoy, Nichos, Investigar, Informe v3, Autorizar y, del corte 2a, Pilotos, Piloto (Resumen), Preparación y Confirmar y, del corte 2b, Calibración (piloto en ejecución) con datos de ejemplo
+Renderiza Subnichos (lista y ficha), Hoy, Nichos, Investigar, Informe v3, Autorizar y, del corte 2a, Pilotos, Piloto (Resumen), Preparación y Confirmar del corte 2b, Calibración (piloto en ejecución) y, del corte 3a, Operación, Ejecuciones, Más y Confirmar scraper con datos de ejemplo
 (`scripts/web_preview_data.py`, sin API real) y guarda `lista`, `ficha`, `hoy`, `nichos`, `investigar`,
-`informe`, `autorizar`, `pilotos`, `piloto`, `preparacion`, `calibracion` y `confirmar` como `.html` y, si hay Chrome (`--chrome RUTA`), como `.png` a 390 px de ancho con
+`informe`, `autorizar`, `pilotos`, `piloto`, `preparacion`, `calibracion`, `confirmar`, `operacion`, `ejecuciones`, `mas` y `confirmar-scraper` como `.html` y, si hay Chrome (`--chrome RUTA`), como `.png` a 390 px de ancho con
 escala 2. Compárense con el Figma M9 (`29:2`) y M10 (`30:2`) y los demás marcos del archivo. Los estados de investigación de la lista son
 ilustrativos, como en el Figma. Las rutas `file://` solo existen en esta vista previa. Chrome headless no
 baja de 500 px de ventana, por eso la página se mide dentro de un `iframe` de 390 px y se recorta con `sips`

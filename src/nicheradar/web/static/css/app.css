@@ -67,6 +67,7 @@ input[type=radio],input[type=checkbox]{accent-color:var(--primary)}
 .list{display:flex;flex-direction:column}
 .list__item{display:flex;flex-direction:column;gap:4px;padding:10px 0;border-bottom:1px solid var(--line)}
 .list__item:last-child{border-bottom:0}
+a.list__item{min-height:44px;justify-content:center;color:inherit;text-decoration:none}
 .list__name{display:flex;align-items:center;gap:8px;min-height:44px;font-size:14px;font-weight:600}
 .acc{background:var(--white);border:1px solid var(--line2);border-radius:14px}
 .acc summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;cursor:pointer;list-style:none}

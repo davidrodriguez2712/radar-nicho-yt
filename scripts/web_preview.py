@@ -33,6 +33,8 @@ from scripts.web_preview_data import (  # noqa: E402
     PILOT_VIDEOS,
     PILOTS,
     REPORT,
+    RUNS,
+    SCHEDULE,
 )
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -53,6 +55,10 @@ def _api(request: httpx.Request) -> httpx.Response:
         body = CARD
     elif path == "/api/v1/status":
         body = {"radar_paused": True, "timezone": "America/Lima"}
+    elif path == "/api/v1/market/schedule":
+        body = SCHEDULE
+    elif path == "/api/v1/market/runs":
+        body = {"items": RUNS}
     elif path == "/api/v1/market/niches":
         body = {"items": NICHES, "total": len(NICHES), "limit": 200, "offset": 0}
     elif path.startswith("/api/v1/market/niches/"):
@@ -116,6 +122,10 @@ def render_pages(out: Path) -> dict[str, Path]:
         "preparacion": f"/pilotos/{PILOT_ID}?pestana=preparacion",
         "calibracion": f"/pilotos/{CALIBRATING_ID}?pestana=calibracion",
         "confirmar": f"/pilotos/{PILOT_ID}/cancelar",
+        "operacion": "/operacion",
+        "ejecuciones": "/operacion/ejecuciones",
+        "mas": "/mas",
+        "confirmar-scraper": "/operacion/scraper/reanudar",
     }
     written: dict[str, Path] = {}
     for name, path in pages.items():
