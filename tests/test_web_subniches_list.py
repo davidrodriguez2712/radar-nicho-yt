@@ -232,17 +232,3 @@ def test_a_failing_page_does_not_add_a_status_call_and_status_uses_a_short_timeo
     assert timeouts[0]["read"] == 3  # type: ignore[index]
     app.state.api.request("GET", "/status")
     assert timeouts[1]["read"] == 15  # type: ignore[index]
-
-
-def test_the_status_call_made_by_a_page_uses_the_short_timeout() -> None:
-    import httpx
-
-    timeouts: list[float] = []
-
-    def status(request: httpx.Request) -> httpx.Response:
-        timeouts.append(request.extensions["timeout"]["read"])
-        return httpx.Response(200, json={"radar_paused": False})
-
-    api = Api({LIST: (200, {"items": []}), ("GET", "/api/v1/status"): status})
-    assert make_client(api).get("/subnichos").status_code == 200
-    assert timeouts == [3]

@@ -225,11 +225,11 @@ def test_the_home_shows_the_local_date() -> None:
     assert "Lunes 2 de noviembre" in other.text
 
 
-def test_the_home_asks_the_status_once_per_request() -> None:
+def test_the_home_no_longer_asks_the_status_and_asks_the_rest_once() -> None:
     api = full_api()
     web = make_client(api)
     web.get("/")
-    assert api.count("GET", "/api/v1/status") == 1
+    assert api.count("GET", "/api/v1/status") == 0
     for path in (NICHES, FLOW, PILOTS, SUBS):
         assert api.count(*path) == 1, path
 

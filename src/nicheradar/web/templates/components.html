@@ -7,11 +7,10 @@
 {% else %}<button class="btn btn--{{ kind }}" type="{{ type }}"{% if disabled %} disabled{% endif %}>{{ label }}</button>{% endif %}
 {%- endmacro %}
 
-{% macro topbar(radar_state, csrf_token) -%}
+{% macro topbar(csrf_token) -%}
 <header class="topbar">
   <a class="brand" href="/">NicheRadar</a>
   <span class="spacer"></span>
-  {% if radar_state == "paused" %}{{ chip("Radar pausado", "amber") }}{% elif radar_state == "active" %}{{ chip("Radar activo", "green") }}{% endif %}
   {% if csrf_token %}
   <form method="post" action="/salir"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="btn btn--secondary" type="submit">Salir</button></form>
   {% endif %}

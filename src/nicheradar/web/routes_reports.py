@@ -24,7 +24,6 @@ def _error(request: Request, session: Session, message: str, status: int) -> Res
         {"message": message, "active_tab": "nichos"},
         status_code=status,
         session=session,
-        with_radar=False,
     )
 
 

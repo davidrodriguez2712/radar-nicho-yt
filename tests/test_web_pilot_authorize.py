@@ -475,14 +475,14 @@ def test_api_outage_on_the_page_and_on_the_post() -> None:
     assert page.status_code == 503 and "API no disponible" in page.text
     web = make_client(api_with(extra={AUTH: boom}))
     page = web.get(URL)
-    assert "Radar pausado" in page.text
+    assert "Radar pausado" not in page.text and "Radar activo" not in page.text
     token = csrf_of(page.text)
     response = post(web, token, valid_days="9")
     assert response.status_code == 503 and "API no disponible" in block(response.text, "error")
     assert re.search(r'name="valid_days"[^>]*value="9"', response.text)
     assert (
         "Radar pausado" not in response.text and "Radar activo" not in response.text
-    )  # no extra radar call after a failed main call
+    )  # no radar chip at all
 
 
 def test_when_only_the_pilot_list_fails_the_form_still_opens_with_a_warning() -> None:

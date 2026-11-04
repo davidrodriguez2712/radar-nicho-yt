@@ -51,7 +51,6 @@ def create_app(
     app.state.signer = SessionSigner.from_settings(config, clock)
     app.state.limiter = LoginLimiter(clock)
     app.state.templates = make_templates()
-    app.state.radar_cache = {"until": 0.0, "value": None}
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     @app.middleware("http")
