@@ -200,7 +200,7 @@ def convert_report(
             converted[key] = "channel-report-v3"
         else:
             converted[key] = value  # "videos" se sustituye abajo conservando su posición
-    converted.setdefault("format", "long" if contract == "channel-report-v1" else "shorts")
+    converted["format"] = "long" if contract == "channel-report-v1" else "shorts"
     converted["human_minutes_method"] = METHOD
     lines: list[tuple[str, int | None, int, int]] = []
     new_videos: list[dict[str, object]] = []
@@ -220,10 +220,22 @@ def convert_report(
     return converted, Summary(tuple(lines))
 
 
-def _write_atomic(path: Path, payload: Mapping[str, object]) -> None:
+def _write_bytes_atomic(path: Path, data: bytes, mode: int | None = None) -> None:
     tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    try:
+        tmp.write_bytes(data)
+        if mode is not None:
+            os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def _write_atomic(path: Path, payload: Mapping[str, object]) -> None:
+    mode = path.stat().st_mode & 0o7777 if path.exists() else None
+    text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    _write_bytes_atomic(path, text.encode("utf-8"), mode)
 
 
 def convert_outbox(
@@ -258,8 +270,10 @@ def convert_outbox(
         if not dry_run:
             backup = path.with_name(path.name + ".orig")
             try:
+                if path.is_symlink() or backup.is_symlink():
+                    raise OSError(0, "es un enlace simbólico")
                 if not backup.exists():
-                    backup.write_bytes(path.read_bytes())
+                    _write_bytes_atomic(backup, path.read_bytes())
                 _write_atomic(path, report)
             except OSError as error:
                 out(f"{path.name}: no se pudo escribir ({error.strerror}); se deja intacto")
@@ -315,7 +329,13 @@ def main(argv: Sequence[str] | None = None, homes: Sequence[Path] | None = None)
     attribution = attribute(prompts, windows)
     print(f"carpetas de sesiones: {len(dirs)} · archivos: {len(files)} · mensajes: {len(prompts)}")
     print(f"minutos humanos medidos totales: {attribution.total / 60:.1f}")
-    print(f"minutos sin atribuir: {attribution.unattributed / 60:.1f}")
+    share = attribution.unattributed / attribution.total if attribution.total > 0 else 0.0
+    print(f"minutos sin atribuir: {attribution.unattributed / 60:.1f} ({share * 100:.0f} %)")
+    if share > 0.6:
+        print(
+            "Aviso: más del 60 % del tiempo humano medido cae fuera de las ventanas de "
+            "producción de los videos; las cifras por video subestiman el tiempo medido."
+        )
     return convert_outbox(channel_dir, attribution, args.assumed_minutes, print, args.dry_run)
 
 

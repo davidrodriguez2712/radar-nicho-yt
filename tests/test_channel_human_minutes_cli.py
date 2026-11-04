@@ -1,6 +1,7 @@
 """channel_human_minutes.py: conversión del outbox a channel-report-v3 y CLI."""
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -215,3 +216,76 @@ def test_channel_sync_accepts_the_converted_file_unchanged(tmp_path: Path) -> No
     assert len(sent) == 1 and sent[0][2] == load(s.outbox / "sent" / path.name)
     assert sent[0][2]["contract"] == "channel-report-v3"
     assert not path.exists()
+
+
+def test_warning_when_most_time_is_unattributed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    s = Setup(tmp_path)
+    s.write_session([message(0), message(10), message(20, day=9), message(40, day=9)])
+    s.run("--dry-run")
+    out = capsys.readouterr().out
+    assert "Aviso: más del 60 %" in out and "(" in out and " %)" in out
+
+
+def test_no_warning_when_mostly_attributed_and_zero_total_is_safe(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    s = Setup(tmp_path)
+    s.run("--dry-run")
+    out = capsys.readouterr().out
+    assert "Aviso" not in out and "(0 %)" in out
+    s.write_session([])
+    assert s.run("--dry-run") == 0
+    assert "Aviso" not in capsys.readouterr().out
+
+
+def test_backup_failure_leaves_no_orig_and_next_run_recovers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    s = Setup(tmp_path)
+    path = s.put("r.json", report(video(KNOWN)))
+    before = path.read_bytes()
+    real_replace = os.replace
+
+    def boom(src: Any, dst: Any) -> None:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(os, "replace", boom)
+    assert s.run() == 1
+    assert path.read_bytes() == before
+    assert sorted(p.name for p in s.outbox.iterdir()) == ["r.json"]
+    monkeypatch.setattr(os, "replace", real_replace)
+    assert s.run() == 0
+    assert (s.outbox / "r.json.orig").read_bytes() == before
+
+
+def test_write_atomic_failure_removes_tmp_and_mode_is_preserved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "x.json"
+    target.write_text("{}", "utf-8")
+    target.chmod(0o640)
+    hm._write_atomic(target, {"a": 1})
+    assert target.stat().st_mode & 0o777 == 0o640
+    monkeypatch.setattr(os, "replace", lambda *_: (_ for _ in ()).throw(OSError(5, "x")))
+    with pytest.raises(OSError):
+        hm._write_atomic(target, {"a": 2})
+    assert [p.name for p in tmp_path.iterdir()] == ["x.json"]
+
+
+def test_symlinked_target_is_refused(tmp_path: Path) -> None:
+    s = Setup(tmp_path)
+    real = tmp_path / "real.json"
+    real.write_text(json.dumps(report(video(KNOWN))), "utf-8")
+    (s.outbox / "link.json").symlink_to(real)
+    before = real.read_bytes()
+    assert s.run() == 1
+    assert real.read_bytes() == before and not list(s.outbox.glob("*.orig"))
+
+
+def test_format_is_set_from_the_contract(tmp_path: Path) -> None:
+    s = Setup(tmp_path)
+    path = s.put("r.json", report(video(KNOWN), format="shorts"))
+    assert s.run() == 0
+    assert load(path)["format"] == "long"
