@@ -16,7 +16,6 @@ a{color:inherit}
 .tab__label{font-size:11px;font-weight:500}
 .tab--on{color:var(--primary)}
 .tab--on .tab__label{font-weight:600}
-.tab--soon{opacity:.55;pointer-events:none}
 h1,.h1{margin:0;font-size:28px;line-height:34px;font-weight:700}
 .h1--md{font-size:26px;line-height:32px}
 h2,.h2{margin:0;font-size:18px;line-height:24px;font-weight:700}

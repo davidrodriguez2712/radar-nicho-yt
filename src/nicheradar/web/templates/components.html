@@ -19,12 +19,8 @@
 
 {% macro bottomnav(active) -%}
 <nav class="bottomnav" aria-label="Principal">
-  {% for key, icon, label, href in [("hoy", "◉", "Hoy", "/"), ("nichos", "▦", "Nichos", "/nichos"), ("pilotos", "◫", "Pilotos", "/pilotos"), ("mas", "⋯", "Más", None)] %}
-  {% if href %}
+  {% for key, icon, label, href in [("hoy", "◉", "Hoy", "/"), ("nichos", "▦", "Nichos", "/nichos"), ("pilotos", "◫", "Pilotos", "/pilotos"), ("mas", "⋯", "Más", "/mas")] %}
   <a class="tab{% if key == active %} tab--on{% endif %}" href="{{ href }}"{% if key == active %} aria-current="page"{% endif %}><span class="tab__icon" aria-hidden="true">{{ icon }}</span><span class="tab__label">{{ label }}</span></a>
-  {% else %}
-  <span class="tab tab--soon" aria-disabled="true" title="Próximamente"><span class="tab__icon" aria-hidden="true">{{ icon }}</span><span class="tab__label">{{ label }}</span></span>
-  {% endif %}
   {% endfor %}
 </nav>
 {%- endmacro %}

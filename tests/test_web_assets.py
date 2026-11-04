@@ -143,6 +143,7 @@ def test_every_class_the_pilot_templates_use_has_a_rule_in_the_stylesheet() -> N
         *(ROOT / "templates" / "pilotos").glob("*.html"),
         *(ROOT / "templates" / "operacion").glob("*.html"),
         ROOT / "templates" / "hoy.html",
+        ROOT / "templates" / "mas.html",
     ]:
         text = template.read_text()
         for attribute in re.findall(r'class="([^"]*)"', text):
