@@ -49,7 +49,7 @@ retiro.
 | **3b Detalle de nicho** | Detalle de nicho (fichas del mercado, «cómo se calculó», descartados visibles, enlace «Analizar canal»). **Resumen y Consumo quedan fuera** (eran del radar) | `GET /market/niches/{label}`, `GET /market/niches?include_discarded` |
 | ~~3c Backlog de oportunidades~~ | **Fuera de alcance:** el radar de oportunidades se quita de la web móvil (decisión 5). El código del servidor y Streamlit no se tocan hasta el retiro | — |
 | **3d Análisis de canal** | Analizar, lista comparativa, detalle, historial completo (con estimación de cuota y confirmación), eliminar | `POST/GET /channel-analyses`, `/{id}`, `/deep-history/estimate`, `POST /deep-history`, `DELETE` |
-| **3e Configuración** | Configuración (recursos compartidos y receta de producción por defecto): **por confirmar** si sigue haciendo falta sin el radar. **Escenarios quedan fuera** | `GET/PUT /profile`, `GET/POST /defaults/production-recipes/{format}`, `GET /catalog` |
+| ~~3e Escenarios y Configuración~~ | **Fuera de alcance:** Escenarios y Configuración (perfil y receta de producción por defecto) eran del radar (decisión 5, ampliada el 2026-11-04) | — |
 | **3f Retiro de Streamlit** | Ver sección 4 | — |
 
 ### 2. Reglas comunes a las pantallas nuevas
@@ -140,4 +140,4 @@ privada (no hacen falta); cambios de proveedor o de infraestructura.
 5. **El radar de oportunidades se quita de la web móvil: (A).** Decidido el 2026-11-04. Quedan fuera: pausar y reanudar el
    radar, solicitar exploración, requisitos del piloto real, ejecuciones y proveedores del radar, Resumen, Consumo, Backlog
    y Escenarios. El backend y Streamlit permanecen hasta el retiro (3f); al retirar Streamlit esas pantallas dejan de existir
-   en la interfaz. Pendiente de confirmar: si «Configuración» sigue siendo necesaria sin el radar.
+   en la interfaz. El propietario confirmó el 2026-11-04 que también se quita «Configuración». Además, el chip «Radar pausado» de la cabecera de la web deja de existir (el estado que importa vive en Operación). No se borra código del servidor en este corte.
