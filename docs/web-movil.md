@@ -18,10 +18,11 @@ datos propios, así que el retroceso no pierde nada. El cambio en producción re
 
 ## Sesión y seguridad
 
-- Cookie firmada de 12 horas, con la clave derivada del token de servicio.
+- Cookie firmada de 5 días, con la clave derivada del token de servicio.
 - CSRF en todos los formularios `POST`; límite de intentos de acceso (una sola clave, la app es de un propietario).
 - CSP sin recursos externos; las páginas con datos llevan `Cache-Control: no-store`.
-- Salir solo borra la cookie: las sesiones no se pueden revocar en el servidor, así que una cookie copiada sigue válida hasta 12 h. Rotar `NR_SERVICE_TOKEN` invalida todas las sesiones.
+- Salir solo borra la cookie: las sesiones no se pueden revocar en el servidor, así que una cookie copiada sigue válida hasta 5 días. Rotar `NR_SERVICE_TOKEN` invalida todas las sesiones.
+- Sin Basic Auth en el proxy, la contraseña de la app debe ser aleatoria y de al menos 32 caracteres: es la única barrera y la sesión dura 5 días.
 - El proxy debe enviar `X-Forwarded-Proto: https` para que la cookie lleve la marca `Secure` (verificarlo al desplegar).
 - htmx no guarda copias de páginas (`historyCacheSize: 0`): no quedan datos ni el token CSRF en el teléfono.
 - `/_stcore/health` se conserva para el `healthcheck` de compose y las sondas.
