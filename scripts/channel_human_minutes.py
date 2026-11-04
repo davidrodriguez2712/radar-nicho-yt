@@ -6,11 +6,13 @@ carpeta del canal y ``datos/pipeline.db``; nunca guarda ni imprime el texto de l
 Ver docs/contracts/channel-report-v3.md.
 """
 
+import argparse
 import json
 import math
+import os
 import re
 import sqlite3
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -173,3 +175,149 @@ def video_minutes(
     measured = min(math.ceil(attribution.by_video.get(video_id, 0.0) / 60), MAX_MINUTES)
     applied = min(assumed if published else 0, MAX_MINUTES - measured)
     return measured, applied
+
+
+@dataclass(frozen=True)
+class Summary:
+    """(video_id, human_minutes, medidos, supuestos) por video convertido."""
+
+    lines: tuple[tuple[str, int | None, int, int], ...]
+
+
+def convert_report(
+    payload: Mapping[str, object], attribution: Attribution, assumed: int
+) -> tuple[dict[str, object], Summary] | None:
+    """Convierte un reporte v1/v2 a v3; None si no es convertible. Lo demás queda idéntico."""
+    contract = payload.get("contract")
+    if contract not in ("channel-report-v1", "channel-report-v2"):
+        return None
+    videos = payload.get("videos")
+    if not isinstance(videos, list) or not all(isinstance(v, Mapping) for v in videos):
+        return None
+    converted: dict[str, object] = {}
+    for key, value in payload.items():
+        if key == "contract":
+            converted[key] = "channel-report-v3"
+        else:
+            converted[key] = value  # "videos" se sustituye abajo conservando su posición
+    converted.setdefault("format", "long" if contract == "channel-report-v1" else "shorts")
+    converted["human_minutes_method"] = METHOD
+    lines: list[tuple[str, int | None, int, int]] = []
+    new_videos: list[dict[str, object]] = []
+    for video in videos:
+        item = dict(video)
+        video_id = str(item.get("video_id", ""))
+        published = item.get("published_at") is not None
+        result = video_minutes(attribution, video_id, published, assumed) if published else None
+        if result is None:
+            item["human_minutes"] = None
+            lines.append((video_id, None, 0, 0))
+        else:
+            item["human_minutes"] = result[0] + result[1]
+            lines.append((video_id, result[0] + result[1], result[0], result[1]))
+        new_videos.append(item)
+    converted["videos"] = new_videos
+    return converted, Summary(tuple(lines))
+
+
+def _write_atomic(path: Path, payload: Mapping[str, object]) -> None:
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def convert_outbox(
+    channel_dir: Path,
+    attribution: Attribution,
+    assumed: int,
+    out: Callable[[str], None],
+    dry_run: bool = False,
+) -> int:
+    outbox = channel_dir / ".nicheradar" / "outbox"
+    files = sorted(outbox.glob("*.json")) if outbox.is_dir() else []
+    failures = converted_count = skipped = 0
+    for path in files:
+        try:
+            payload = json.loads(path.read_text("utf-8"))
+        except (ValueError, OSError, RecursionError):
+            out(f"{path.name}: no es JSON válido; se deja intacto")
+            failures += 1
+            continue
+        if isinstance(payload, dict) and payload.get("contract") == "channel-report-v3":
+            out(f"{path.name}: ya es channel-report-v3; se omite")
+            skipped += 1
+            continue
+        result = (
+            convert_report(payload, attribution, assumed) if isinstance(payload, dict) else None
+        )
+        if result is None:
+            out(f"{path.name}: no es un reporte v1/v2 convertible; se deja intacto")
+            failures += 1
+            continue
+        report, summary = result
+        if not dry_run:
+            backup = path.with_name(path.name + ".orig")
+            try:
+                if not backup.exists():
+                    backup.write_bytes(path.read_bytes())
+                _write_atomic(path, report)
+            except OSError as error:
+                out(f"{path.name}: no se pudo escribir ({error.strerror}); se deja intacto")
+                failures += 1
+                continue
+        converted_count += 1
+        out(f"{path.name}: {'se convertiría' if dry_run else 'convertido'} a channel-report-v3")
+        for video_id, minutes, measured, assumed_part in summary.lines:
+            if minutes is None:
+                out(f"  {video_id}: sin dato (null)")
+            else:
+                out(f"  {video_id}: medido {measured} · supuesto {assumed_part} = {minutes} min")
+    out(f"archivos convertidos: {converted_count} · omitidos: {skipped} · fallidos: {failures}")
+    return 1 if failures else 0
+
+
+def _non_negative(text: str) -> int:
+    value = int(text)
+    if value < 0:
+        raise argparse.ArgumentTypeError("debe ser un entero >= 0")
+    return value
+
+
+def _positive(text: str) -> int:
+    value = int(text)
+    if value < 1:
+        raise argparse.ArgumentTypeError("debe ser un entero >= 1")
+    return value
+
+
+def main(argv: Sequence[str] | None = None, homes: Sequence[Path] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--channel-dir", type=Path, required=True)
+    parser.add_argument("--assumed-minutes", type=_non_negative, default=ASSUMED_MINUTES)
+    parser.add_argument("--cap-minutes", type=_positive, default=CAP_SECONDS // 60)
+    parser.add_argument("--sessions-home", type=Path, action="append")
+    parser.add_argument("--sessions-dir", type=Path, action="append")
+    parser.add_argument("--db", type=Path)
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args(argv)
+    channel_dir: Path = args.channel_dir
+    if homes is None:
+        homes = args.sessions_home or [Path.home() / ".claude", Path.home() / ".claude-alt"]
+    dirs: list[Path] = args.sessions_dir or session_dirs(channel_dir, list(homes))
+    files = sorted(file for folder in dirs for file in folder.glob("*.jsonl"))
+    db_path: Path = args.db or channel_dir / "datos" / "pipeline.db"
+    try:
+        windows = read_windows(db_path)
+    except HumanMinutesError as error:
+        print(str(error))
+        return 1
+    prompts = read_human_prompts(files, args.cap_minutes * 60)
+    attribution = attribute(prompts, windows)
+    print(f"carpetas de sesiones: {len(dirs)} · archivos: {len(files)} · mensajes: {len(prompts)}")
+    print(f"minutos humanos medidos totales: {attribution.total / 60:.1f}")
+    print(f"minutos sin atribuir: {attribution.unattributed / 60:.1f}")
+    return convert_outbox(channel_dir, attribution, args.assumed_minutes, print, args.dry_run)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
