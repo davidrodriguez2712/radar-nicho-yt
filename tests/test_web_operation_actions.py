@@ -1,6 +1,7 @@
 from typing import Any
 
 import httpx
+import pytest
 
 from tests.web_helpers import Api, csrf_of, make_client, schedule, scrape_run
 
@@ -41,8 +42,13 @@ def test_confirmation_page_for_pause() -> None:
 
 def test_unknown_action_is_a_404_and_calls_nothing() -> None:
     a = api(True)
-    assert make_client(a).get("/operacion/scraper/borrar").status_code == 404
-    assert writes(a) == []
+    c = make_client(a)
+    assert c.get("/operacion/scraper/borrar").status_code == 404
+    token = csrf_of(c.get("/operacion/scraper/reanudar").text)
+    a.calls.clear()
+    assert c.get("/operacion/scraper/borrar").status_code == 404
+    assert c.post("/operacion/scraper/borrar", data={"csrf": token}).status_code == 404
+    assert a.calls == []
 
 
 def test_resume_in_live_mode_without_live_enabled_is_blocked_without_a_form() -> None:
@@ -129,3 +135,61 @@ def test_runs_screen_with_the_api_down_is_a_503_with_a_spanish_message() -> None
 
     page = make_client(Api({RUNS: boom})).get("/operacion/ejecuciones")
     assert page.status_code == 503 and "Traceback" not in page.text
+
+
+@pytest.mark.parametrize("paused", ["MISSING", "false", "true", 1, 0, None])
+def test_a_schedule_with_a_malformed_paused_is_a_503_and_never_writes(paused: object) -> None:
+    sched = schedule()
+    if paused == "MISSING":
+        del sched["paused"]
+    else:
+        sched["paused"] = paused
+    routes: dict[tuple[str, str], Any] = {
+        SCHEDULE: (200, sched),
+        PUT: (200, schedule()),
+        RUNS: (200, {"items": []}),
+    }
+    a = Api(routes)
+    c = make_client(a)
+    for action in ("reanudar", "pausar"):
+        assert c.get(f"/operacion/scraper/{action}").status_code == 503
+        token = csrf_of(c.get("/operacion").text)
+        r = c.post(f"/operacion/scraper/{action}", data={"csrf": token}, follow_redirects=False)
+        assert r.status_code == 503 and "location" not in r.headers
+    assert writes(a) == []
+
+
+def test_a_409_on_pause_shows_the_generic_failure_not_the_live_text() -> None:
+    a = api(False, put=(409, {"detail": "texto del servidor"}))
+    c = make_client(a)
+    token = csrf_of(c.get("/operacion/scraper/pausar").text)
+    r = c.post("/operacion/scraper/pausar", data={"csrf": token})
+    assert "scraper en vivo debe estar habilitado" not in r.text
+    assert "texto del servidor" not in r.text and "No se pudo aplicar el cambio" in r.text
+
+
+def test_the_live_block_text_appears_once_after_a_resume_409() -> None:
+    a = api(True, put=(409, {"detail": "x"}))
+    c = make_client(a)
+    token = csrf_of(c.get("/operacion/scraper/reanudar").text)
+    r = c.post("/operacion/scraper/reanudar", data={"csrf": token})
+    assert r.text.count("scraper en vivo debe estar habilitado") == 1
+
+
+def test_runs_screen_empty_state() -> None:
+    page = make_client(Api({RUNS: (200, {"items": []})})).get("/operacion/ejecuciones")
+    assert page.status_code == 200 and "Todavía no hay ejecuciones" in page.text
+
+
+def test_runs_screen_escapes_hostile_text() -> None:
+    items = [scrape_run("failed", error_code="<script>alert(1)</script>")]
+    page = make_client(Api({RUNS: (200, {"items": items})})).get("/operacion/ejecuciones")
+    assert "<script>alert(1)</script>" not in page.text and "&lt;script&gt;" in page.text
+
+
+def test_a_shape_failure_on_post_is_a_503_without_a_write() -> None:
+    a = Api({SCHEDULE: (200, ["no es un objeto"]), PUT: (200, schedule())})
+    c = make_client(a)
+    token = csrf_of(c.get("/operacion").text)
+    r = c.post("/operacion/scraper/reanudar", data={"csrf": token})
+    assert r.status_code == 503 and "Traceback" not in r.text and writes(a) == []

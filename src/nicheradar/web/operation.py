@@ -245,6 +245,8 @@ def confirm_view(action: str, schedule: object, now: datetime, tz: str) -> dict[
     spec = ACTIONS[action]
     if not isinstance(schedule, dict):
         raise TypeError("schedule is not an object")
+    if not isinstance(schedule.get("paused"), bool):
+        raise TypeError("schedule.paused is not a boolean")
     mode = schedule.get("mode")
     rows = [("Frecuencia", _frequency(schedule.get("interval_seconds")))]
     if action == "reanudar":
@@ -262,5 +264,5 @@ def confirm_view(action: str, schedule: object, now: datetime, tz: str) -> dict[
         "kind": spec["kind"],
         "rows": rows,
         "blocked": blocked,
-        "already": (schedule.get("paused") is True) is spec["paused"],
+        "already": schedule["paused"] is spec["paused"],
     }

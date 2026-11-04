@@ -31,6 +31,7 @@ router = APIRouter()
 _log = logging.getLogger(__name__)
 NOT_FOUND = "No se encontró lo que buscabas."
 INVALID_REQUEST = "La solicitud no es válida."
+FAILED = AVISOS["error"][0]
 DONE = {"reanudar": "reanudado", "pausar": "pausado"}
 
 VARY = "HX-Request, HX-History-Restore-Request"
@@ -116,10 +117,14 @@ def runs_screen(
     request: Request, session: Annotated[Session, Depends(current_session)]
 ) -> Response:
     try:
-        data = request.app.state.api.request("GET", "/market/runs", params={"limit": "20"})
+        data = request.app.state.api.request(
+            "GET", "/market/runs", params={"limit": str(RUNS_LIMIT)}
+        )
     except ApiError as err:
         return _error(request, session, err.message, 503)
-    runs = runs_card(data.get("items"), datetime.now(UTC), request.app.state.config.timezone, 20)
+    runs = runs_card(
+        data.get("items"), datetime.now(UTC), request.app.state.config.timezone, RUNS_LIMIT
+    )
     if not runs["ok"]:
         raise TypeError("runs is not a list")
     return render(
@@ -155,9 +160,9 @@ def _submit(request: Request, session: Session, action: str) -> Response:
         )
     except ApiError as err:
         if err.kind == "conflict":
-            return _screen(
-                request, session, action, schedule, error=LIVE_BLOCK, blocked=LIVE_BLOCK, status=409
-            )
+            if action == "reanudar":
+                return _screen(request, session, action, schedule, blocked=LIVE_BLOCK, status=409)
+            return _screen(request, session, action, schedule, error=FAILED, status=409)
         return _screen(request, session, action, schedule, error=err.message, status=503)
     return RedirectResponse(f"/operacion?aviso={DONE[action]}", status_code=303)
 
