@@ -142,3 +142,56 @@ def test_session_dirs_only_existing(tmp_path: Path) -> None:
     home_a.mkdir()
     assert hm.session_dirs(channel, [home_a, home_b]) == [home_b / "projects" / encoded]
     assert re.sub(r"[^A-Za-z0-9-]", "-", "/tmp/x/canal-ab.c") == "-tmp-x-canal-ab-c"
+
+
+def test_deeply_nested_line_does_not_kill_the_read(tmp_path: Path) -> None:
+    path = tmp_path / "a.jsonl"
+    path.write_text("[" * 100_000 + "\n" + json.dumps(event("user", "10:00:00")) + "\n", "utf-8")
+    assert len(hm.read_human_prompts([path], 900)) == 1
+
+
+def test_extreme_timestamp_is_ignored(tmp_path: Path) -> None:
+    extreme = event("user", "10:00:00") | {"timestamp": "0001-01-01T00:00:00+05:00"}
+    f = jsonl(tmp_path, "a.jsonl", [extreme, event("user", "10:00:05")])
+    assert len(hm.read_human_prompts([f], 900)) == 1
+
+
+def test_unicode_line_separators_do_not_split_records(tmp_path: Path) -> None:
+    path = tmp_path / "a.jsonl"
+    record = event("user", "10:00:00", content="uno dos tres\x85\x0b\x0c")
+    path.write_text(json.dumps(record, ensure_ascii=False) + "\n", "utf-8")
+    assert len(hm.read_human_prompts([path], 900)) == 1
+
+
+def test_invalid_utf8_does_not_raise(tmp_path: Path) -> None:
+    path = tmp_path / "a.jsonl"
+    good = json.dumps(event("user", "10:00:00")).encode()
+    path.write_bytes(b'{"type": "user", "x": "\xff\xfe"}\n' + good + b"\n")
+    assert len(hm.read_human_prompts([path], 900)) == 1
+
+
+def test_output_stays_silent(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    secret = "SECRETO" + "x" * (5 * 1024 * 1024)
+    f = jsonl(tmp_path, "a.jsonl", [event("user", "10:00:00", content=secret)])
+    hm.read_human_prompts([f], 900)
+    captured = capsys.readouterr()
+    assert captured.out == "" and captured.err == ""
+
+
+def test_bad_session_id_and_unhashable_type_are_ignored(tmp_path: Path) -> None:
+    f = jsonl(
+        tmp_path,
+        "a.jsonl",
+        [
+            event("user", "10:00:00") | {"sessionId": 7},
+            {k: v for k, v in event("user", "10:00:01").items() if k != "sessionId"},
+            event("user", "10:00:02") | {"type": ["user"]},
+            event("user", "10:00:03") | {"type": {"a": 1}},
+        ],
+    )
+    assert hm.read_human_prompts([f], 900) == []
+
+
+def test_out_of_order_timestamps_give_zero_gap(tmp_path: Path) -> None:
+    f = jsonl(tmp_path, "a.jsonl", [event("assistant", "10:10:00"), event("user", "10:00:00")])
+    assert [p.gap_seconds for p in hm.read_human_prompts([f], 900)] == [0]

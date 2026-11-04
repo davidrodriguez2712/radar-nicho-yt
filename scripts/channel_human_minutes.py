@@ -30,9 +30,9 @@ def _moment(value: object) -> datetime | None:
         return None
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
+        return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+    except (ValueError, OverflowError):
         return None
-    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
 
 
 def is_human_prompt(record: Mapping[str, object]) -> bool:
@@ -61,13 +61,22 @@ def read_human_prompts(files: Iterable[Path], cap_seconds: float) -> list[HumanP
     for path in files:
         last: dict[str, datetime] = {}
         try:
-            lines = path.read_text("utf-8", errors="replace").splitlines()
+            handle = path.open(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        with handle:
+            _scan(handle, last, prompts, cap_seconds)
+    return sorted(prompts, key=lambda prompt: prompt.at)
+
+
+def _scan(
+    lines: Iterable[str], last: dict[str, datetime], prompts: list[HumanPrompt], cap_seconds: float
+) -> None:
+    try:
         for line in lines:
             try:
                 record = json.loads(line)
-            except ValueError:
+            except (ValueError, RecursionError):
                 continue
             if not isinstance(record, dict):
                 continue
@@ -81,4 +90,5 @@ def read_human_prompts(files: Iterable[Path], cap_seconds: float) -> list[HumanP
                 prompts.append(HumanPrompt(at, min(max(gap, 0.0), cap_seconds)))
             if record.get("type") in ("user", "assistant", "system"):
                 last[session] = at
-    return sorted(prompts, key=lambda prompt: prompt.at)
+    except OSError:
+        return
