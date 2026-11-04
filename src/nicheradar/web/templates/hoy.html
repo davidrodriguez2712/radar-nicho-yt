@@ -20,6 +20,23 @@
   {% endif %}
 </section>
 
+{% if v.calibration.show %}
+<section class="card" id="hoy-calibracion">
+  {% if not v.calibration.ok %}
+  <div class="note note--amber">Pilotos en calibración: no disponible ahora</div>
+  {% else %}
+  <h2 class="h2">{% if v.calibration.count == 1 %}1 piloto en calibración{% else %}{{ v.calibration.count }} pilotos en calibración{% endif %}</h2>
+  {% if v.calibration.failed %}<div class="note note--amber">No se pudo leer {% if v.calibration.failed == 1 %}1 piloto{% else %}{{ v.calibration.failed }} pilotos{% endif %}.</div>{% endif %}
+  <div class="list">
+    {% for p in v.calibration.cards %}
+    <div class="list__item"><a class="list__name" href="{{ p.href }}">{{ p.label }}</a><span class="muted">{{ p.channel }}</span><span>{{ p.streak_text }}</span>{% if p.last_video %}<span class="muted">Último: {{ p.last_video }}</span>{% endif %}{% if not p.measured %}<span class="muted">Aún sin minutos medidos</span>{% endif %}{% if p.passes %}{{ chip("Pasa a régimen", "green") }}{% endif %}</div>
+    {% endfor %}
+  </div>
+  {% if v.calibration.more %}<p class="caption">y {{ v.calibration.more }} más</p>{% endif %}
+  {% endif %}
+</section>
+{% endif %}
+
 <section class="card" id="hoy-informes">
   <h2 class="h2">Informes listos</h2>
   {% if not v.reports.ok %}

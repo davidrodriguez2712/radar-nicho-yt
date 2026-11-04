@@ -10,7 +10,17 @@ from fastapi.testclient import TestClient
 
 from nicheradar.web.app import create_app
 from nicheradar.web.pilot_panel import TABS, panel_view, parse_tab
-from tests.web_helpers import HOSTILE, Api, make_client, pilot_detail, pilot_video, settings
+from tests.web_helpers import (
+    HOSTILE,
+    REPORT_ID,
+    Api,
+    dossier_v3,
+    make_client,
+    pilot_detail,
+    pilot_video,
+    report_detail,
+    settings,
+)
 
 PID = "pil_20261102_historia"
 DETAIL = ("GET", f"/api/v1/pilots/{PID}")
@@ -83,8 +93,14 @@ def totals(**over: object) -> dict[str, object]:
     return base | over
 
 
+def v2_package() -> dict[str, Any]:
+    base = pilot_detail()["package"]
+    assert isinstance(base, dict)
+    return base | {"dossier": base["dossier"] | {"schema": "dossier-v2"}}
+
+
 def test_a_valid_panel_shows_title_status_line_and_the_five_tabs() -> None:
-    text = page(api_with(detail_with(status="en_ejecucion")))
+    text = page(api_with(detail_with(status="en_ejecucion", package=v2_package())))
     assert "<h1" in text and "Piloto · historia militar explicada</h1>" in text
     head = block(text, "cabecera")
     for chip in ("En ejecución", "Largo", "Inglés"):
@@ -708,3 +724,155 @@ def test_the_summary_shows_the_cancellation_reason_only_for_cancelled_pilots() -
     assert "Ya no conviene" not in block(open_pilot, "res-estado")
     nothing = page(api_with(detail_with(status="cancelado", events=[])))
     assert "Motivo" not in block(nothing, "res-estado")
+
+
+# ---- Calibración (M13) ----------------------------------------------------------------------
+
+REPORT = ("GET", f"/api/v1/flow-research/{REPORT_ID}")
+NO_MEASURE = "Aún sin minutos medidos"
+
+
+def calib_api(
+    videos: object | None = None,
+    dossier: dict[str, Any] | None = None,
+    detail: object | None = None,
+    report: Any = None,
+) -> Api:
+    api = api_with(detail, videos)
+    api.routes[REPORT] = report or (200, report_detail(dossier=dossier or dossier_v3()))
+    return api
+
+
+def measured(*minutes: int | None, method: str | None = "gate_waits") -> list[dict[str, object]]:
+    return [
+        pilot_video(f"v{i}", human_minutes=m, human_minutes_method=method if m else None)
+        for i, m in enumerate(minutes, 1)
+    ]
+
+
+def test_the_calibration_tab_exists_only_with_a_v3_dossier() -> None:
+    with_tab = page(api_with(detail_with()))
+    labels = re.findall(r"<a\b[^>]*>([^<]*)</a>", block(with_tab, "pestanas"))
+    assert labels == ["Resumen", "Preparación", "Videos", "Calibración", "Reglas", "Historial"]
+    assert f'href="/pilotos/{PID}?pestana=calibracion"' in block(with_tab, "pestanas")
+    without = page(api_with(detail_with(package=v2_package())))
+    assert "Calibración" not in block(without, "pestanas")
+
+
+def test_calibration_tab_shows_rows_streak_hours_regime_and_method() -> None:
+    api = calib_api(measured(92, 71, 58))
+    text = page(api, "calibracion")
+    tab = flat(block(text, "tab-calibracion"))
+    assert "Calibración: tu tiempo por video" in tab
+    assert "Pasas a régimen cuando" in tab
+    rows = [flat(r) for r in items(block(text, "calib-filas"))]
+    assert rows[:4] == [
+        "Video 1 92 min",
+        "Video 2 71 min",
+        "Video 3 58 min",
+        "Video 4 pendiente",
+    ]
+    assert "Racha bajo 60 minutos: 1 de 3" in flat(block(text, "calib-racha"))
+    assert "Horas de calibración hasta hoy: 11,7 h de 17,5 previstas" in flat(
+        block(text, "calib-horas")
+    )
+    assert "Preparación del canal (hecha) 8 h" in flat(block(text, "calib-horas"))
+    assert "Régimen que buscamos: 55 min por video" in flat(block(text, "calib-regimen"))
+    assert "estimado (método gate_waits)" in flat(block(text, "calib-metodo"))
+    assert "Último video" in tab and "Video 3 · 58 min" in tab
+    assert "Los primeros videos pasaron de 60 minutos" in flat(block(text, "calib-avisos"))
+    assert "Es normal en calibración" in flat(block(text, "calib-avisos"))
+    assert not re.search(r"(?<!\d)0 min", tab)
+
+
+def test_calibration_tab_without_measured_minutes_never_says_zero() -> None:
+    text = page(calib_api(measured(None, None)), "calibracion")
+    tab = flat(block(text, "tab-calibracion"))
+    assert NO_MEASURE in tab
+    assert "sin medir" in tab
+    assert not re.search(r"(?<!\d)0 min", tab)
+    assert "Horas de calibración hasta hoy" not in tab
+    assert "calib-avisos" not in text
+    nothing = flat(block(page(calib_api([]), "calibracion"), "tab-calibracion"))
+    assert NO_MEASURE in nothing and "pendiente" in nothing
+
+
+def test_calibration_tab_proposes_passing_as_text_without_any_button() -> None:
+    text = page(calib_api(measured(58, 59, 55)), "calibracion")
+    proposal = flat(block(text, "calib-propuesta"))
+    assert "Pasa a régimen" in proposal
+    tab = block(text, "tab-calibracion")
+    assert "<form" not in tab and "<button" not in tab and 'method="post"' not in tab
+    not_yet = page(calib_api(measured(92, 71, 58)), "calibracion")
+    assert "calib-propuesta" not in not_yet
+
+
+def test_calibration_requests_are_made_only_for_that_tab() -> None:
+    api = calib_api(measured(50))
+    for tab in (None, "resumen", "preparacion", "videos", "reglas", "historial"):
+        page(api, tab)
+    assert api.count(*REPORT) == 0
+    page(api, "calibracion")
+    assert api.count(*REPORT) == 1
+    assert api.count("GET", f"/api/v1/pilots/{PID}/videos") == 2  # the Videos tab and this one
+
+
+def test_calibration_tab_when_the_dossier_cannot_be_read_says_so_and_the_panel_lives() -> None:
+    routes: list[Any] = [
+        (500, {"detail": "x"}),
+        (404, {"detail": "x"}),
+        (200, ["no"]),
+        (200, {"dossier": None}),
+        (200, report_detail(dossier=dossier_v3() | {"calibration": "x"})),
+    ]
+    for report in routes:
+        text = page(calib_api(measured(50), report=report), "calibracion")
+        assert "No se pudo leer el informe de calibración" in flat(block(text, "tab-calibracion"))
+        assert "Resumen" in block(text, "pestanas")
+    for tab in (None, "reglas"):
+        page(calib_api(report=(500, {"detail": "x"})), tab)
+
+
+def test_calibration_tab_when_the_videos_cannot_be_read_says_so() -> None:
+    api = calib_api()
+    api.routes[("GET", f"/api/v1/pilots/{PID}/videos")] = (500, {"detail": "x"})
+    text = page(api, "calibracion")
+    assert "No se pudieron cargar los videos" in flat(block(text, "tab-calibracion"))
+
+
+def test_calibration_tab_without_a_valid_request_id_says_it_cannot_read() -> None:
+    package = pilot_detail()["package"]
+    assert isinstance(package, dict)
+    bad = package | {"dossier": package["dossier"] | {"request_id": "../x"}}
+    api = calib_api(detail=detail_with(package=bad))
+    text = page(api, "calibracion")
+    assert "No se pudo leer el informe de calibración" in flat(block(text, "tab-calibracion"))
+    assert api.count(*REPORT) == 0
+
+
+def test_the_calibration_url_falls_back_to_the_summary_without_a_v3_dossier() -> None:
+    api = api_with(detail_with(package=v2_package()))
+    text = page(api, "calibracion")
+    assert "tab-calibracion" not in text and "res-bloqueos" in text
+    assert api.count(*REPORT) == 0
+
+
+def test_calibration_hostile_text_is_escaped() -> None:
+    dossier = dossier_v3()
+    dossier["calibration"]["exit_criterion"]["statement"] = HOSTILE
+    dossier["calibration"]["minutes_by_step"][0]["step"] = HOSTILE
+    videos = measured(50, method=HOSTILE)
+    text = page(calib_api(videos, dossier=dossier), "calibracion")
+    assert "<script>" not in text
+    assert "[x](https://evil.test)" not in text.replace(ESCAPED, "")
+    assert text.count(ESCAPED) >= 3
+    assert ESCAPED in block(text, "calib-metodo")
+
+
+def test_panel_view_calibration_tab_with_inconsistent_inputs_does_not_raise() -> None:
+    detail = detail_with()
+    dossiers: list[Any] = [None, "x", 3, [], {}]
+    for dossier in dossiers:
+        for videos in (None, "x", [], [1]):
+            built = panel_view(detail, videos, NOW, "UTC", "calibracion", dossier=dossier)  # type: ignore[arg-type]
+            assert built["tab"] == "calibracion" and built["calibration"]["failed"]

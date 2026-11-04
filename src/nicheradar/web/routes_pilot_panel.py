@@ -8,6 +8,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, Request
 from starlette.responses import RedirectResponse, Response
 
+from nicheradar.web import calibration
 from nicheradar.web.client import ApiError
 from nicheradar.web.deps import current_session, render, shape_guard
 from nicheradar.web.pilot_panel import notice, panel_view, parse_tab
@@ -69,8 +70,14 @@ def pilot_panel(
     detail = {**detail, "pilot_id": pilot_id}  # links use the id that was validated
     tab = parse_tab(request.query_params.get("pestana"))
     videos = _videos(request, pilot_id) if tab == "videos" else None
+    dossier: object = None
+    if tab == "calibracion" and calibration.has_calibration_schema(detail):
+        # Only this tab reads the dossier and the videos, and a failure only affects this tab.
+        dossier, videos = calibration.load(
+            request.app.state.api, pilot_id, calibration.request_id(detail)
+        )
     now = datetime.fromtimestamp(request.app.state.clock(), UTC)
-    view = panel_view(detail, videos, now, request.app.state.config.timezone, tab)
+    view = panel_view(detail, videos, now, request.app.state.config.timezone, tab, dossier=dossier)
     context = {
         "active_tab": "pilotos",
         "v": view,
