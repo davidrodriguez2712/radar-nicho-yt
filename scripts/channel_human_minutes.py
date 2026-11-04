@@ -7,16 +7,23 @@ Ver docs/contracts/channel-report-v3.md.
 """
 
 import json
+import math
 import re
+import sqlite3
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote
 
 METHOD = "claude_sessions_plus_assumed"
 CAP_SECONDS = 15 * 60
 ASSUMED_MINUTES = 10
 MAX_MINUTES = 100_000
+
+
+class HumanMinutesError(Exception):
+    """Error esperado al calcular minutos humanos; el mensaje está en español."""
 
 
 @dataclass(frozen=True)
@@ -92,3 +99,77 @@ def _scan(
                 last[session] = at
     except OSError:
         return
+
+
+def read_windows(db_path: Path) -> dict[str, tuple[datetime, datetime]]:
+    """Ventana de producción por video: primer evento hasta PROGRAMADO/PUBLICADO (o el último)."""
+    if not db_path.is_file():
+        raise HumanMinutesError(f"No se encontró la base del canal: {db_path}")
+    uri = f"file:{quote(str(db_path.resolve()))}?mode=ro"
+    try:
+        con = sqlite3.connect(uri, uri=True)
+        try:
+            rows = con.execute(
+                "SELECT video_id, a_estado, creado_en FROM eventos ORDER BY id"
+            ).fetchall()
+        finally:
+            con.close()
+    except sqlite3.Error as error:
+        raise HumanMinutesError(
+            f"No se pudo leer la tabla 'eventos' de la base del canal: {error}"
+        ) from error
+    events: dict[str, list[tuple[datetime, object]]] = {}
+    for video, state, created in rows:
+        at = _moment(created)
+        if at is None or not isinstance(video, str):
+            continue
+        events.setdefault(video, []).append((at, state))
+    windows: dict[str, tuple[datetime, datetime]] = {}
+    for video, items in events.items():
+        items.sort(key=lambda item: item[0])
+        end = next(
+            (at for at, state in items if state in ("PROGRAMADO", "PUBLICADO")), items[-1][0]
+        )
+        windows[video] = (items[0][0], end)
+    return windows
+
+
+@dataclass(frozen=True)
+class Attribution:
+    by_video: dict[str, float]
+    unattributed: float
+    total: float
+    known: frozenset[str]
+
+
+def attribute(
+    prompts: Sequence[HumanPrompt], windows: Mapping[str, tuple[datetime, datetime]]
+) -> Attribution:
+    """Reparte los segundos de cada mensaje entre los videos cuya ventana lo contiene."""
+    parts: dict[str, list[float]] = {}
+    lost: list[float] = []
+    for prompt in prompts:
+        inside = [v for v, (start, end) in windows.items() if start <= prompt.at <= end]
+        if not inside:
+            lost.append(prompt.gap_seconds)
+            continue
+        share = prompt.gap_seconds / len(inside)
+        for video in inside:
+            parts.setdefault(video, []).append(share)
+    by_video = {video: math.fsum(values) for video, values in parts.items()}
+    unattributed = math.fsum(lost)
+    total = math.fsum([*by_video.values(), unattributed])
+    return Attribution(by_video, unattributed, total, frozenset(windows))
+
+
+def video_minutes(
+    attribution: Attribution, video_id: str, published: bool, assumed: int
+) -> tuple[int, int] | None:
+    """(medidos, supuestos) del video, o None si no se conoce; nunca inventa 0."""
+    if assumed < 0:
+        raise ValueError("Los minutos supuestos no pueden ser negativos.")
+    if video_id not in attribution.known:
+        return None
+    measured = min(math.ceil(attribution.by_video.get(video_id, 0.0) / 60), MAX_MINUTES)
+    applied = min(assumed if published else 0, MAX_MINUTES - measured)
+    return measured, applied

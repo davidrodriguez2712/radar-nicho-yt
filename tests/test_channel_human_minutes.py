@@ -1,9 +1,13 @@
 # tests/test_channel_human_minutes.py
 """channel_human_minutes.py: lector de registros de sesión (solo marcas de tiempo, nunca texto)."""
 
+import hashlib
 import json
+import random
 import re
+import sqlite3
 from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -195,3 +199,141 @@ def test_bad_session_id_and_unhashable_type_are_ignored(tmp_path: Path) -> None:
 def test_out_of_order_timestamps_give_zero_gap(tmp_path: Path) -> None:
     f = jsonl(tmp_path, "a.jsonl", [event("assistant", "10:10:00"), event("user", "10:00:00")])
     assert [p.gap_seconds for p in hm.read_human_prompts([f], 900)] == [0]
+
+
+# --- Task 2: ventanas, reparto y minutos por video ---
+
+
+def make_db(tmp_path: Path, rows: list[tuple[str, str | None, str, str]]) -> Path:
+    path = tmp_path / "pipeline.db"
+    con = sqlite3.connect(path)
+    con.execute(
+        "CREATE TABLE eventos (id INTEGER PRIMARY KEY, video_id TEXT, de_estado TEXT, "
+        "a_estado TEXT, rama TEXT, motivo TEXT, actor TEXT, creado_en TEXT)"
+    )
+    for video, de, a, at in rows:
+        con.execute(
+            "INSERT INTO eventos (video_id, de_estado, a_estado, creado_en) VALUES (?,?,?,?)",
+            (video, de, a, at),
+        )
+    con.commit()
+    con.close()
+    return path
+
+
+def dt(hour: int, minute: int = 0) -> datetime:
+    return datetime(2026, 11, 3, hour, minute, tzinfo=UTC)
+
+
+def test_read_windows_start_to_first_scheduled(tmp_path: Path) -> None:
+    db = make_db(
+        tmp_path,
+        [
+            ("v_a", None, "IDEA", "2026-11-03T10:00:00Z"),
+            ("v_a", "IDEA", "PROGRAMADO", "2026-11-03T12:00:00Z"),
+            ("v_a", "PROGRAMADO", "PUBLICADO", "2026-11-03T13:00:00Z"),
+            ("v_b", None, "IDEA", "2026-11-03T09:00:00Z"),
+            ("v_b", "IDEA", "GUION", "2026-11-03T09:30:00Z"),
+            ("v_c", None, "IDEA", "basura"),
+        ],
+    )
+    windows = hm.read_windows(db)
+    assert windows["v_a"] == (dt(10), dt(12))
+    assert windows["v_b"] == (dt(9), dt(9, 30))
+    assert "v_c" not in windows
+
+
+def test_read_windows_missing_file_and_table(tmp_path: Path) -> None:
+    with pytest.raises(hm.HumanMinutesError):
+        hm.read_windows(tmp_path / "no_existe.db")
+    empty = tmp_path / "vacia.db"
+    sqlite3.connect(empty).close()
+    with pytest.raises(hm.HumanMinutesError):
+        hm.read_windows(empty)
+
+
+def test_read_windows_never_modifies_db(tmp_path: Path) -> None:
+    db = make_db(tmp_path, [("v", None, "IDEA", "2026-11-03T10:00:00Z")])
+    before = hashlib.sha256(db.read_bytes()).hexdigest()
+    hm.read_windows(db)
+    assert hashlib.sha256(db.read_bytes()).hexdigest() == before
+    assert not list(db.parent.glob("pipeline.db-*"))
+
+
+def test_read_only_uri_blocks_writes(tmp_path: Path) -> None:
+    from urllib.parse import quote
+
+    db = make_db(tmp_path, [("v", None, "IDEA", "2026-11-03T10:00:00Z")])
+    con = sqlite3.connect(f"file:{quote(str(db))}?mode=ro", uri=True)
+    with pytest.raises(sqlite3.OperationalError):
+        con.execute("INSERT INTO eventos (video_id) VALUES ('x')")
+    con.close()
+
+
+def test_read_windows_path_with_special_characters(tmp_path: Path) -> None:
+    folder = tmp_path / "canal ñ #1 ?x"
+    folder.mkdir()
+    db = make_db(folder, [("v", None, "IDEA", "2026-11-03T10:00:00Z")])
+    assert "v" in hm.read_windows(db)
+
+
+def prompt(at: datetime, gap: float) -> hm.HumanPrompt:
+    return hm.HumanPrompt(at, gap)
+
+
+def test_attribute_single_window() -> None:
+    result = hm.attribute([prompt(dt(10, 30), 60)], {"a": (dt(10), dt(11)), "b": (dt(12), dt(13))})
+    assert result.by_video == {"a": 60}
+    assert result.unattributed == 0
+    assert result.total == 60
+
+
+def test_attribute_overlap_splits_evenly() -> None:
+    result = hm.attribute([prompt(dt(10, 30), 60)], {"a": (dt(10), dt(11)), "b": (dt(10), dt(12))})
+    assert result.by_video == {"a": 30, "b": 30}
+
+
+def test_attribute_outside_goes_unattributed() -> None:
+    result = hm.attribute([prompt(dt(15), 60)], {"a": (dt(10), dt(11))})
+    assert result.by_video == {}
+    assert result.unattributed == 60
+
+
+def test_attribute_edges_inclusive() -> None:
+    result = hm.attribute([prompt(dt(10), 10), prompt(dt(11), 20)], {"a": (dt(10), dt(11))})
+    assert result.by_video == {"a": 30}
+
+
+def test_attribute_sum_invariant_random() -> None:
+    rng = random.Random(42)
+    base = dt(0)
+    windows = {}
+    for i in range(6):
+        start = base + timedelta(minutes=rng.randint(0, 600))
+        windows[f"v{i}"] = (start, start + timedelta(minutes=rng.randint(0, 300)))
+    prompts = [
+        prompt(base + timedelta(minutes=rng.randint(0, 1000)), rng.uniform(0, 900))
+        for _ in range(50)
+    ]
+    result = hm.attribute(prompts, windows)
+    assert result.total == pytest.approx(sum(p.gap_seconds for p in prompts), abs=1e-6)
+    assert sum(result.by_video.values()) + result.unattributed == pytest.approx(
+        result.total, abs=1e-6
+    )
+    assert result.known == frozenset(windows)
+
+
+def test_video_minutes_cases() -> None:
+    att = hm.Attribution({"a": 90.0}, 0.0, 90.0, frozenset({"a", "idle"}))
+    assert hm.video_minutes(att, "a", True, 10) == (2, 10)
+    assert hm.video_minutes(att, "a", False, 10) == (2, 0)
+    assert hm.video_minutes(att, "idle", True, 10) == (0, 10)
+    assert hm.video_minutes(att, "ghost", True, 10) is None
+
+
+def test_video_minutes_capped_and_negative_rejected() -> None:
+    att = hm.Attribution({"a": 60.0 * 200_000}, 0.0, 60.0 * 200_000, frozenset({"a"}))
+    measured, assumed = hm.video_minutes(att, "a", True, 10) or (0, 0)
+    assert measured + assumed == hm.MAX_MINUTES
+    with pytest.raises(ValueError):
+        hm.video_minutes(att, "a", True, -1)
