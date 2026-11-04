@@ -760,7 +760,7 @@ def test_the_calibration_tab_exists_only_with_a_v3_dossier() -> None:
 
 
 def test_calibration_tab_shows_rows_streak_hours_regime_and_method() -> None:
-    api = calib_api(measured(92, 71, 58))
+    api = calib_api(measured(92, 71, 58), detail=detail_with(status="en_ejecucion"))
     text = page(api, "calibracion")
     tab = flat(block(text, "tab-calibracion"))
     assert "Calibración: tu tiempo por video" in tab
@@ -876,3 +876,27 @@ def test_panel_view_calibration_tab_with_inconsistent_inputs_does_not_raise() ->
         for videos in (None, "x", [], [1]):
             built = panel_view(detail, videos, NOW, "UTC", "calibracion", dossier=dossier)  # type: ignore[arg-type]
             assert built["tab"] == "calibracion" and built["calibration"]["failed"]
+
+
+def test_calibration_setup_label_follows_the_pilot_state() -> None:
+    running = page(
+        calib_api(measured(60), detail=detail_with(status="en_ejecucion")), "calibracion"
+    )
+    done = flat(block(running, "calib-horas"))
+    assert "Preparación del canal (hecha) 8 h" in done
+    assert "(incluye preparación prevista)" not in done
+    preparing = page(calib_api(measured(60), detail=detail_with(status="entregado")), "calibracion")
+    planned = flat(block(preparing, "calib-horas"))
+    assert "Preparación del canal (prevista) 8 h" in planned
+    assert "de 17,5 previstas (incluye preparación prevista)" in planned
+    assert "(hecha)" not in planned
+
+
+def test_calibration_tab_renders_a_measured_zero_as_zero_minutes() -> None:
+    text = page(
+        calib_api(measured(0, 0, 0), detail=detail_with(status="en_ejecucion")), "calibracion"
+    )
+    rows = [flat(r) for r in items(block(text, "calib-filas"))]
+    assert rows[:3] == ["Video 1 0 min", "Video 2 0 min", "Video 3 0 min"]
+    assert "Racha bajo 60 minutos: 3 de 3" in flat(block(text, "calib-racha"))
+    assert NO_MEASURE not in flat(block(text, "tab-calibracion"))

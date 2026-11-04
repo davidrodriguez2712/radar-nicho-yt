@@ -427,14 +427,14 @@ def _summary(
 
 
 def _calibration_view(
-    dossier: object, videos: list[Any] | None, now: datetime, timezone: str
+    dossier: object, videos: list[Any] | None, now: datetime, timezone: str, status: str
 ) -> dict[str, Any]:
     parsed = calib.parse_calibration(dossier)
     if parsed is None:
         return {"failed": "No se pudo leer el informe de calibración."}
     if videos is None:
         return {"failed": "No se pudieron cargar los videos de calibración."}
-    return {"failed": None, **calib.view(parsed, videos, now, timezone)}
+    return {"failed": None, **calib.view(parsed, videos, now, timezone, status)}
 
 
 def panel_view(
@@ -488,7 +488,7 @@ def panel_view(
             "capped": videos is not None and len(videos) > LIST_CAP,
         }
     elif tab == "calibracion":
-        view["calibration"] = _calibration_view(dossier, videos, now, timezone)
+        view["calibration"] = _calibration_view(dossier, videos, now, timezone, status)
     elif tab == "reglas":
         view["rules"] = {"rows": rule_rows(detail), "capped": len(_rules_source(detail)) > LIST_CAP}
     else:

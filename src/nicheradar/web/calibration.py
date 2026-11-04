@@ -7,7 +7,8 @@ stored on the server. Every reader tolerates a wrong type; a number the data can
 shown as not measured, never as zero.
 
 Ruling 4: ``max_minutes_per_video`` is inclusive. A video meets the criterion when its human
-minutes are at most that value. A value of zero (or negative, or not finite) is not a measurement.
+minutes are at most that value. A measured zero is valid; only None or an invalid value (negative,
+not finite, not an int) is "sin medir".
 """
 
 from collections.abc import Sequence
@@ -28,6 +29,8 @@ MAX_VIDEOS = 100  # the contract allows at most 12; this bounds a hostile payloa
 METHOD_CAP = 60
 STATEMENT_CAP = 500
 STEP_CAP = 15
+# The setup hours are the dossier's plan: they only count as done once the pilot is running.
+SETUP_DONE = ("en_ejecucion", "decision_pendiente", "cerrado")
 ROW_KIND = {"ok": "green", "over": "amber", "pending": "neutral", "unmeasured": "neutral"}
 
 
@@ -131,9 +134,9 @@ def parse_calibration(dossier: object) -> Calibration | None:
 
 
 def _measure(value: object) -> int | None:
-    """Human minutes of one video; zero, negative, not finite or not a number is not measured."""
-    number = _num(value)
-    return round(number) if number is not None and number > 0 else None
+    """Human minutes of one video: an int >= 0 (a measured zero is valid); else not measured."""
+    ok = isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    return value if ok and isinstance(value, int) else None
 
 
 def _row_text(value: int | None) -> str:
@@ -143,7 +146,7 @@ def _row_text(value: int | None) -> str:
 def streak(minutes: Sequence[object], max_minutes: int) -> int:
     """The final run of consecutive videos that meet the criterion (``<= max_minutes``).
 
-    A video that was not measured (None, zero, negative, not finite) breaks the run.
+    A video that was not measured (None, negative, not finite, not an int) breaks the run.
     """
     run = 0
     for value in reversed(minutes):
@@ -170,7 +173,11 @@ def _method_text(videos: list[dict[str, Any]]) -> str | None:
 
 
 def view(
-    calibration: Calibration, videos: list[Any] | None, now: datetime, tz: str = "UTC"
+    calibration: Calibration,
+    videos: list[Any] | None,
+    now: datetime,
+    tz: str = "UTC",
+    status: str | None = None,
 ) -> dict[str, Any]:
     """The M13 model. ``now`` is only kept for symmetry with the other views."""
     del now
@@ -203,9 +210,11 @@ def view(
         calibration.videos_planned,
         sum(minutes for _, minutes in calibration.steps),
     )
+    setup_done = status in SETUP_DONE
     hours_text = (
         f"Horas de calibración hasta hoy: "
         f"{_hours(calibration.setup_hours + sum(done) / 60)} h de {_hours(planned_hours)} previstas"
+        + ("" if setup_done else " (incluye preparación prevista)")
         if done
         else None
     )
@@ -231,6 +240,9 @@ def view(
         "incomplete": incomplete,
         "hours_text": hours_text,
         "hours_incomplete": bool(done) and incomplete,
+        "setup_label": "Preparación del canal (hecha)"
+        if setup_done
+        else "Preparación del canal (prevista)",
         "setup_text": f"{_hours(calibration.setup_hours)} h"
         if calibration.setup_hours > 0
         else None,

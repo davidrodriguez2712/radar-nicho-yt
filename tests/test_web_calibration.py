@@ -140,8 +140,8 @@ def test_streak_the_threshold_itself_meets_the_criterion_ruling_4() -> None:
     assert streak([60, 61], 60) == 0
 
 
-def test_streak_ignores_zero_negative_and_non_finite_values_as_not_measured() -> None:
-    assert streak([58, 0, 55], 60) == 1
+def test_streak_ignores_negative_and_non_finite_values_as_not_measured() -> None:
+    assert streak([58, 0, 55], 60) == 3  # a measured zero is a valid measure
     assert streak([58, -5, 55], 60) == 1
     assert streak([58, math.nan, 55], 60) == 1
     assert streak([58, math.inf, 55], 60) == 1
@@ -215,22 +215,34 @@ def test_view_caps_the_rows_at_one_hundred() -> None:
     assert result["capped"] is True
 
 
+def test_streak_a_measured_zero_counts() -> None:
+    assert streak([0, 0, 0], 60) == 3
+    assert streak([0, 0, 61], 60) == 0
+
+
+def test_view_three_measured_zeros_pass_and_render_zero_minutes() -> None:
+    result = view(calib(), vids(0, 0, 0), NOW, "UTC")
+    assert result["streak"] == 3 and result["passes"] is True
+    assert [(r["text"], r["state"]) for r in result["rows"][:3]] == [("0 min", "ok")] * 3
+    assert result["measured"] is True and result["incomplete"] is False
+
+
 def test_view_hours_are_the_setup_plus_the_measured_minutes_against_the_planned() -> None:
     # planned: 8 + 6 * 95 / 60 = 17.5 h; done: 8 + (92 + 71 + 58) / 60 = 11.68 h
-    result = view(calib(), vids(92, 71, 58), NOW, "UTC")
+    result = view(calib(), vids(92, 71, 58), NOW, "UTC", status="en_ejecucion")
     assert result["hours_text"] == "Horas de calibración hasta hoy: 11,7 h de 17,5 previstas"
     assert result["setup_text"] == "8 h"
 
 
 def test_view_hours_say_incomplete_when_a_video_has_no_measure() -> None:
-    result = view(calib(), vids(60, None), NOW, "UTC")
+    result = view(calib(), vids(60, None), NOW, "UTC", status="en_ejecucion")
     assert result["hours_text"] == "Horas de calibración hasta hoy: 9 h de 17,5 previstas"
     assert result["hours_incomplete"] is True
 
 
 def test_view_ignores_bad_values_in_the_hours_and_marks_them() -> None:
-    result = view(calib(), vids(0, -5, math.nan, 60), NOW, "UTC")
-    assert [r["text"] for r in result["rows"][:4]] == ["sin medir"] * 3 + ["60 min"]
+    result = view(calib(), vids(-5, math.nan, 60), NOW, "UTC", status="cerrado")
+    assert [r["text"] for r in result["rows"][:3]] == ["sin medir"] * 2 + ["60 min"]
     assert result["hours_text"] == "Horas de calibración hasta hoy: 9 h de 17,5 previstas"
     assert result["incomplete"] is True
 
@@ -291,3 +303,19 @@ def test_view_tolerates_garbage_videos() -> None:
 def test_view_steps_are_exposed_as_text_pairs() -> None:
     result = view(calib(), [], NOW, "UTC")
     assert result["steps"] == [("Guion", 40), ("Voz", 10), ("Edición", 45)]
+
+
+def test_view_setup_is_done_only_once_the_pilot_runs() -> None:
+    for status in ("en_ejecucion", "decision_pendiente", "cerrado"):
+        result = view(calib(), vids(60), NOW, "UTC", status=status)
+        assert result["setup_label"] == "Preparación del canal (hecha)"
+        assert result["hours_text"] == "Horas de calibración hasta hoy: 9 h de 17,5 previstas"
+
+
+def test_view_setup_is_planned_before_that_and_the_hours_say_so() -> None:
+    for status in ("entregado", "autorizado", "otro", None):
+        result = view(calib(), vids(60), NOW, "UTC", status=status)
+        assert result["setup_label"] == "Preparación del canal (prevista)"
+        assert result["hours_text"] == (
+            "Horas de calibración hasta hoy: 9 h de 17,5 previstas (incluye preparación prevista)"
+        )

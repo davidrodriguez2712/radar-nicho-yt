@@ -15,7 +15,7 @@
     {% if not c.measured %}<p class="lead">Aún sin minutos medidos</p>{% endif %}
     <div id="calib-horas">
       {% if c.hours_text %}<p>{{ c.hours_text }}{% if c.hours_incomplete %} <span class="caption">(incompleto: hay videos sin medir)</span>{% endif %}</p>{% endif %}
-      {% if c.setup_text %}<p>Preparación del canal (hecha) <strong>{{ c.setup_text }}</strong></p>{% endif %}
+      {% if c.setup_text %}<p>{{ c.setup_label }} <strong>{{ c.setup_text }}</strong></p>{% endif %}
     </div>
     {% if c.regime_text %}<p id="calib-regimen">{{ c.regime_text }}</p>{% endif %}
     {% if c.method_text %}<p class="caption" id="calib-metodo">Minutos {{ c.method_text }}</p>{% endif %}

@@ -105,7 +105,8 @@ sale de la ruta y el actor lo fija el servidor. Tras una acción se vuelve al pa
 
 - Pestaña **Calibración** del panel: aparece solo si el paquete del piloto trae un dossier v3; solo ella lee `GET /flow-research/{id}` (el dossier) y `GET /pilots/{id}/videos`. Si el dossier o los videos no se pueden leer, la pestaña lo dice y el resto del panel sigue.
 - La calibración se calcula al leer, en la web, y es una sugerencia en texto («Pasa a régimen»): el servidor no evalúa nada y no hay botones nuevos.
-- El criterio de salida `max_minutes_per_video` es **inclusivo**: un video lo cumple con `human_minutes <= max`. La racha cuenta los últimos videos consecutivos que cumplen; un video sin medir (`null`, cero, negativo o no finito) la corta.
+- El criterio de salida `max_minutes_per_video` es **inclusivo**: un video lo cumple con `human_minutes <= max`. La racha cuenta los últimos videos consecutivos que cumplen; un video sin medir (`null` o un valor inválido: negativo, no finito o no entero) la corta; un cero medido es válido y cuenta («0 min»).
+- Las horas de preparación del dossier son un plan: se rotulan «Preparación del canal (hecha)» solo con el piloto en ejecución, con decisión pendiente o cerrado; antes se rotulan «(prevista)» y las horas de calibración dicen «(incluye preparación prevista)».
 - Nunca se muestra «0 min» por datos sin medir: se dice «Aún sin minutos medidos» (el total de la API suma solo los medidos). La etiqueta del método sale de `human_minutes_method` de los videos («estimado (método X)»; varios métodos, «métodos mezclados»). Hasta que exista el productor de minutos, en producción todos los videos aparecen «sin medir».
 - Hoy: tarjeta «N pilotos en calibración» con la racha y el último video, solo para pilotos activos con calibración legible; mira como máximo 5 pilotos (tres lecturas cada uno) y avisa «y N más».
 
