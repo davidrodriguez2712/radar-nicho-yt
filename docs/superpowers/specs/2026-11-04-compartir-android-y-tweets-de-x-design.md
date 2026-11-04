@@ -66,7 +66,7 @@ si lo hubiera pegado a mano: propuesta → aprobación → medición → investi
 - Texto e imágenes de X son de terceros: se escapan al mostrarlos, nunca se interpretan como instrucciones ni se usan como
   consultas sin validar; las cifras de ingresos del tweet son solo pistas y no se guardan como datos.
 - Anti-SSRF: solo se consulta el host fijo del lector y los medios de X; el `id` del tweet se valida con `fullmatch` de dígitos.
-- Costos acotados: tope de tweets leídos por día (por definir en el plan, valor inicial 20) y de imágenes por tweet (4).
+- Costos acotados: tope de 50 tweets leídos por día (decidido por el propietario) y de imágenes por tweet (4).
 - Sesión larga: una cookie copiada sirve 5 días; mitigación: contraseña larga y aleatoria, límite de intentos de acceso y
   HTTPS. Al quitar la Basic Auth del proxy, la contraseña de la app es la única barrera: debe ser aleatoria de al menos 32
   caracteres.
@@ -89,7 +89,7 @@ trabajo (se guardan los canales resueltos y la URL del tweet como origen).
 7. Mención duplicada (mismo canal en texto e imagen): una sola entrada.
 8. Hipótesis ya existente para ese canal semilla: se informa como duplicado, no como error.
 
-## Decisiones pendientes
+## Decisiones cerradas (2026-11-04)
 
-1. Tope diario de tweets leídos (valor inicial propuesto: 20).
-2. Si se quiere una pista visible del tweet en la propuesta (por ejemplo «Origen: tweet de @usuario») además del origen `lead`.
+1. Tope diario de lectura: **50 tweets por día**.
+2. La propuesta muestra su origen: una línea «Origen: tweet de @usuario» (además del origen `lead` en los datos).
