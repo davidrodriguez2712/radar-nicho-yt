@@ -367,3 +367,58 @@ def test_view_method_comes_only_from_measured_videos() -> None:
     assert view(calib(), videos, NOW, "UTC")["method_text"] is None
     videos[1]["human_minutes_method"] = "claude_sessions"
     assert view(calib(), videos, NOW, "UTC")["method_text"] == "estimado (método claude_sessions)"
+
+
+# ---- lower bound (method claude_sessions_plus_assumed) ---------------------------------------
+
+LOWER = "claude_sessions_plus_assumed"
+
+
+def test_a_lower_bound_method_turns_the_streak_into_a_possible_one() -> None:
+    result = view(calib(), vids(58, 59, 55, method=LOWER), NOW, "UTC")
+    assert result["lower_bound"] is True
+    assert result["method_text"] == f"mínimo estimado (método {LOWER})"
+    assert result["streak_text"] == (
+        "Racha de hasta 60 minutos: 3 de 3 (posible: las cifras son un mínimo)"
+    )
+    assert [r["text"] for r in result["rows"][:3]] == ["≥ 58 min", "≥ 59 min", "≥ 55 min"]
+    assert result["passes"] is True
+    assert result["last_video"].startswith("Video 3 · ≥ 55 min")
+
+
+def test_another_method_or_none_keeps_the_current_texts() -> None:
+    other = view(calib(), vids(58, 59, 55, method="gate_waits"), NOW, "UTC")
+    assert other["lower_bound"] is False
+    assert other["method_text"] == "estimado (método gate_waits)"
+    assert other["streak_text"] == "Racha de hasta 60 minutos: 3 de 3"
+    assert [r["text"] for r in other["rows"][:3]] == ["58 min", "59 min", "55 min"]
+    none = view(calib(), vids(58, 59, 55), NOW, "UTC")
+    assert none["lower_bound"] is False and none["method_text"] is None
+
+
+def test_mixed_methods_including_the_lower_bound_one_are_a_lower_bound() -> None:
+    videos = vids(50, 50)
+    videos[0]["human_minutes_method"] = "gate_waits"
+    videos[1]["human_minutes_method"] = LOWER
+    result = view(calib(), videos, NOW, "UTC")
+    assert result["lower_bound"] is True
+    assert result["method_text"] == "métodos mezclados"
+    assert result["rows"][0]["text"] == "≥ 50 min"
+
+
+def test_lower_bound_never_marks_unmeasured_and_keeps_a_measured_zero() -> None:
+    videos = vids(None, 0, method=LOWER)
+    videos[0]["human_minutes_method"] = LOWER  # unmeasured rows say nothing
+    result = view(calib(), videos, NOW, "UTC")
+    assert result["lower_bound"] is True
+    assert [r["text"] for r in result["rows"][:3]] == ["sin medir", "≥ 0 min", "pendiente"]
+    only_unmeasured = vids(None, None)
+    only_unmeasured[0]["human_minutes_method"] = LOWER
+    assert view(calib(), only_unmeasured, NOW, "UTC")["lower_bound"] is False
+
+
+def test_lower_bound_does_not_change_the_numbers() -> None:
+    plain = view(calib(), vids(92, 58, 59, method="gate_waits"), NOW, "UTC")
+    lower = view(calib(), vids(92, 58, 59, method=LOWER), NOW, "UTC")
+    for key in ("streak", "passes", "measured", "incomplete", "hours_text", "warning"):
+        assert plain[key] == lower[key]

@@ -32,6 +32,10 @@ STATEMENT_CAP = 500
 STEP_CAP = 15
 # The setup hours are the dossier's plan: they only count as done once the pilot is running.
 SETUP_DONE = ("en_ejecucion", "decision_pendiente", "cerrado")
+# A figure from these methods is a floor (the human's reading/typing time plus a declared
+# assumption, with most measured time unattributed): a streak built on it is only "possible".
+LOWER_BOUND_METHODS: frozenset[str] = frozenset({"claude_sessions_plus_assumed"})
+LOWER_BOUND_NOTE = "Las cifras son un mínimo estimado: confírmalo con tu propio criterio."
 ROW_KIND = {"ok": "green", "over": "amber", "pending": "neutral", "unmeasured": "neutral"}
 
 
@@ -140,8 +144,10 @@ def _measure(value: object) -> int | None:
     return value if ok and isinstance(value, int) else None
 
 
-def _row_text(value: int | None) -> str:
-    return "sin medir" if value is None else f"{value} min"
+def _row_text(value: int | None, lower_bound: bool = False) -> str:
+    if value is None:
+        return "sin medir"
+    return f"≥ {value} min" if lower_bound else f"{value} min"
 
 
 def streak(minutes: Sequence[object], max_minutes: int) -> int:
@@ -162,17 +168,24 @@ def _hours(value: float) -> str:
     return f"{round(value, 1):g}".replace(".", ",")
 
 
-def _method_text(videos: list[dict[str, Any]]) -> str | None:
-    methods = []
+def _methods(videos: list[dict[str, Any]]) -> list[str]:
+    methods: list[str] = []
     for video in videos:
         if _measure(video.get("human_minutes")) is None:
             continue  # a not-measured row may still carry a method: it says nothing
         method = _str(video.get("human_minutes_method")).strip()[:METHOD_CAP]
         if method and method not in methods:
             methods.append(method)
+    return methods
+
+
+def _method_text(methods: list[str]) -> str | None:
     if not methods:
         return None
-    return "métodos mezclados" if len(methods) > 1 else f"estimado (método {methods[0]})"
+    if len(methods) > 1:
+        return "métodos mezclados"
+    prefix = "mínimo estimado" if methods[0] in LOWER_BOUND_METHODS else "estimado"
+    return f"{prefix} (método {methods[0]})"
 
 
 def view(
@@ -191,6 +204,8 @@ def view(
         if isinstance(v, dict) and _moment(v.get("published_at")) is not None
     ]
     measures = [_measure(v.get("human_minutes")) for v in items]
+    methods = _methods(items)
+    lower_bound = any(m in LOWER_BOUND_METHODS for m in methods)
     limit = calibration.max_minutes
     count = max(calibration.videos_planned, len(items))
     rows: list[dict[str, str]] = []
@@ -201,7 +216,7 @@ def view(
             text, state = "sin medir", "unmeasured"
         else:
             value = measures[index]
-            text = _row_text(value)
+            text = _row_text(value, lower_bound)
             state = "ok" if value is not None and value <= limit else "over"
         rows.append(
             {
@@ -229,7 +244,7 @@ def view(
     last = None
     if items:
         position = len(items)
-        parts = [f"Video {position}", _row_text(measures[-1])]
+        parts = [f"Video {position}", _row_text(measures[-1], lower_bound)]
         published = _moment(items[-1].get("published_at"))
         if published is not None:
             parts.append(short_date(published, tz))
@@ -242,8 +257,11 @@ def view(
         "rows": rows,
         "capped": count > ROW_CAP,
         "streak": run,
-        "streak_text": f"Racha de hasta {limit} minutos: {run} de {calibration.consecutive}",
+        "streak_text": f"Racha de hasta {limit} minutos: {run} de {calibration.consecutive}"
+        + (" (posible: las cifras son un mínimo)" if lower_bound else ""),
         "passes": passes,
+        "lower_bound": lower_bound,
+        "lower_bound_note": LOWER_BOUND_NOTE,
         "measured": bool(done),
         "incomplete": incomplete,
         "hours_text": hours_text,
@@ -256,7 +274,7 @@ def view(
         else None,
         "regime_text": f"Régimen que buscamos: {regime} min por video" if regime else None,
         "last_video": last,
-        "method_text": _method_text(items),
+        "method_text": _method_text(methods),
         "statement": calibration.statement,
         "steps": list(calibration.steps),
         "warning": (

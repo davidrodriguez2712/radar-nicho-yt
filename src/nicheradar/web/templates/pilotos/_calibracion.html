@@ -8,7 +8,7 @@
     <ul class="videos" id="calib-filas">{% for r in c.rows %}<li class="video"><span class="video__id">{{ r.label }}</span> {{ chip(r.text, r.kind) }}</li>{% endfor %}</ul>
     {% if c.capped %}<p class="caption">Se muestran los primeros 100 videos.</p>{% endif %}
     <p id="calib-racha"><strong>{{ c.streak_text }}</strong></p>
-    {% if c.passes %}<p id="calib-propuesta">Pasa a régimen: los últimos videos cumplen el criterio. Es una propuesta; no cambia nada en el sistema.</p>{% endif %}
+    {% if c.passes %}<p id="calib-propuesta">{% if c.lower_bound %}Podrías pasar a régimen{% else %}Pasa a régimen{% endif %}: los últimos videos cumplen el criterio. Es una propuesta; no cambia nada en el sistema.{% if c.lower_bound %} {{ c.lower_bound_note }}{% endif %}</p>{% endif %}
   </div>
   <div class="card">
     <h2 class="card__heading">Tu tiempo</h2>

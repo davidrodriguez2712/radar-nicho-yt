@@ -809,6 +809,31 @@ def test_calibration_tab_proposes_passing_as_text_without_any_button() -> None:
     assert "calib-propuesta" not in not_yet
 
 
+def test_calibration_tab_says_could_pass_when_the_figures_are_a_lower_bound() -> None:
+    method = "claude_sessions_plus_assumed"
+    text = page(calib_api(measured(58, 59, 55, method=method)), "calibracion")
+    proposal = flat(block(text, "calib-propuesta"))
+    assert "Podrías pasar a régimen" in proposal and "Pasa a régimen" not in proposal
+    assert "Las cifras son un mínimo estimado: confírmalo con tu propio criterio." in proposal
+    assert "(posible: las cifras son un mínimo)" in flat(block(text, "calib-racha"))
+    assert f"Minutos humanos: mínimo estimado (método {method})" in flat(
+        block(text, "calib-metodo")
+    )
+    rows = [flat(r) for r in items(block(text, "calib-filas"))]
+    assert rows[:3] == ["Video 1 ≥ 58 min", "Video 2 ≥ 59 min", "Video 3 ≥ 55 min"]
+    assert "Video 3 · ≥ 55 min" in flat(block(text, "calib-ultimo"))
+    tab = block(text, "tab-calibracion")
+    assert "<form" not in tab and "<button" not in tab
+
+
+def test_calibration_tab_escapes_a_hostile_method_name() -> None:
+    hostile = "<img src=x onerror=alert(1)>claude_sessions_plus_assumed"
+    text = page(calib_api(measured(58, 59, 55, method=hostile)), "calibracion")
+    tab = block(text, "tab-calibracion")
+    assert "<img src=x" not in tab
+    assert "&lt;img" in tab
+
+
 def test_calibration_requests_are_made_only_for_that_tab() -> None:
     api = calib_api(measured(50))
     for tab in (None, "resumen", "preparacion", "videos", "reglas", "historial"):
