@@ -236,8 +236,9 @@ def test_no_warning_when_mostly_attributed_and_zero_total_is_safe(
     out = capsys.readouterr().out
     assert "Aviso" not in out and "(0 %)" in out
     s.write_session([])
-    assert s.run("--dry-run") == 0
-    assert "Aviso" not in capsys.readouterr().out
+    assert s.run("--dry-run") == 1
+    out = capsys.readouterr().out
+    assert "Aviso" not in out and "Traceback" not in out
 
 
 def test_backup_failure_leaves_no_orig_and_next_run_recovers(
@@ -289,3 +290,64 @@ def test_format_is_set_from_the_contract(tmp_path: Path) -> None:
     path = s.put("r.json", report(video(KNOWN), format="shorts"))
     assert s.run() == 0
     assert load(path)["format"] == "long"
+
+
+def test_no_session_logs_exits_1_and_leaves_files_intact(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    s = Setup(tmp_path)
+    s.put("r.json", report(video(KNOWN)))
+    (s.sessions / "s1.jsonl").unlink()
+    before = s.snapshot()
+    assert s.run() == 1
+    assert "No se encontraron registros de sesión" in capsys.readouterr().out
+    assert s.snapshot() == before
+    missing = hm.main(
+        [
+            "--channel-dir",
+            str(s.channel),
+            "--db",
+            str(s.db),
+            "--sessions-home",
+            str(tmp_path / "x"),
+        ],
+        homes=None,
+    )
+    assert missing == 1 and s.snapshot() == before
+
+
+def test_window_before_first_record_is_null_and_flagged(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    s = Setup(tmp_path)
+    s.write_session([message(30), message(40)])  # registros desde 10:30; ventana desde 10:00
+    path = s.put("r.json", report(video(KNOWN)))
+    assert s.run() == 0
+    assert load(path)["videos"][0]["human_minutes"] is None
+    assert "sin cobertura de registros" in capsys.readouterr().out
+
+
+def test_covered_window_without_prompts_is_a_real_zero(tmp_path: Path) -> None:
+    s = Setup(tmp_path)
+    con = sqlite3.connect(s.db)
+    con.execute("UPDATE eventos SET creado_en = '2026-11-03T10:50:00Z' WHERE a_estado = 'IDEA'")
+    con.execute(
+        "UPDATE eventos SET creado_en = '2026-11-03T10:55:00Z' WHERE a_estado = 'PUBLICADO'"
+    )
+    con.commit()
+    con.close()
+    s.write_session([message(0), message(59)])  # cubierta, pero sin mensajes dentro de 10:50-10:55
+    path = s.put("r.json", report(video(KNOWN)))
+    assert s.run() == 0
+    assert load(path)["videos"][0]["human_minutes"] == 0 + 10
+
+
+def test_unreadable_log_file_is_counted_and_warned(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    s = Setup(tmp_path)
+    (s.sessions / "roto.jsonl").mkdir()  # abrirlo falla con OSError
+    s.put("r.json", report(video(KNOWN)))
+    assert s.run("--dry-run") == 0
+    out = capsys.readouterr().out
+    assert "archivos de sesión ilegibles o truncados: 1" in out and "Aviso" in out

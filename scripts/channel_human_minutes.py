@@ -22,6 +22,7 @@ METHOD = "claude_sessions_plus_assumed"
 CAP_SECONDS = 15 * 60
 ASSUMED_MINUTES = 10
 MAX_MINUTES = 100_000
+UNATTRIBUTED_WARN_SHARE = 0.6
 
 
 class HumanMinutesError(Exception):
@@ -65,22 +66,46 @@ def session_dirs(channel_dir: Path, homes: Sequence[Path]) -> list[Path]:
     return [path for path in found if path.is_dir()]
 
 
-def read_human_prompts(files: Iterable[Path], cap_seconds: float) -> list[HumanPrompt]:
+@dataclass(frozen=True)
+class LogScan:
+    """Resultado de leer los registros: solo marcas de tiempo, nunca texto."""
+
+    prompts: list[HumanPrompt]
+    earliest: datetime | None
+    unreadable: int
+
+
+def scan_logs(files: Iterable[Path], cap_seconds: float) -> LogScan:
     prompts: list[HumanPrompt] = []
+    earliest: list[datetime] = []
+    unreadable = 0
     for path in files:
         last: dict[str, datetime] = {}
         try:
             handle = path.open(encoding="utf-8", errors="replace")
         except OSError:
+            unreadable += 1
             continue
         with handle:
-            _scan(handle, last, prompts, cap_seconds)
-    return sorted(prompts, key=lambda prompt: prompt.at)
+            if not _scan(handle, last, prompts, cap_seconds, earliest):
+                unreadable += 1
+    return LogScan(
+        sorted(prompts, key=lambda prompt: prompt.at), min(earliest, default=None), unreadable
+    )
+
+
+def read_human_prompts(files: Iterable[Path], cap_seconds: float) -> list[HumanPrompt]:
+    return scan_logs(files, cap_seconds).prompts
 
 
 def _scan(
-    lines: Iterable[str], last: dict[str, datetime], prompts: list[HumanPrompt], cap_seconds: float
-) -> None:
+    lines: Iterable[str],
+    last: dict[str, datetime],
+    prompts: list[HumanPrompt],
+    cap_seconds: float,
+    earliest: list[datetime] | None = None,
+) -> bool:
+    """False si la lectura se truncó por un error de E/S."""
     try:
         for line in lines:
             try:
@@ -93,6 +118,8 @@ def _scan(
             session = record.get("sessionId")
             if at is None or not isinstance(session, str):
                 continue
+            if earliest is not None:
+                earliest[:] = [min(earliest[0], at)] if earliest else [at]
             if record.get("type") in ("user", "assistant") and is_human_prompt(record):
                 previous = last.get(session)
                 gap = 0.0 if previous is None else (at - previous).total_seconds()
@@ -100,7 +127,8 @@ def _scan(
             if record.get("type") in ("user", "assistant", "system"):
                 last[session] = at
     except OSError:
-        return
+        return False
+    return True
 
 
 def read_windows(db_path: Path) -> dict[str, tuple[datetime, datetime]]:
@@ -142,10 +170,13 @@ class Attribution:
     unattributed: float
     total: float
     known: frozenset[str]
+    uncovered: frozenset[str] = frozenset()
 
 
 def attribute(
-    prompts: Sequence[HumanPrompt], windows: Mapping[str, tuple[datetime, datetime]]
+    prompts: Sequence[HumanPrompt],
+    windows: Mapping[str, tuple[datetime, datetime]],
+    earliest: datetime | None = None,
 ) -> Attribution:
     """Reparte los segundos de cada mensaje entre los videos cuya ventana lo contiene."""
     parts: dict[str, list[float]] = {}
@@ -161,7 +192,10 @@ def attribute(
     by_video = {video: math.fsum(values) for video, values in parts.items()}
     unattributed = math.fsum(lost)
     total = math.fsum([*by_video.values(), unattributed])
-    return Attribution(by_video, unattributed, total, frozenset(windows))
+    uncovered = frozenset(
+        video for video, (start, _) in windows.items() if earliest is not None and start < earliest
+    )
+    return Attribution(by_video, unattributed, total, frozenset(windows), uncovered)
 
 
 def video_minutes(
@@ -170,7 +204,7 @@ def video_minutes(
     """(medidos, supuestos) del video, o None si no se conoce; nunca inventa 0."""
     if assumed < 0:
         raise ValueError("Los minutos supuestos no pueden ser negativos.")
-    if video_id not in attribution.known:
+    if video_id not in attribution.known or video_id in attribution.uncovered:
         return None
     measured = min(math.ceil(attribution.by_video.get(video_id, 0.0) / 60), MAX_MINUTES)
     applied = min(assumed if published else 0, MAX_MINUTES - measured)
@@ -283,7 +317,12 @@ def convert_outbox(
         out(f"{path.name}: {'se convertiría' if dry_run else 'convertido'} a channel-report-v3")
         for video_id, minutes, measured, assumed_part in summary.lines:
             if minutes is None:
-                out(f"  {video_id}: sin dato (null)")
+                reason = (
+                    "sin cobertura de registros"
+                    if video_id in attribution.uncovered
+                    else "sin dato"
+                )
+                out(f"  {video_id}: {reason} (null)")
             else:
                 out(f"  {video_id}: medido {measured} · supuesto {assumed_part} = {minutes} min")
     out(f"archivos convertidos: {converted_count} · omitidos: {skipped} · fallidos: {failures}")
@@ -325,16 +364,25 @@ def main(argv: Sequence[str] | None = None, homes: Sequence[Path] | None = None)
     except HumanMinutesError as error:
         print(str(error))
         return 1
-    prompts = read_human_prompts(files, args.cap_minutes * 60)
-    attribution = attribute(prompts, windows)
+    scan = scan_logs(files, args.cap_minutes * 60)
+    if not files or not scan.prompts:
+        print(
+            "No se encontraron registros de sesión con mensajes humanos "
+            f"(carpetas: {len(dirs)}, archivos: {len(files)}); no se convierte nada."
+        )
+        return 1
+    prompts = scan.prompts
+    attribution = attribute(prompts, windows, scan.earliest)
     print(f"carpetas de sesiones: {len(dirs)} · archivos: {len(files)} · mensajes: {len(prompts)}")
+    print(f"archivos de sesión ilegibles o truncados: {scan.unreadable}")
     print(f"minutos humanos medidos totales: {attribution.total / 60:.1f}")
     share = attribution.unattributed / attribution.total if attribution.total > 0 else 0.0
     print(f"minutos sin atribuir: {attribution.unattributed / 60:.1f} ({share * 100:.0f} %)")
-    if share > 0.6:
+    if share > UNATTRIBUTED_WARN_SHARE or scan.unreadable > 0:
         print(
             "Aviso: más del 60 % del tiempo humano medido cae fuera de las ventanas de "
-            "producción de los videos; las cifras por video subestiman el tiempo medido."
+            "producción de los videos, o hay registros incompletos; las cifras por video "
+            "subestiman el tiempo medido."
         )
     return convert_outbox(channel_dir, attribution, args.assumed_minutes, print, args.dry_run)
 

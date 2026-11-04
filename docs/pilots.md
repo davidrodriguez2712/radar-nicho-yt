@@ -176,14 +176,14 @@ Lee en solo lectura los registros de sesión de Claude Code de la carpeta del ca
 | `--db` | Base del canal (por defecto `<canal>/datos/pipeline.db`) |
 | `--dry-run` | Calcula e imprime sin escribir nada |
 
-**Qué mide.** Tiempo activo humano en Claude Code: la diferencia entre mensajes humanos consecutivos de cada archivo de sesión, con tope de 15 min por hueco. Cada mensaje se reparte en partes iguales entre los videos en producción cuya ventana contiene su hora; la ventana va del primer evento del video al primer estado PROGRAMADO/PUBLICADO (o al último evento si no hay).
+**Qué mide.** Tiempo activo humano en Claude Code: el hueco entre el evento previo de cualquier tipo (respuesta de Claude, resultado de herramienta, sistema) de la misma sesión y cada mensaje humano, con tope de 15 min por hueco. Solo cuenta lo que el humano tarda en leer y escribir: excluye el tiempo mientras Claude trabaja, así que la cifra es un piso del tiempo humano. Cada mensaje se reparte en partes iguales entre los videos en producción cuya ventana contiene su hora; la ventana va del primer evento del video al primer estado PROGRAMADO/PUBLICADO (o al último evento si no hay). Un video cuya ventana empieza antes del primer registro disponible queda en `null` («sin cobertura de registros»); uno con la ventana cubierta pero sin mensajes mide 0 real (más el supuesto). Sin registros de sesión o sin mensajes humanos el script no convierte nada y sale con código 1.
 
 **Qué NO mide.** La validación en YouTube Studio (se suma el supuesto fijo de 10 min por video), el trabajo fuera de Claude Code, ni el tiempo que cae fuera de toda ventana: eso se informa como «sin atribuir».
 
 **Por qué es una estimación.** Los videos se solapan y el tiempo se reparte a partes iguales; el primer mensaje de cada archivo cuenta 0; y una parte grande del tiempo puede caer fuera de las ventanas. En una corrida en seco real sobre el canal del propietario, la mayor parte del tiempo medido quedó sin atribuir, así que las cifras por video deben leerse como cota inferior más el supuesto, no como tiempo exacto.
 
-**Salida.** Por video, «medido X · supuesto Y = Z min» (el contrato lleva solo Z; el desglose no viaja). Al principio imprime los totales y el porcentaje «sin atribuir»; con más del 60 % avisa de que las cifras por video subestiman el tiempo medido.
+**Salida.** Por video, «medido X · supuesto Y = Z min» (el contrato lleva solo Z; el desglose no viaja). Al principio imprime los totales y el porcentaje «sin atribuir»; imprime también «archivos de sesión ilegibles o truncados: N»; con más del 60 % sin atribuir o con N > 0 avisa de que las cifras por video subestiman el tiempo medido.
 
-**Privacidad.** Solo usa marcas de tiempo, tipos de registro y `sessionId`; no guarda ni imprime texto de conversaciones.
+**Privacidad.** Usa marcas de tiempo, tipos de registro y `sessionId`; además lee `isMeta`, `isSidechain` y `toolUseResult` y analiza `message.content` solo en memoria para clasificar el mensaje, sin guardarlo ni imprimirlo nunca. Una sesión reanudada en otro archivo de registro pierde su primer hueco.
 
-**Rollback.** Restaurar `*.json.orig` sobre el `*.json` del outbox (el script no sobrescribe un `.orig` existente).
+**Rollback.** Restaurar `*.json.orig` sobre el `*.json` del outbox (el script no sobrescribe un `.orig` existente; si se reutiliza el nombre de un reporte, queda el `.orig` antiguo). Solo sirve ANTES de `channel_sync.py report`: después el archivo está en `outbox/sent/` y el servidor ya guardó los valores.
