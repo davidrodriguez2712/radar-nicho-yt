@@ -45,11 +45,11 @@ retiro.
 
 | Entrega | Pantallas | API principal |
 |---|---|---|
-| **3a Operación y estado** | Avisos de `/status` completos (modo sintético, radar pausado, `scheduler_attention_job_id`, base sin configurar, razones de la investigación y última observación); **Operación**: pausar/reanudar radar, solicitar exploración, requisitos del piloto real (preflight), ejecuciones (`/jobs`), proveedores, scraper de mercado (horario y ejecuciones); cliente con cabeceras | `GET /status`, `PUT /radar`, `POST /runs`, `GET /jobs`, `GET /providers`, `GET /pilot/preflight`, `GET/PUT /market/schedule`, `GET /market/runs` |
-| **3b Resumen y nichos** | **Resumen** (métricas, candidatos, «hacia dónde ir», beneficio, última ejecución) y **Consumo**; **detalle de nicho** (fichas del mercado, «cómo se calculó», descartados visibles, enlace «Analizar canal») | `GET /opportunities`, `GET /opportunities/{id}`, `/profit`, `GET /consumption`, `GET /market/niches/{label}`, `GET /market/niches?include_discarded` |
-| **3c Backlog de oportunidades** | Lista con filtros y paginación de 20; detalle con cinco pestañas: Análisis, Evidencia original, Historial y decisión (con comparación de versiones), Producción, Publicidad y puntuación | `GET /opportunities` y `/{id}`, `/decisions`, `/comparison`, `GET/POST /production`, `GET/POST /scoring` |
+| **3a Operación y estado** | Avisos de estado (modo, scraper pausado o con última ejecución parcial o fallida); **Operación**: scraper de mercado (estado, horario, pausar y reanudar con confirmación, ejecuciones) y resumen de subnichos (activas, propuestas por aprobar, pausadas, sin primera medición, última medición). **Sin el radar** (ver «Decisiones del propietario», 5) | `GET /status`, `GET/PUT /market/schedule`, `GET /market/runs`, `GET /subniches?include_inactive=true` |
+| **3b Detalle de nicho** | Detalle de nicho (fichas del mercado, «cómo se calculó», descartados visibles, enlace «Analizar canal»). **Resumen y Consumo quedan fuera** (eran del radar) | `GET /market/niches/{label}`, `GET /market/niches?include_discarded` |
+| ~~3c Backlog de oportunidades~~ | **Fuera de alcance:** el radar de oportunidades se quita de la web móvil (decisión 5). El código del servidor y Streamlit no se tocan hasta el retiro | — |
 | **3d Análisis de canal** | Analizar, lista comparativa, detalle, historial completo (con estimación de cuota y confirmación), eliminar | `POST/GET /channel-analyses`, `/{id}`, `/deep-history/estimate`, `POST /deep-history`, `DELETE` |
-| **3e Escenarios y Configuración** | Escenarios guardados; Configuración: recursos compartidos y receta de producción por defecto | `POST/GET /scenarios`, `GET/PUT /profile`, `GET/POST /defaults/production-recipes/{format}`, `GET /catalog` |
+| ~~3e Escenarios y Configuración~~ | **Fuera de alcance:** Escenarios y Configuración (perfil y receta de producción por defecto) eran del radar (decisión 5, ampliada el 2026-11-04) | — |
 | **3f Retiro de Streamlit** | Ver sección 4 | — |
 
 ### 2. Reglas comunes a las pantallas nuevas
@@ -137,3 +137,7 @@ privada (no hacen falta); cambios de proveedor o de infraestructura.
    errores del servidor visibles.
 3. **Orden de las entregas:** 3a, 3b, 3c, 3d, 3e y 3f (supuesto del recomendado; sin objeción).
 4. **`NR_DASHBOARD_UI` tras el retiro: (A).** Se elimina; un valor `streamlit` se ignora con un aviso en el arranque.
+5. **El radar de oportunidades se quita de la web móvil: (A).** Decidido el 2026-11-04. Quedan fuera: pausar y reanudar el
+   radar, solicitar exploración, requisitos del piloto real, ejecuciones y proveedores del radar, Resumen, Consumo, Backlog
+   y Escenarios. El backend y Streamlit permanecen hasta el retiro (3f); al retirar Streamlit esas pantallas dejan de existir
+   en la interfaz. El propietario confirmó el 2026-11-04 que también se quita «Configuración». Además, el chip «Radar pausado» de la cabecera de la web deja de existir (el estado que importa vive en Operación). No se borra código del servidor en este corte.
