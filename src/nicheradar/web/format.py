@@ -114,3 +114,22 @@ def short_date(moment: datetime, timezone: str) -> str:
         moment = moment.replace(tzinfo=UTC)
     local = moment.astimezone(zone(timezone))
     return f"{local.day} {MONTHS_SHORT[local.month - 1]}"
+
+
+def ago(value: object, now: datetime) -> str:
+    """'hace 5 min' style age of an ISO moment; unreadable reads '—', a future one 'ahora'."""
+    if not isinstance(value, str):
+        return "—"
+    try:
+        seconds = (now - parse_utc(value)).total_seconds()
+    except (ValueError, OverflowError):
+        return "—"
+    if seconds < 0:
+        return "ahora"
+    if seconds < 60:
+        return "hace un momento"
+    if seconds < 3600:
+        return f"hace {int(seconds // 60)} min"
+    if seconds < 86400:
+        return f"hace {int(seconds // 3600)} h"
+    return f"hace {int(seconds // 86400)} d"

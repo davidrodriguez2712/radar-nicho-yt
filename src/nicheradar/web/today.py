@@ -94,6 +94,8 @@ def calibration_card(
                 "streak_text": shown["streak_text"],
                 "last_video": shown["last_video"],
                 "passes": shown["passes"],
+                "lower_bound": shown["lower_bound"],
+                "lower_bound_note": shown["lower_bound_note"],
                 "measured": shown["measured"],
             }
         )

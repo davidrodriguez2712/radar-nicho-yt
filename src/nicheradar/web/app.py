@@ -13,7 +13,9 @@ from fastapi.staticfiles import StaticFiles
 from nicheradar.config import Settings
 from nicheradar.web import (
     routes_auth,
+    routes_more,
     routes_niches,
+    routes_operation,
     routes_pilot_actions,
     routes_pilot_list,
     routes_pilot_panel,
@@ -51,7 +53,6 @@ def create_app(
     app.state.signer = SessionSigner.from_settings(config, clock)
     app.state.limiter = LoginLimiter(clock)
     app.state.templates = make_templates()
-    app.state.radar_cache = {"until": 0.0, "value": None}
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     @app.middleware("http")
@@ -93,5 +94,7 @@ def create_app(
     app.include_router(routes_pilot_panel.router)
     app.include_router(routes_pilot_actions.router)
     app.include_router(routes_subniches.router)
+    app.include_router(routes_operation.router)
+    app.include_router(routes_more.router)
     app.include_router(routes_today.router)
     return app

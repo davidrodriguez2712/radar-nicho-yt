@@ -2,14 +2,11 @@
 import json
 import re
 from pathlib import Path
-from typing import cast
 
-from fastapi import Request
 from fastapi.testclient import TestClient
 
 from nicheradar.web import app as web_app
 from nicheradar.web.app import create_app
-from nicheradar.web.deps import radar_state
 from tests.web_helpers import Api, make_client, settings
 
 ROOT = Path(web_app.__file__).parent
@@ -18,15 +15,6 @@ STATIC = ROOT / "static"
 
 def anonymous() -> TestClient:
     return TestClient(create_app(settings()), follow_redirects=False)
-
-
-def request_of(web: TestClient) -> Request:
-    """Minimal stand-in carrying the app state, typed as the Request radar_state expects."""
-
-    class Req:
-        app = web.app
-
-    return cast(Request, Req())
 
 
 def test_the_stylesheet_the_font_and_htmx_are_served_from_the_app() -> None:
@@ -132,24 +120,6 @@ def test_an_authenticated_page_uses_the_base_with_the_bar_the_nav_and_the_pwa_li
     assert config["historyCacheSize"] == 0
 
 
-def test_the_radar_badge_reflects_the_api_state_and_is_cached() -> None:
-    api = Api({("GET", "/api/v1/status"): (200, {"radar_paused": True})})
-    now = [1_000.0]
-    web = make_client(api, clock=lambda: now[0])
-    # Pages call the status endpoint through render(); two calls inside 30 s hit it once.
-    assert radar_state(request_of(web)) == "paused"
-    assert radar_state(request_of(web)) == "paused"
-    assert api.count("GET", "/api/v1/status") == 1
-    now[0] += 31
-    api.routes[("GET", "/api/v1/status")] = (200, {"radar_paused": False})
-    assert radar_state(request_of(web)) == "active"
-
-
-def test_a_status_failure_hides_the_badge_instead_of_breaking_the_page() -> None:
-    web = make_client(Api())  # /status answers 404
-    assert radar_state(request_of(web)) is None
-
-
 def test_radios_use_the_brand_colour_and_row_labels_keep_a_minimum_width() -> None:
     css = (ROOT / "static/css/app.css").read_text()
     assert "input[type=radio]" in css and "accent-color:var(--primary)" in css
@@ -160,7 +130,7 @@ DYNAMIC_CLASSES = {
     "blocker--": ("falta", "vence", "vigencia", "contacto", "desconocido", "decision"),
     "step--": ("done", "current", "todo"),
     "btn--": ("primary", "secondary", "danger"),
-    "chip--": ("neutral", "amber", "green", "rose", "blue"),
+    "chip--": ("neutral", "amber", "green", "rose", "blue", "gray"),
     "note--": ("green", "amber", "rose"),
     "mark--": ("ok", "todo"),
 }
@@ -171,7 +141,9 @@ def test_every_class_the_pilot_templates_use_has_a_rule_in_the_stylesheet() -> N
     missing: set[str] = set()
     for template in [
         *(ROOT / "templates" / "pilotos").glob("*.html"),
+        *(ROOT / "templates" / "operacion").glob("*.html"),
         ROOT / "templates" / "hoy.html",
+        ROOT / "templates" / "mas.html",
     ]:
         text = template.read_text()
         for attribute in re.findall(r'class="([^"]*)"', text):

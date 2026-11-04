@@ -15,7 +15,7 @@
 </head>
 <body>
 <div class="app">
-{% if not bare %}{{ topbar(radar_state, csrf_token) }}{% endif %}
+{% if not bare %}{{ topbar(csrf_token) }}{% endif %}
 <main class="page">{% block content %}{% endblock %}</main>
 {% if not bare %}{{ bottomnav(active_tab) }}{% endif %}
 </div>

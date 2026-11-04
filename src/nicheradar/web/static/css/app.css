@@ -16,7 +16,6 @@ a{color:inherit}
 .tab__label{font-size:11px;font-weight:500}
 .tab--on{color:var(--primary)}
 .tab--on .tab__label{font-weight:600}
-.tab--soon{opacity:.55;pointer-events:none}
 h1,.h1{margin:0;font-size:28px;line-height:34px;font-weight:700}
 .h1--md{font-size:26px;line-height:32px}
 h2,.h2{margin:0;font-size:18px;line-height:24px;font-weight:700}
@@ -29,6 +28,7 @@ h2,.h2{margin:0;font-size:18px;line-height:24px;font-weight:700}
 .chip--rose{background:var(--rose);color:var(--primary)}
 .chip--blue{background:var(--blue);color:var(--blue-ink)}
 .chip--green{background:var(--green);color:var(--green-ink)}
+.chip--gray{background:var(--neutral);color:var(--neutral-ink)}
 .chip--amber{background:var(--amber);color:var(--amber-ink)}
 .tags{display:flex;flex-wrap:wrap;gap:6px}
 .btn{display:flex;align-items:center;justify-content:center;width:100%;padding:13px 16px;border-radius:99px;border:1px solid transparent;font:600 14px/1.2 "Inter",system-ui,sans-serif;text-decoration:none;cursor:pointer}
@@ -67,6 +67,7 @@ input[type=radio],input[type=checkbox]{accent-color:var(--primary)}
 .list{display:flex;flex-direction:column}
 .list__item{display:flex;flex-direction:column;gap:4px;padding:10px 0;border-bottom:1px solid var(--line)}
 .list__item:last-child{border-bottom:0}
+a.list__item{min-height:44px;justify-content:center;color:inherit;text-decoration:none}
 .list__name{display:flex;align-items:center;gap:8px;min-height:44px;font-size:14px;font-weight:600}
 .acc{background:var(--white);border:1px solid var(--line2);border-radius:14px}
 .acc summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;cursor:pointer;list-style:none}
@@ -119,3 +120,6 @@ input[type=radio],input[type=checkbox]{accent-color:var(--primary)}
 .field textarea{min-height:120px;padding:13px 14px;border:1px solid var(--line2);border-radius:12px;background:var(--white);color:var(--ink);font:400 14px/1.4 "Inter",system-ui,sans-serif;resize:vertical}
 .field textarea:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 .resumen-cierre{margin:0;padding:14px;max-width:100%;overflow-x:auto;background:var(--white);border:1px solid var(--line2);border-radius:12px;color:var(--ink);font:400 12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+
+.runline{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.runline__when{font-size:14px;font-weight:600}

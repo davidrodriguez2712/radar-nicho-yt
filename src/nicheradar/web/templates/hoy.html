@@ -29,7 +29,7 @@
   {% if v.calibration.failed %}<div class="note note--amber">No se pudo leer {% if v.calibration.failed == 1 %}1 piloto{% else %}{{ v.calibration.failed }} pilotos{% endif %}.</div>{% endif %}
   <div class="list">
     {% for p in v.calibration.cards %}
-    <div class="list__item"><a class="list__name" href="{{ p.href }}">{{ p.label }}</a><span class="muted">{{ p.channel }}</span><span>{{ p.streak_text }}</span>{% if p.last_video %}<span class="muted">Último: {{ p.last_video }}</span>{% endif %}{% if not p.measured %}<span class="muted">Aún sin minutos medidos</span>{% endif %}{% if p.passes %}{{ chip("Pasa a régimen", "green") }}{% endif %}</div>
+    <div class="list__item"><a class="list__name" href="{{ p.href }}">{{ p.label }}</a><span class="muted">{{ p.channel }}</span><span>{{ p.streak_text }}</span>{% if p.last_video %}<span class="muted">Último: {{ p.last_video }}</span>{% endif %}{% if not p.measured %}<span class="muted">Aún sin minutos medidos</span>{% endif %}{% if p.passes %}{{ chip("Podrías pasar a régimen" if p.lower_bound else "Pasa a régimen", "green") }}{% if p.lower_bound %}<span class="muted">{{ p.lower_bound_note }}</span>{% endif %}{% endif %}</div>
     {% endfor %}
   </div>
   {% if v.calibration.more %}<p class="caption">y {{ v.calibration.more }} más</p>{% endif %}

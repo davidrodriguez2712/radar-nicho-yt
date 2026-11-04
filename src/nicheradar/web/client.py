@@ -10,7 +10,6 @@ from nicheradar.config import Settings
 
 TIMEOUT_SECONDS = 15
 MAX_TEXT_BYTES = 256 * 1024  # the API itself caps what it accepts from the channel at 256 KiB
-STATUS_TIMEOUT_SECONDS = 3  # the badge must never double the wait of a hung API
 MESSAGES = {
     "not_configured": "Falta configurar la credencial de servicio.",
     "unavailable": "API no disponible. Los datos anteriores no se han actualizado.",

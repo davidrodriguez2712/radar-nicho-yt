@@ -225,11 +225,11 @@ def test_the_home_shows_the_local_date() -> None:
     assert "Lunes 2 de noviembre" in other.text
 
 
-def test_the_home_asks_the_status_once_per_request() -> None:
+def test_the_home_no_longer_asks_the_status_and_asks_the_rest_once() -> None:
     api = full_api()
     web = make_client(api)
     web.get("/")
-    assert api.count("GET", "/api/v1/status") == 1
+    assert api.count("GET", "/api/v1/status") == 0
     for path in (NICHES, FLOW, PILOTS, SUBS):
         assert api.count(*path) == 1, path
 
@@ -663,7 +663,11 @@ def cal_pilot(index: int, **over: object) -> dict[str, object]:
 
 
 def cal_routes(
-    index: int, minutes: list[int | None], schema: str = "dossier-v3", rid: str = DOSSIER_ID
+    index: int,
+    minutes: list[int | None],
+    schema: str = "dossier-v3",
+    rid: str = DOSSIER_ID,
+    method: str = "gate_waits",
 ) -> dict[tuple[str, str], Route]:
     pid = f"pil_20261102_c{index}"
     detail = pilot_detail(pid, status="en_ejecucion")
@@ -678,7 +682,7 @@ def cal_routes(
             200,
             {
                 "items": [
-                    pilot_video(f"v{i}", human_minutes=m, human_minutes_method="gate_waits")
+                    pilot_video(f"v{i}", human_minutes=m, human_minutes_method=method)
                     for i, m in enumerate(minutes, 1)
                 ]
             },
@@ -729,6 +733,27 @@ def test_the_calibration_card_lists_each_pilot_with_streak_and_last_video() -> N
     assert 'href="/pilotos/pil_20261102_c1"' in card
     assert "Pasa a régimen" in card
     assert "<form" not in card and "<button" not in card
+
+
+def test_the_card_says_could_pass_when_the_figures_are_a_lower_bound() -> None:
+    api = cal_api(
+        [cal_pilot(1)], cal_routes(1, [58, 59, 55], method="claude_sessions_plus_assumed")
+    )
+    card = section(client_page(api), "calibracion")
+    assert "Podrías pasar a régimen" in card
+    assert "Pasa a régimen" not in card
+    assert "Las cifras son un mínimo estimado: confírmalo con tu propio criterio." in card
+    assert "Racha de hasta 60 minutos: 3 de 3 (posible: las cifras son un mínimo)" in card
+    assert "Video 3 · ≥ 55 min" in card
+    assert "<form" not in card and "<button" not in card
+
+
+def test_the_card_escapes_a_hostile_method_name() -> None:
+    hostile = "<script>x</script>claude_sessions_plus_assumed"
+    api = cal_api([cal_pilot(1)], cal_routes(1, [58, 59, 55], method=hostile))
+    card = section(client_page(api), "calibracion")
+    assert "<script>x" not in card
+    assert "Pasa a régimen" in card  # not a lower-bound method: the text is unchanged
 
 
 def test_one_pilot_in_calibration_uses_the_singular() -> None:

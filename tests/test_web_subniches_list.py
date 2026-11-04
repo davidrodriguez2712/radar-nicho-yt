@@ -215,9 +215,9 @@ def test_a_failing_page_does_not_add_a_status_call_and_status_uses_a_short_timeo
     assert response.status_code == 503
     assert api.count("GET", "/api/v1/status") == 0
 
-    from nicheradar.web.client import STATUS_TIMEOUT_SECONDS, TIMEOUT_SECONDS
+    from nicheradar.web.client import TIMEOUT_SECONDS
 
-    assert STATUS_TIMEOUT_SECONDS == 3 and TIMEOUT_SECONDS == 15
+    assert TIMEOUT_SECONDS == 15
     timeouts: list[object] = []
 
     def record(request: httpx.Request) -> httpx.Response:
@@ -228,21 +228,7 @@ def test_a_failing_page_does_not_add_a_status_call_and_status_uses_a_short_timeo
     from tests.web_helpers import settings
 
     app = create_app(settings(), transport=httpx.MockTransport(record))
-    app.state.api.request("GET", "/status", timeout=STATUS_TIMEOUT_SECONDS)
+    app.state.api.request("GET", "/status", timeout=3)
     assert timeouts[0]["read"] == 3  # type: ignore[index]
     app.state.api.request("GET", "/status")
     assert timeouts[1]["read"] == 15  # type: ignore[index]
-
-
-def test_the_status_call_made_by_a_page_uses_the_short_timeout() -> None:
-    import httpx
-
-    timeouts: list[float] = []
-
-    def status(request: httpx.Request) -> httpx.Response:
-        timeouts.append(request.extensions["timeout"]["read"])
-        return httpx.Response(200, json={"radar_paused": False})
-
-    api = Api({LIST: (200, {"items": []}), ("GET", "/api/v1/status"): status})
-    assert make_client(api).get("/subnichos").status_code == 200
-    assert timeouts == [3]

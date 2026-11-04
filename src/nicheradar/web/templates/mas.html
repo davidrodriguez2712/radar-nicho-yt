@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Más · NicheRadar{% endblock %}
+{% block content %}
+<h1 class="h1">Más</h1>
+<div class="stack">
+  <article class="card">
+    <div class="list">
+      <a class="list__item" href="/operacion">
+        <span class="list__name">Operación</span>
+        <span class="caption">Scraper de mercado y subnichos</span>
+      </a>
+    </div>
+  </article>
+  {% if csrf_token %}
+  <form method="post" action="/salir"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="btn btn--secondary" type="submit">Salir</button></form>
+  {% endif %}
+</div>
+{% endblock %}

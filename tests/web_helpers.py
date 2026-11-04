@@ -371,3 +371,35 @@ def pilot_video(video_id: str = "v1", **over: object) -> dict[str, object]:
         "measurement": None,
     }
     return base | over
+
+
+def schedule(**over: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "paused": False,
+        "next_due_at": "2026-11-05T11:00:00+00:00",
+        "interval_seconds": 86400,
+        "mode": "live",
+        "live_enabled": True,
+        "radar_paused": True,
+    }
+    return base | over
+
+
+def scrape_run(status: str = "succeeded", **over: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "id": "7a1b2c3d-0000-4000-8000-000000000001",
+        "run_key": "run-1",
+        "analysis_run_id": None,
+        "status": status,
+        "stage": "snapshot",
+        "attempts": 1,
+        "lease_owner": None,
+        "lease_until": None,
+        "checkpoints": {},
+        "error_code": None,
+        "stats": {},
+        "started_at": "2026-11-03T11:00:00+00:00",
+        "finished_at": "2026-11-03T11:03:10+00:00",
+        "created_at": "2026-11-03T11:00:00+00:00",
+    }
+    return base | over

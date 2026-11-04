@@ -26,6 +26,8 @@ from tests.web_helpers import (
     pilot_video,
     report_detail,
     research,
+    schedule,
+    scrape_run,
     subniche_card,
     subniche_item,
 )
@@ -37,6 +39,11 @@ ROUTES = [
     "/nichos/investigar?etiqueta=x&formato=long",
     "/subnichos",
     "/subnichos/uno",
+    "/operacion",
+    "/operacion/ejecuciones",
+    "/mas",
+    "/operacion/scraper/pausar",
+    "/operacion/scraper/reanudar",
     f"/informes/{REPORT_ID}",
     f"/pilotos/autorizar?informe={REPORT_ID}",
     "/pilotos",
@@ -60,6 +67,8 @@ STRUCTURAL = {
     "channel_id", "pilot_id", "report_id", "action", "code",
     "path", "unit", "currency", "kind_of", "classification", "rights", "automation", "mode",
 }  # fmt: skip
+STATIC_ROUTES = {"/mas"}  # the menu reads no API at all
+ECHO_FREE = STATIC_ROUTES | {"/operacion/scraper/pausar", "/operacion/scraper/reanudar"}
 SCRIPT = "<script>alert(1)</script>"
 
 
@@ -113,6 +122,14 @@ def fixtures(route: str = "") -> dict[str, Any]:
         "closing": "Resumen de cierre\n\n- una linea",
         "subniches": {"items": [subniche_item(research=research())]},
         "card": subniche_card(research=research()),
+        "schedule": schedule(),
+        "runs": {
+            "items": [
+                scrape_run("partial", error_code="blocked_by_site"),
+                scrape_run("succeeded"),
+                scrape_run("failed", error_code="timeout", stage="detail"),
+            ]
+        },
     }
 
 
@@ -168,6 +185,8 @@ RESOURCES = [
     ("/flow-research", "flows"),
     ("/pilots", "pilots"),
     ("/subniches", "subniches"),
+    ("/market/schedule", "schedule"),
+    ("/market/runs", "runs"),
 ]
 ITEM_KEYS = {"niches": "niche", "flows": "report", "subniches": "card"}
 
@@ -203,7 +222,8 @@ def test_hostile_text_is_escaped_on_every_screen(route: str) -> None:
     assert SCRIPT not in body
     assert not re.search(r"""href\s*=\s*["']\s*javascript:""", body, re.I)
     assert not re.search(r"""href\s*=\s*["']https?://[^"']*evil""", body, re.I)
-    if not route.startswith("/nichos/investigar"):  # that form only echoes the query label
+    if not route.startswith("/nichos/investigar") and route not in ECHO_FREE:
+        # that form only echoes the query label; the menu shows no API text
         assert "&lt;script&gt;" in body or response.status_code != 200, route
 
 
@@ -220,6 +240,9 @@ def test_an_unreachable_api_gives_a_spanish_message_never_a_500(route: str) -> N
     response = web.get(route)
     check_safe(response, route)
     assert response.status_code in (200, 503), (route, response.status_code)
+    if route in STATIC_ROUTES:
+        assert response.status_code == 200, route
+        return
     assert re.search(
         r"no disponible|No se pudo|No se encontr|Sin datos|sin conexi", response.text, re.I
     ), route
@@ -306,6 +329,8 @@ NAN_PATHS = [
     "/api/v1/pilots",
     "/api/v1/subniches",
     "/api/v1/subniches/uno",
+    "/api/v1/market/schedule",
+    "/api/v1/market/runs",
     f"/api/v1/pilots/{PID}",
     f"/api/v1/pilots/{PID}/videos",
     f"/api/v1/pilots/{PID}/closing-summary",
@@ -357,6 +382,8 @@ POSTS: list[tuple[str, dict[str, str]]] = [
     (f"/pilotos/{PID}/cancelar", {"reason": "ok"}),
     ("/subnichos/uno/investigar", {"idioma": "en"}),
     ("/salir", {}),
+    ("/operacion/scraper/pausar", {}),
+    ("/operacion/scraper/reanudar", {}),
 ]
 
 
@@ -525,3 +552,53 @@ def test_measured_zero_counts_and_unmeasured_never_reads_as_zero_minutes() -> No
     body = web.get(CALIBRATION).text
     assert "Aún sin minutos medidos" in body
     assert not re.search(r"(?<!\d)0 min\b", body)
+
+
+SCRAPER_POSTS = ["/operacion/scraper/pausar", "/operacion/scraper/reanudar"]
+
+
+@pytest.mark.parametrize("path", SCRAPER_POSTS)
+def test_a_scraper_post_in_a_disallowed_state_writes_nothing(path: str) -> None:
+    live_off = schedule(paused=True, mode="live", live_enabled=False)
+    odd_values: list[Any] = ["x", 1, None, [], {}]
+    odd_paused = [schedule(paused=value) for value in odd_values]
+    cases = [live_off, *odd_paused, "x", [1], None]
+    for case in cases:
+        data = fixtures()
+        data["schedule"] = case
+        web, api = client_for(data)
+        token = csrf_of(web.get("/mas").text)
+        response = web.post(path, data={"csrf": token})
+        check_safe(response, path)
+        if path.endswith("reanudar") and case is live_off:
+            assert response.status_code == 409, (path, case, response.status_code)
+        elif case is not live_off:
+            assert response.status_code in (409, 503), (path, case, response.status_code)
+        assert _writes(api) == [], (path, case)
+
+
+@pytest.mark.parametrize("route", ["/operacion", "/operacion/ejecuciones"])
+def test_runs_and_schedule_of_the_wrong_type_never_give_a_500(route: str) -> None:
+    junk_items: list[Any] = ["x", [1, 2, 3], 7, None, {}, [None], ["a", {"status": 1}]]
+    odd_runs: list[Any] = [
+        scrape_run() | {"status": 5},
+        scrape_run(stage=[1], error_code=7),
+        scrape_run(started_at="2026-11-03T11:00:00", finished_at="x"),
+        scrape_run(started_at=3, finished_at=float("nan")),
+    ]
+    odd_schedules: list[Any] = [
+        schedule(interval_seconds=float("nan")),
+        schedule(interval_seconds=float("inf")),
+        schedule(interval_seconds="x", next_due_at="2026-11-05T11:00:00"),
+        schedule(next_due_at=7, mode=[1]),
+    ]
+    for items in [*junk_items, odd_runs]:
+        for sched in [schedule(), *odd_schedules]:
+            data = fixtures()
+            data["runs"] = {"items": items}
+            data["schedule"] = sched
+            data["subniches"] = {"items": items}
+            web, _ = client_for(data)
+            response = web.get(route)
+            check_safe(response, f"{route} <- {items!r} {sched!r}")
+            assert response.status_code in (200, 503), (route, items, sched)

@@ -48,3 +48,21 @@ def test_the_preview_renders_the_corte_2a_pilot_screens_with_local_assets(tmp_pa
         html = (tmp_path / f"{name}.html").read_text()
         assert text in html, name
         assert "file://" in html and 'href="/static/' not in html, name
+
+
+def test_the_preview_renders_the_corte_3a_operation_screens_with_local_assets(
+    tmp_path: Path,
+) -> None:
+    assert web_preview.main(["--out", str(tmp_path), "--no-screenshots"]) == 0
+    expected = {
+        "operacion": "Scraper de mercado",
+        "ejecuciones": "Ejecuciones del scraper",
+        "mas": "Scraper de mercado y subnichos",
+        "confirmar-scraper": "Confirmar y reanudar",
+    }
+    for name, text in expected.items():
+        html = (tmp_path / f"{name}.html").read_text()
+        assert text in html, name
+        assert "file://" in html and 'href="/static/' not in html, name
+    operacion = (tmp_path / "operacion.html").read_text()
+    assert "Pausado" in operacion and "parcial" in operacion and "falló" in operacion

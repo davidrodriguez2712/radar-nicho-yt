@@ -51,7 +51,6 @@ def _error_page(request: Request, session: Session, message: str, status: int) -
         {"message": message, "active_tab": "nichos"},
         status_code=status,
         session=session,
-        with_radar=False,
     )
 
 
@@ -164,8 +163,6 @@ def _page(
         },
         status_code=status,
         session=session,
-        # After a failed call the API already answered: skip the radar badge's extra call.
-        with_radar=error is None,
     )
 
 

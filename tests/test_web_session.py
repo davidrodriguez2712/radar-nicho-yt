@@ -48,6 +48,22 @@ def test_a_session_round_trips_and_expires() -> None:
     assert signer.read(token) is None
 
 
+def test_the_session_lasts_exactly_five_days() -> None:
+    assert SESSION_SECONDS == 432_000
+    clock = Clock()
+    signer = SessionSigner(KEY, clock)
+    token = signer.issue()
+    clock.now += 4 * 86_400 + 23 * 3_600
+    assert signer.read(token) is not None
+    clock.now = 1_000.0 + 5 * 86_400 + 60
+    assert signer.read(token) is None
+
+
+def test_the_cookie_max_age_is_five_days() -> None:
+    cookie = login(client()).headers["set-cookie"]  # type: ignore[attr-defined]
+    assert "Max-Age=432000" in cookie and "HttpOnly" in cookie and "SameSite=lax" in cookie
+
+
 def test_a_tampered_or_foreign_session_is_rejected() -> None:
     signer = SessionSigner(KEY, Clock())
     token = signer.issue()
@@ -237,3 +253,12 @@ def test_a_non_ascii_csrf_on_logout_is_forbidden() -> None:
     web = client()
     login(web)
     assert web.post("/salir", data={"csrf": "é"}).status_code == 403
+
+
+def test_the_login_form_states_the_five_day_session_and_pending_access_does_not() -> None:
+    note = (
+        "En este teléfono la sesión dura 5 días. "
+        "Para entrar solo hace falta la contraseña de la app."
+    )
+    assert note in client().get("/login").text
+    assert note not in client(dashboard_password=None).get("/login").text

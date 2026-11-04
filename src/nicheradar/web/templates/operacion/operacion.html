@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "components.html" import chip, button %}
+{% block title %}Operación · NicheRadar{% endblock %}
+{% block content %}
+<h1 class="h1">Operación</h1>
+<p class="caption">Cómo está trabajando el sistema: el scraper de mercado y la medición de subnichos.</p>
+{% if notice %}<div class="note note--{{ notice[1] }}" role="status">{{ notice[0] }}</div>{% endif %}
+{% if view.warnings %}
+<div class="note note--amber" role="status">
+  <span class="note__title">Para revisar</span>
+  {% for w in view.warnings %}<span>{{ w }}</span>{% endfor %}
+</div>
+{% endif %}
+<div class="stack">
+  <article class="card">
+    <h2 class="card__heading">Scraper de mercado</h2>
+    {% if view.scraper.ok %}
+    <div class="rows">
+      <div class="row"><span class="row__label">Estado</span><span class="row__value">{{ view.scraper.state_text }}</span></div>
+      <div class="row"><span class="row__label">Modo</span><span class="row__value">{{ view.scraper.mode_text }}</span></div>
+      <div class="row"><span class="row__label">Frecuencia</span><span class="row__value">{{ view.scraper.frequency_text }}</span></div>
+      <div class="row"><span class="row__label">Próxima ejecución</span><span class="row__value">{{ view.scraper.next_text }}</span></div>
+    </div>
+    {% if view.scraper.paused %}
+    {{ button("Reanudar scraper", "primary", href="/operacion/scraper/reanudar") }}
+    {% else %}
+    {{ button("Pausar scraper", "secondary", href="/operacion/scraper/pausar") }}
+    {% endif %}
+    {% else %}
+    <p class="muted">Scraper de mercado no disponible. Inténtalo de nuevo en un momento.</p>
+    {% endif %}
+  </article>
+  <article class="card">
+    <h2 class="card__heading">Últimas ejecuciones del scraper</h2>
+    {% if view.runs.ok %}
+    {% if view.runs.empty %}
+    <p class="muted">Todavía no hay ejecuciones.</p>
+    {% else %}
+    <div class="list">
+      {% for r in view.runs.rows %}
+      <div class="list__item">
+        <div class="runline"><span class="runline__when">{{ r.when }}</span>{{ chip(r.status_label, r.tone) }}</div>
+        <span class="caption">{{ r.detail }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if view.runs.truncated %}<p class="caption">Se muestran las últimas ejecuciones; puede haber más antiguas.</p>{% endif %}
+    {{ button("Ver todas las ejecuciones", "secondary", href="/operacion/ejecuciones") }}
+    {% else %}
+    <p class="muted">Ejecuciones no disponibles. Inténtalo de nuevo en un momento.</p>
+    {% endif %}
+  </article>
+  <article class="card">
+    <h2 class="card__heading">Subnichos</h2>
+    {% if view.subniches.ok %}
+    <div class="rows">
+      <div class="row"><span class="row__label">Activas (se miden solas)</span><span class="row__value">{{ view.subniches.active }}</span></div>
+      <div class="row"><span class="row__label">Propuestas por aprobar</span><span class="row__value">{{ view.subniches.proposed }}</span></div>
+      <div class="row"><span class="row__label">Pausadas</span><span class="row__value">{{ view.subniches.paused }}</span></div>
+      <div class="row"><span class="row__label">Sin primera medición</span><span class="row__value">{{ view.subniches.unmeasured }}</span></div>
+      <div class="row"><span class="row__label">Última medición</span><span class="row__value">{{ view.subniches.last_measured_text }}</span></div>
+    </div>
+    <p class="caption">Las hipótesis activas se miden solas, a más tardar cada 3 días; las nuevas, primero.</p>
+    {% else %}
+    <p class="muted">Subnichos no disponible. Inténtalo de nuevo en un momento.</p>
+    {% endif %}
+    {{ button("Ver subnichos", "secondary", href="/subnichos") }}
+  </article>
+</div>
+{% endblock %}

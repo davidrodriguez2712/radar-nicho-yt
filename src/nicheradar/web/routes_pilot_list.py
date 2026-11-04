@@ -39,7 +39,6 @@ def pilot_list(request: Request, session: Annotated[Session, Depends(current_ses
             },
             status_code=200 if htmx else 503,
             session=session,
-            with_radar=False,
         )
     else:
         items = data["items"]

@@ -881,3 +881,42 @@ CALIBRATION_DETAIL: dict[str, Any] = PILOT_DETAIL | {
     "status": "en_ejecucion",
     "niche_label": "finanzas personales explicadas",
 }
+
+
+SCHEDULE: dict[str, Any] = {
+    "paused": True,
+    "next_due_at": "2026-11-04T11:00:00+00:00",
+    "interval_seconds": 86400,
+    "mode": "live",
+    "live_enabled": True,
+    "radar_paused": True,
+}
+
+
+def _run(
+    key: str, status: str, stage: str, day: str, mins: int, code: str | None
+) -> dict[str, Any]:
+    start, end = f"2026-11-{day}T11:00:00+00:00", f"2026-11-{day}T11:{mins:02d}:00+00:00"
+    return {
+        "id": f"7a1b2c3d-0000-4000-8000-0000000000{key}",
+        "run_key": f"run-{key}",
+        "analysis_run_id": None,
+        "status": status,
+        "stage": stage,
+        "attempts": 1,
+        "lease_owner": None,
+        "lease_until": None,
+        "checkpoints": {},
+        "error_code": code,
+        "stats": {},
+        "started_at": start,
+        "finished_at": end,
+        "created_at": start,
+    }
+
+
+RUNS: list[dict[str, Any]] = [
+    _run("03", "partial", "detail", "03", 21, None),
+    _run("02", "succeeded", "snapshot", "02", 9, None),
+    _run("01", "failed", "list", "01", 2, "timeout"),
+]

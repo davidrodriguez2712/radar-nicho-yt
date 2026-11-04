@@ -57,7 +57,6 @@ def niche_list(request: Request, session: Annotated[Session, Depends(current_ses
             },
             status_code=200 if htmx else 503,
             session=session,
-            with_radar=False,
         )
     else:
         warnings: list[str] = []
@@ -112,7 +111,6 @@ def decide(
             {"message": "La solicitud no es válida."},
             status_code=403,
             session=session,
-            with_radar=False,
         )
     if (
         decision not in DECISIONS
