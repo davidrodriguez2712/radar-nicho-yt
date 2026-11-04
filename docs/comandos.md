@@ -75,4 +75,5 @@ Ejemplo: `/tmp/nr/on_server.sh worker scripts/subniche.py list --status active`.
 | `uv run python scripts/flow_research.py pending\|claim\|schema\|validate\|submit` | Encargos de investigación de flujo (skill `flow-research`) |
 | `uv run python scripts/read_backlog_ranking.py` | Ranking del backlog de nichos |
 | `uv run python scripts/pilots.py`, `pilots_tunnel.py` | Canales piloto |
+| `uv run python scripts/channel_human_minutes.py --channel-dir … [--dry-run]` | Minutos humanos por video: convierte el outbox del canal a `channel-report-v3` (ver `docs/pilots.md`) |
 | `uv run python scripts/backup_mac.py`, `backup_snapshot.py` | Respaldo (ver `docs/backup-restore.md`) |
