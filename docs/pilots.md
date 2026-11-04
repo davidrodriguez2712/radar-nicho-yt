@@ -149,4 +149,41 @@ Contrato: [`contracts/channel-report-v3.md`](contracts/channel-report-v3.md). So
 
 `totals` añade `human_minutes` (suma de los no nulos, 0 si ninguno está medido) y `human_minutes_complete` (verdadero solo si todos los videos tienen dato; con cero videos es vacuamente verdadero y el total es 0). Con un piloto con al menos un video y sin mediciones el total es 0 con `complete = false`: léase «sin medir», nunca 0 minutos. La migración añade un `CHECK` de no negatividad (`human_minutes IS NULL OR >= 0`); el rango 0..100000 lo exige el contrato. El resumen de cierre muestra «Minutos humanos» con «(incompleto…)» en ese caso.
 
-Método decidido (2026-11-03): tiempo activo de los registros de sesión de Claude Code más un supuesto fijo por canal, «medido X · supuesto Y»; el productor `scripts/channel_human_minutes.py` está pendiente de su propio plan.
+Método decidido (2026-11-03): tiempo activo de los registros de sesión de Claude Code más un supuesto fijo por canal, «medido X · supuesto Y»; el productor es `scripts/channel_human_minutes.py` (sección siguiente).
+
+
+### Productor de minutos humanos: `scripts/channel_human_minutes.py`
+
+Flujo completo, en el Mac del propietario:
+
+```bash
+uv run python scripts/channel_sync.py fetch --channel-dir ~/Programming/youtube-project/canal-historias
+# … trabajo en el canal con Claude Code …
+uv run python scripts/channel_human_minutes.py --channel-dir ~/Programming/youtube-project/canal-historias --dry-run   # solo muestra
+uv run python scripts/channel_human_minutes.py --channel-dir ~/Programming/youtube-project/canal-historias
+uv run python scripts/channel_sync.py report --channel-dir ~/Programming/youtube-project/canal-historias
+```
+
+Lee en solo lectura los registros de sesión de Claude Code de la carpeta del canal y `datos/pipeline.db`, y reescribe los reportes `v1`/`v2` del outbox como `channel-report-v3` (método `claude_sessions_plus_assumed`). Los que ya son v3 se omiten. Cada original se conserva como `*.json.orig`.
+
+| Parámetro | Efecto |
+|---|---|
+| `--channel-dir` | Carpeta del canal (obligatorio) |
+| `--assumed-minutes` | Supuesto fijo por video para la validación en YouTube Studio (por defecto 10) |
+| `--cap-minutes` | Tope por hueco entre mensajes (por defecto 15) |
+| `--sessions-home` | Carpeta base de Claude Code (repetible; por defecto `~/.claude` y `~/.claude-alt`) |
+| `--sessions-dir` | Carpeta de sesiones explícita (repetible; sustituye a la deducida del canal) |
+| `--db` | Base del canal (por defecto `<canal>/datos/pipeline.db`) |
+| `--dry-run` | Calcula e imprime sin escribir nada |
+
+**Qué mide.** Tiempo activo humano en Claude Code: la diferencia entre mensajes humanos consecutivos de cada archivo de sesión, con tope de 15 min por hueco. Cada mensaje se reparte en partes iguales entre los videos en producción cuya ventana contiene su hora; la ventana va del primer evento del video al primer estado PROGRAMADO/PUBLICADO (o al último evento si no hay).
+
+**Qué NO mide.** La validación en YouTube Studio (se suma el supuesto fijo de 10 min por video), el trabajo fuera de Claude Code, ni el tiempo que cae fuera de toda ventana: eso se informa como «sin atribuir».
+
+**Por qué es una estimación.** Los videos se solapan y el tiempo se reparte a partes iguales; el primer mensaje de cada archivo cuenta 0; y una parte grande del tiempo puede caer fuera de las ventanas. En una corrida en seco real sobre el canal del propietario, la mayor parte del tiempo medido quedó sin atribuir, así que las cifras por video deben leerse como cota inferior más el supuesto, no como tiempo exacto.
+
+**Salida.** Por video, «medido X · supuesto Y = Z min» (el contrato lleva solo Z; el desglose no viaja). Al principio imprime los totales y el porcentaje «sin atribuir»; con más del 60 % avisa de que las cifras por video subestiman el tiempo medido.
+
+**Privacidad.** Solo usa marcas de tiempo, tipos de registro y `sessionId`; no guarda ni imprime texto de conversaciones.
+
+**Rollback.** Restaurar `*.json.orig` sobre el `*.json` del outbox (el script no sobrescribe un `.orig` existente).

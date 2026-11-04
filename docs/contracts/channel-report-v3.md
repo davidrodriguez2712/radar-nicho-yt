@@ -195,9 +195,19 @@ dato)».
 
 ## Quién genera el reporte
 
-El **método está decidido** (ver arriba) pero el **productor está pendiente**: `scripts/channel_human_minutes.py` todavía
-necesita su propio plan y no existe. Mientras tanto, los canales siguen con `v1`/`v2`. El contrato es neutral: cualquier
-productor que declare su método y respete la forma de los datos es válido.
+El productor es `scripts/channel_human_minutes.py` (solo biblioteca estándar, método `claude_sessions_plus_assumed`).
+Convierte los reportes `v1`/`v2` del outbox del canal a `channel-report-v3`; el contrato sigue siendo neutral: cualquier
+productor que declare su método y respete la forma de los datos es válido. Uso, alcance y límites: `docs/pilots.md`
+(«Productor de minutos humanos»).
+
+```bash
+uv run python scripts/channel_human_minutes.py --channel-dir ~/Programming/youtube-project/canal-historias --dry-run
+uv run python scripts/channel_human_minutes.py --channel-dir ~/Programming/youtube-project/canal-historias
+```
+
+Es una **estimación**: mide tiempo activo humano en Claude Code y le suma un supuesto fijo por video (por defecto 10 min)
+por la validación en YouTube Studio. El desglose «medido X · supuesto Y» solo se imprime en la salida del script; el
+reporte lleva una sola cifra por video. El original queda en `*.json.orig`.
 
 ## Qué NO cubre v3
 
