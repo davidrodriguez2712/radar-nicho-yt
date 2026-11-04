@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "components.html" import chip %}
+{% block title %}Ejecuciones del scraper · NicheRadar{% endblock %}
+{% block content %}
+<p class="eyebrow">Operación</p>
+<h1 class="h1 h1--md">Ejecuciones del scraper</h1>
+<p class="caption">Las últimas 20, de la más reciente a la más antigua.</p>
+<p class="caption">Estados posibles: en cola, en curso, correcta, parcial, falló y bloqueada.</p>
+<article class="card">
+  {% if runs.empty %}
+  <p class="muted">Todavía no hay ejecuciones.</p>
+  {% else %}
+  <div class="list">
+    {% for r in runs.rows %}
+    <div class="list__item">
+      <div class="runline"><span class="runline__when">{{ r.when }}</span>{{ chip(r.status_label, r.tone) }}</div>
+      <span class="caption">{{ r.detail }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</article>
+<a class="btn btn--secondary" href="/operacion">Volver a Operación</a>
+{% endblock %}

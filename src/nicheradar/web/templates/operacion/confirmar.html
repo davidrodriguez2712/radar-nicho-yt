@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ view.title }} · NicheRadar{% endblock %}
+{% block content %}
+<p class="eyebrow">Operación</p>
+<h1 class="h1 h1--md">{{ view.title }}</h1>
+{% if error %}<div class="note note--rose" id="error" role="alert">{{ error }}</div>{% endif %}
+<section class="card" id="scraper">
+  <div class="rows">
+    {% for label, value in view.rows %}
+    <div class="row"><span class="row__label">{{ label }}</span><span class="row__value">{{ value }}</span></div>
+    {% endfor %}
+  </div>
+</section>
+{% if view.blocked %}
+<div class="note note--amber" role="status"><p id="bloqueo">{{ view.blocked }}</p></div>
+<a class="btn btn--secondary" href="/operacion">Volver sin cambios</a>
+{% else %}
+<div class="note note--amber" role="status"><p id="consecuencia">{{ view.consequence }}</p></div>
+<form class="stack" method="post" action="/operacion/scraper/{{ action }}" id="confirmar-form">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <button class="btn btn--{{ view.kind }}" type="submit">{{ view.button }}</button>
+  <a class="btn btn--secondary" href="/operacion">Volver sin cambios</a>
+</form>
+{% endif %}
+{% endblock %}

@@ -209,3 +209,58 @@ def operation_view(sources: dict[str, object], now: datetime, tz: str) -> dict[s
         "subniches": subniches_card(sources.get("subniches"), now),
         "warnings": warnings(scraper, runs),
     }
+
+
+LIVE_BLOCK = (
+    "En modo real, el scraper en vivo debe estar habilitado en el servidor. "
+    "Mientras no lo esté, no se puede reanudar."
+)
+# The only actions the confirmation accepts; the route's id picks one, the form never does.
+ACTIONS: dict[str, dict[str, Any]] = {
+    "reanudar": {
+        "title": "Reanudar el scraper",
+        "consequence": (
+            "El scraper de mercado volverá a recorrer los anuncios en su próxima hora programada."
+        ),
+        "button": "Confirmar y reanudar",
+        "kind": "primary",
+        "paused": False,
+    },
+    "pausar": {
+        "title": "Pausar el scraper",
+        "consequence": (
+            "El scraper de mercado dejará de traer anuncios nuevos hasta que lo reanudes. "
+            "No borra nada."
+        ),
+        "button": "Confirmar y pausar",
+        "kind": "danger",
+        "paused": True,
+    },
+}
+NEXT_ON_RESUME = "En cuanto el servidor lo recoja"
+
+
+def confirm_view(action: str, schedule: object, now: datetime, tz: str) -> dict[str, Any]:
+    """The confirmation for `action` over the schedule just read (a non-object raises TypeError)."""
+    spec = ACTIONS[action]
+    if not isinstance(schedule, dict):
+        raise TypeError("schedule is not an object")
+    mode = schedule.get("mode")
+    rows = [("Frecuencia", _frequency(schedule.get("interval_seconds")))]
+    if action == "reanudar":
+        rows.append(("Próxima ejecución", NEXT_ON_RESUME))
+    rows.append(("Modo", MODE_LABEL.get(mode, DASH) if isinstance(mode, str) else DASH))
+    blocked = (
+        LIVE_BLOCK
+        if action == "reanudar" and mode == "live" and schedule.get("live_enabled") is not True
+        else None
+    )
+    return {
+        "title": spec["title"],
+        "consequence": spec["consequence"],
+        "button": spec["button"],
+        "kind": spec["kind"],
+        "rows": rows,
+        "blocked": blocked,
+        "already": (schedule.get("paused") is True) is spec["paused"],
+    }

@@ -46,7 +46,7 @@
     </div>
     {% endif %}
     {% if view.runs.truncated %}<p class="caption">Se muestran las últimas ejecuciones; puede haber más antiguas.</p>{% endif %}
-    {{ button("Ver todas las ejecuciones", "secondary", disabled=True) }}
+    {{ button("Ver todas las ejecuciones", "secondary", href="/operacion/ejecuciones") }}
     {% else %}
     <p class="muted">Ejecuciones no disponibles. Inténtalo de nuevo en un momento.</p>
     {% endif %}
