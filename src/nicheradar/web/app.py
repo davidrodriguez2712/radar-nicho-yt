@@ -20,6 +20,7 @@ from nicheradar.web import (
     routes_pilot_list,
     routes_pilot_panel,
     routes_pilots,
+    routes_proposals,
     routes_reports,
     routes_research,
     routes_subniches,
@@ -93,6 +94,7 @@ def create_app(
     app.include_router(routes_pilot_list.router)
     app.include_router(routes_pilot_panel.router)
     app.include_router(routes_pilot_actions.router)
+    app.include_router(routes_proposals.router)
     app.include_router(routes_subniches.router)
     app.include_router(routes_operation.router)
     app.include_router(routes_more.router)

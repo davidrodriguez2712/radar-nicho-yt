@@ -28,10 +28,25 @@ KIND_LABEL = {"query": "Consulta", "video": "Video", "channel": "Canal"}
 
 
 NONCE = re.compile(r"[0-9a-f]{32}")
+PROPOSAL_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.ASCII)
+SLUG = re.compile(r"[a-z0-9][a-z0-9_-]{0,59}", re.ASCII)
+FORM_ERRORS = {
+    "input_invalid": "Escribe entre 3 y 500 caracteres.",
+    "manual_invalid": (
+        "Revisa la etiqueta (3 a 120 caracteres), la familia (minúsculas, números y guion bajo, "
+        "2 a 40) y el nicho padre (hasta 60)."
+    ),
+    "nonce_invalid": "La solicitud no es válida. Vuelve a pulsar «Proponer».",
+}
 
 
 def new_nonce() -> str:
     return secrets.token_hex(16)
+
+
+def valid_proposal_id(value: object) -> bool:
+    """A UUID as the API prints it: lowercase hex, ASCII only (`\\d` would accept other digits)."""
+    return isinstance(value, str) and PROPOSAL_ID.fullmatch(value) is not None
 
 
 def valid_nonce(nonce: object) -> bool:
@@ -93,8 +108,11 @@ def _hypothesis(value: object) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
     parent = value.get("parent_niche")
+    raw_slug = value.get("slug")
+    slug_ok = isinstance(raw_slug, str) and SLUG.fullmatch(raw_slug) is not None
     return {
-        "slug": _text(value.get("slug")),
+        "slug": _text(raw_slug),
+        "approve_href": f"/subnichos/{raw_slug}/aprobar" if slug_ok else None,
         "label": _text(value.get("label")),
         "family": _text(value.get("family")),
         "parent_niche": _text(parent) if isinstance(parent, str) and parent else None,

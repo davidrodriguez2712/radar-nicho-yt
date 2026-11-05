@@ -1,0 +1,43 @@
+{% from "components.html" import chip, button %}
+<div class="stack" id="estado"{% if polling %} hx-get="/subnichos/propuestas/{{ proposal_id }}" hx-trigger="every 5s" hx-swap="outerHTML"{% endif %}>
+{% if v.state == "lista" and v.hypothesis %}
+{% set h = v.hypothesis %}
+<h1 class="h1 h1--md">{{ h.label }}</h1>
+<div class="tags">{{ chip("Propuesta", "amber") }}</div>
+<p class="lead">Revísala antes de aprobar.</p>
+<section class="card">
+  <h2 class="card__heading">Hipótesis</h2>
+  <div class="rows">
+    <div class="row"><span class="row__label">Familia</span><span class="row__value row__value--text">{{ h.family }}</span></div>
+    <div class="row"><span class="row__label">Nicho padre</span><span class="row__value row__value--text">{{ h.parent_niche or "—" }}</span></div>
+  </div>
+  {% if h.seed_channels %}
+  <h3 class="card__heading">Canales semilla</h3>
+  <ul class="plain">{% for channel in h.seed_channels %}<li>{{ channel }}</li>{% endfor %}</ul>
+  {% endif %}
+</section>
+<section class="card">
+  <h2 class="card__heading">Consultas</h2>
+  {% if h.queries %}<ol class="plain">{% for query in h.queries %}<li>{{ query }}</li>{% endfor %}</ol>{% else %}<p class="muted">Sin consultas.</p>{% endif %}
+</section>
+{% if h.approve_href %}{{ button("Revisar y aprobar", "primary", href=h.approve_href) }}{% endif %}
+{% elif v.state == "fallida" or v.state == "lista" %}
+<h1 class="h1 h1--md">No se pudo preparar la propuesta</h1>
+<div class="note note--amber" role="status"><span class="note__title">Qué falló</span><p id="falla">{{ v.error or "No se pudo preparar la propuesta." }}</p></div>
+<section class="card">
+  <div class="rows"><div class="row"><span class="row__label">Entrada</span><span class="row__value row__value--text">{{ v.input }}</span></div></div>
+</section>
+{% if v.input != "—" %}{{ button("Volver a intentar", "primary", href="/subnichos/proponer?" ~ ({"q": v.input}|urlencode)) }}
+{% else %}{{ button("Volver a intentar", "primary", href="/subnichos/proponer") }}{% endif %}
+{% else %}
+<h1 class="h1 h1--md">Preparando la propuesta</h1>
+<div class="tags">{{ chip("En cola" if v.state == "en_cola" else "Preparando", "blue") }}</div>
+<section class="card">
+  <h2 class="card__heading">Qué está pasando</h2>
+  <div class="rows"><div class="row"><span class="row__label">Entrada</span><span class="row__value row__value--text">{{ v.input }}</span></div></div>
+  {% if v.kind_label == "Canal" %}<p>El modelo de lenguaje lee los últimos videos del canal y propone la etiqueta, la familia, el nicho padre y 2 o 3 consultas.</p>{% endif %}
+  <p>Se prepara en el servidor, no desde tu teléfono.</p>
+  {{ button("Actualizar", "secondary", href="/subnichos/propuestas/" ~ proposal_id) }}
+</section>
+{% endif %}
+</div>
