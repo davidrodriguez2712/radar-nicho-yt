@@ -110,7 +110,12 @@ def niche_detail(
     etiqueta: str = "",
     formato: str = "",
 ) -> Response:
-    if not (1 <= len(etiqueta) <= 140) or etiqueta in (".", "..") or formato not in FORMATS:
+    if (
+        not (1 <= len(etiqueta) <= 140)
+        or not etiqueta.strip()
+        or etiqueta in (".", "..")
+        or formato not in FORMATS
+    ):
         return _missing(request, session, MISSING, 404)
     api = request.app.state.api
     try:

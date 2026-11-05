@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 from nicheradar.web.deps import make_templates
 from nicheradar.web.journey import Step, niche_journey, subniche_journey
@@ -29,7 +30,9 @@ def assert_fallback(steps: list[Step]) -> None:
     assert all(isinstance(s.detail, str) and s.detail for s in steps)
 
 
-def niche(decision: str = "tentativo", opp: float | None = 72, auto: float | None = 64) -> dict:
+def niche(
+    decision: str = "tentativo", opp: float | None = 72, auto: float | None = 64
+) -> dict[str, Any]:
     return {
         "decision": {"decision": decision},
         "opportunity": {"value": opp},
@@ -91,15 +94,16 @@ def test_a_niche_without_scores_is_not_ready_to_research() -> None:
 
 
 def test_malformed_input_never_raises() -> None:
-    for bad in (None, "x", 7, [], {}, {"decision": "x"}, {"opportunity": 5}):
+    garbage: tuple[object, ...] = (None, "x", 7, [], {}, {"decision": "x"}, {"opportunity": 5})
+    for bad in garbage:
         assert_fallback(niche_journey(bad, bad, bad))
 
 
 def sub(
     status: str = "active",
     measured: str | None = "2026-10-31T12:00:00+00:00",
-    research: dict | None = None,
-) -> dict:
+    research: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     return {
         "status": status,
         "measurement": {"measured_at": measured} if measured else None,
@@ -128,7 +132,15 @@ def test_paused_and_archived_subniches() -> None:
 
 
 def test_subniche_garbage_never_raises() -> None:
-    for bad in (None, "x", 7, [], {}, {"status": 5, "measurement": "x", "research": 3}):
+    garbage: tuple[object, ...] = (
+        None,
+        "x",
+        7,
+        [],
+        {},
+        {"status": 5, "measurement": "x", "research": 3},
+    )
+    for bad in garbage:
         assert_fallback(subniche_journey(bad, bad, "UTC"))
 
 
@@ -186,7 +198,7 @@ def test_non_finite_scores_count_as_missing() -> None:
     for bad in (float("nan"), float("inf"), float("-inf")):
         assert niche_journey(niche(opp=bad), None, None)[2].state == "now"
         assert niche_journey(niche(auto=bad), None, None)[2].state == "now"
-    assert niche_journey(niche(opp=True), None, None)[2].state == "now"  # type: ignore[arg-type]
+    assert niche_journey(niche(opp=True), None, None)[2].state == "now"
 
 
 def test_invalid_or_out_of_range_measurement_dates_are_not_a_measurement() -> None:

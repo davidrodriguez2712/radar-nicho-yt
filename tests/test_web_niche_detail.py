@@ -182,6 +182,8 @@ def test_an_invalid_format_or_a_long_label_is_404_without_calling_the_api() -> N
     assert web.get(URL, params={"etiqueta": "x" * 141, "formato": "long"}).status_code == 404
     assert web.get(URL, params={"formato": "long"}).status_code == 404
     assert web.get(URL, params={"etiqueta": "..", "formato": "long"}).status_code == 404
+    for blank in (" ", ".", "   ", "\t\n"):
+        assert web.get(URL, params={"etiqueta": blank, "formato": "long"}).status_code == 404
     assert api.calls == []
 
 
@@ -248,6 +250,15 @@ def test_broken_shapes_never_give_500() -> None:
         {"niche": None},
         [],
         "x",
+        niche_page(listings=[market_listing(price_usd=10**400, subscribers=10**400)]),
+        niche_page(listings=[market_listing(price_usd=1e308, real_subscribers=10**400)]),
+        niche_with(
+            metrics={"n_listings": 10**400, "income_median": 10**400, "multiple_median": 10**400},
+            rpm_mid=10**400,
+            trend=10**400,
+            opportunity={"value": 10**400},
+        ),
+        niche_with(metrics={"n_listings": 1e308, "income_median": 1e308, "multiple_median": 1e308}),
     ]
     for detail in broken:
         assert get(raw_api(detail)).status_code in (200, 503), detail
@@ -263,6 +274,24 @@ def test_broken_shapes_never_give_500() -> None:
     response = get(raw_api(nonfinite))
     assert response.status_code in (200, 503)
     assert "nan" not in response.text.lower().replace("financ", "")
+
+
+def test_numbers_beyond_float_range_read_as_missing_and_the_page_still_renders() -> None:
+    huge = 10**400
+    cases = [
+        niche_page(listings=[market_listing(price_usd=huge, subscribers=huge)]),
+        niche_page(listings=[market_listing(real_subscribers=huge, income_monthly_usd=huge)]),
+        niche_with(
+            metrics={"n_listings": huge, "income_median": huge, "multiple_median": huge},
+            rpm_mid=huge,
+            trend=huge,
+        ),
+        niche_with(opportunity={"value": huge}),
+    ]
+    for detail in cases:
+        response = get(raw_api(detail))
+        assert response.status_code == 200, detail
+    assert "—" in get(raw_api(cases[2])).text
 
 
 def test_naive_dates_do_not_break_the_page() -> None:
