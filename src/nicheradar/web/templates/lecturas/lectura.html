@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Lectura · NicheRadar{% endblock %}
+{% block content %}
+<a class="backlink" href="/subnichos">‹ Subnichos</a>
+{% if aviso %}<div class="note note--amber" id="aviso" role="status">{{ aviso }}</div>{% endif %}
+{% include "lecturas/_lectura.html" %}
+{% endblock %}

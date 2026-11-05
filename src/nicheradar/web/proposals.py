@@ -31,6 +31,7 @@ KIND_LABEL = {"query": "Consulta", "video": "Video", "channel": "Canal"}
 
 NONCE = re.compile(r"[0-9a-f]{32}")
 PROPOSAL_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.ASCII)
+AUTHOR = re.compile(r"[A-Za-z0-9_]{1,15}", re.ASCII)
 SLUG = re.compile(r"[a-z0-9][a-z0-9_-]{0,59}", re.ASCII)
 RESERVED_SLUGS = ("proponer",)  # `/subnichos/proponer` is a screen, not a sub-niche card
 HYPOTHESIS_STATUS = {"active": "Activa", "paused": "Pausada", "archived": "Archivada"}
@@ -160,6 +161,19 @@ def _hypothesis(value: object) -> dict[str, Any] | None:
     }
 
 
+def origin_line(origin: object) -> str | None:
+    """«Origen: …» solo para una propuesta nacida de una lectura, desde el `origin` de la API."""
+    data = origin if isinstance(origin, dict) else {}
+    if data.get("code") != "lead":
+        return None
+    author = data.get("tweet_author")
+    if isinstance(author, str) and AUTHOR.fullmatch(author):
+        return f"Origen: tweet de @{author}"
+    if author is None:
+        return "Origen: imagen compartida"
+    return "Origen: tweet de X"
+
+
 def proposal_view(item: object, now: datetime | None = None) -> dict[str, Any]:
     """One queue entry for the screen; a malformed item degrades to `fallida` and «—»."""
     data = item if isinstance(item, dict) else {}
@@ -175,5 +189,6 @@ def proposal_view(item: object, now: datetime | None = None) -> dict[str, Any]:
         if error is not None
         else None,
         "hypothesis": _hypothesis(data.get("hypothesis")),
+        "origin_line": origin_line(data.get("origin")),
         "finished_ago": ago(data.get("finished_at"), now or datetime.now(UTC)),
     }

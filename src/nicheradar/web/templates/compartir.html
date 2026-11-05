@@ -6,13 +6,22 @@
   <p><span class="chip {{ 'chip--blue' if kind == 'tweet' else ('chip--green' if propose_href else 'chip--neutral') }}">{{ kind_label }}</span></p>
   {% if link %}<p class="resumen-cierre">{{ link }}</p>{% endif %}
   {% if kind == "tweet" %}
-  <p class="caption">Los enlaces de X todavía no se leen. Copia el canal o el enlace de YouTube que menciona.</p>
+  <p class="caption">Es un tweet de X. Lo leemos en el servidor y te mostramos los canales que menciona.</p>
   {% elif kind == "none" %}
   <p class="caption">No se compartió ningún enlace.</p>
   {% elif not propose_href %}
   <p class="caption">No reconocimos ese enlace.</p>
   {% endif %}
 </section>
+{% if error %}<div class="note note--rose" id="error" role="alert">{{ error }}</div>{% endif %}
+{% if kind == "tweet" %}
+<form class="stack" method="post" action="/compartir/tweet">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <input type="hidden" name="nonce" value="{{ nonce }}">
+  <input type="hidden" name="url" value="{{ link }}">
+  <button class="btn btn--primary" type="submit">Leer tweet</button>
+</form>
+{% endif %}
 {% if propose_href %}
 <a class="btn btn--primary" href="{{ propose_href }}">Proponer</a>
 {% endif %}
@@ -21,6 +30,7 @@
   <h2 class="card__heading">Si compartes otra cosa</h2>
   <p>Canal de YouTube (@handle o enlace): muestra «Proponer».</p>
   <p>Video de YouTube: muestra «Proponer».</p>
+  <p>Un tweet de X: muestra «Leer tweet» y te enseña los canales que menciona.</p>
   <p>Un enlace no reconocido: dice que no se entiende y no hace nada.</p>
   <p class="caption">Compartir nunca crea nada solo: siempre pide tu toque.</p>
 </section>

@@ -1,0 +1,68 @@
+{% from "components.html" import chip, button %}
+<div class="stack" id="estado"{% if polling %} hx-get="/lecturas/{{ view.id }}?n={{ next_poll }}" hx-trigger="every 5s" hx-swap="outerHTML"{% endif %}>
+{% if view.closed %}
+<h1 class="h1 h1--md">Lectura cerrada</h1>
+<div class="note note--amber" role="status">La lectura ya está cerrada.</div>
+{{ button("Volver a subnichos", "primary", href="/subnichos") }}
+{% elif view.state in ("en_cola", "leyendo") %}
+<h1 class="h1 h1--md">Leyendo el tweet</h1>
+<div class="tags">{{ chip("En cola" if view.state == "en_cola" else "Leyendo", "blue") }}</div>
+<section class="card">
+  <h2 class="card__heading">Qué está pasando</h2>
+  <ul class="plain plain--steps">{% for label, mark in view.steps %}
+    <li><span aria-hidden="true">{{ "✓" if mark == "hecho" else "●" if mark == "en_curso" else "○" }}</span><span class="sr-only">{{ "Hecho" if mark == "hecho" else "Ahora" if mark == "en_curso" else "Pendiente" }}: </span> {{ label }}</li>{% endfor %}
+  </ul>
+  <p class="caption">Se lee en el servidor, no desde tu teléfono.</p>
+  {% if exhausted %}<p class="muted" id="sondeo-agotado">Sigue en curso. Ya no se actualiza sola: usa «Actualizar».</p>{% endif %}
+  {{ button("Actualizar", "secondary", href="/lecturas/" ~ view.id) }}
+</section>
+<section class="note note--amber">
+  <span class="note__title">Si no se puede leer</span>
+  <p>A veces el tweet ya no existe o el servicio de lectura falla. Mantén pulsada la imagen del tweet y compártela con NicheRadar.</p>
+  {% if view.tweet_url %}<a class="btn btn--secondary" href="{{ view.tweet_url }}" rel="noopener noreferrer">Abrir el tweet en X</a>{% endif %}
+</section>
+{% elif view.state == "fallida" %}
+<h1 class="h1 h1--md">No se pudo leer el tweet</h1>
+<div class="note note--rose" id="falla" role="alert">{{ view.error }}</div>
+<section class="note note--amber">
+  <span class="note__title">Si no se puede leer</span>
+  <p>A veces el tweet ya no existe o el servicio de lectura falla. Mantén pulsada la imagen del tweet y compártela con NicheRadar.</p>
+  {% if view.tweet_url %}<a class="btn btn--secondary" href="{{ view.tweet_url }}" rel="noopener noreferrer">Abrir el tweet en X</a>{% endif %}
+</section>
+{% if view.tweet_url %}{{ button("Volver a intentar", "primary", href="/compartir?" ~ ({"url": view.tweet_url}|urlencode)) }}{% endif %}
+{% else %}
+<h1 class="h1 h1--md">Canales encontrados ({{ view.candidates|length }})</h1>
+{% if view.warning %}<div class="note note--amber" role="status">{{ view.warning }}</div>{% endif %}
+{% if view.text %}
+<section class="card">
+  <h2 class="card__heading">Texto del tweet (de un tercero, sin verificar)</h2>
+  <p class="quote">«{{ view.text }}»</p>
+  <p class="caption">Las cifras del tweet son solo pistas: todo se recalcula con la API de YouTube.</p>
+</section>
+{% endif %}
+{% if exhausted %}<p class="muted" id="sondeo-agotado">La búsqueda sigue en curso. Ya no se actualiza sola: recarga la página.</p>{% endif %}
+<form class="card" method="post" action="/lecturas/{{ view.id }}/proponer">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <h2 class="card__heading">Marca los que quieres proponer</h2>
+  {% for c in view.candidates %}
+  <div class="candidate">
+    {% if c.checkable %}<input type="checkbox" name="candidate" value="{{ c.id }}"{% if c.checked %} checked{% endif %} aria-label="{{ c.label }}">{% else %}<span class="candidate__none" aria-hidden="true"></span>{% endif %}
+    <div class="candidate__body">
+      <p class="candidate__label">{{ c.label }}</p>
+      <p class="caption">{{ c.detail }}</p>
+      <div class="tags">{{ chip(c.chips[0], "neutral") }}{{ chip(c.chips[1], {"resolved": "green", "name_only": "amber", "ambiguous": "amber", "not_found": "rose"}.get(c.resolution, "blue")) }}</div>
+      {% if c.channel_url %}<p class="caption"><a href="{{ c.channel_url }}" rel="noopener noreferrer">Ver el canal en YouTube</a></p>{% endif %}
+      {% if c.proposal_state %}<p class="caption">Propuesta: {{ c.proposal_state }}</p>{% endif %}
+      {% if c.can_search %}<button class="btn btn--secondary" type="submit" formaction="/lecturas/{{ view.id }}/nombre" name="buscar" value="{{ c.id }}">Buscar por nombre (100 u.)</button>{% endif %}
+    </div>
+  </div>
+  {% else %}<p>No se encontró ningún canal en el tweet.</p>{% endfor %}
+  <p class="caption">Un @handle o un enlace de YouTube se resuelve con 1 o 2 unidades de cuota. Un nombre sin @handle se busca por nombre y gasta 100 unidades: solo se hace si lo pides.</p>
+  <button class="btn btn--primary" type="submit">Proponer {{ view.selected }} canal{{ "es" if view.selected != 1 else "" }}</button>
+</form>
+<form method="post" action="/lecturas/{{ view.id }}/cancelar">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <button class="btn btn--link" type="submit">Cancelar</button>
+</form>
+{% endif %}
+</div>

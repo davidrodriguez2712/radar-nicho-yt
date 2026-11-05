@@ -182,15 +182,12 @@ def test_the_proponer_link_leads_to_the_existing_form_with_the_prefilled_input()
     assert form.status_code == 200 and f'value="{canonical}"' in form.text
 
 
-def test_a_tweet_shows_the_fixed_notice_and_no_action() -> None:
+def test_a_tweet_offers_read_tweet_and_nothing_else() -> None:
     client, api = web()
     html = page(client, url="https://x.com/usuario/status/180?s=20")
-    assert "Tweet de X" in html
-    assert (
-        "Los enlaces de X todavía no se leen. Copia el canal o el enlace de YouTube que menciona."
-        in html
-    )
-    assert "/subnichos/proponer" not in html and "Leer tweet" not in html
+    assert "Tweet de X" in html and "Leer tweet" in html
+    assert "todavía no se leen" not in html
+    assert "/subnichos/proponer" not in html
     assert api.calls == []
 
 

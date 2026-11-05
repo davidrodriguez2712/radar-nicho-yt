@@ -87,7 +87,7 @@ def test_the_preview_renders_the_proponer_and_compartir_screens(tmp_path: Path) 
         "aprobar": "Confirmar y aprobar",
         "archivar": "Entiendo que no se puede deshacer",
         "compartir": "Compartido contigo",
-        "compartir_tweet": "Los enlaces de X todavía no se leen.",
+        "compartir_tweet": "Leer tweet",
     }
     for name, text in expected.items():
         html = (tmp_path / f"{name}.html").read_text()
