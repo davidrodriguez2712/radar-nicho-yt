@@ -2,7 +2,9 @@
 {% block title %}Propuestas · NicheRadar{% endblock %}
 {% block content %}
 <a class="backlink" href="/lecturas/{{ view.id }}">‹ Canales encontrados</a>
-<h1 class="h1 h1--md">{{ view.proposals|length }} propuesta{{ "s" if view.proposals|length != 1 else "" }} en preparación</h1>
+{% set preparing = view.proposals|selectattr("state", "in", ("En cola", "En preparación"))|list|length %}
+<h1 class="h1 h1--md">{% if preparing %}{{ preparing }} propuesta{{ "s" if preparing != 1 else "" }} en preparación{% else %}Ninguna propuesta en preparación{% endif %}</h1>
+{% if resultado %}<div class="note note--green" id="resultado" role="status">{{ resultado }}</div>{% endif %}
 <p class="lead">Cada canal sigue el mismo camino que si lo hubieras pegado a mano.</p>
 <section class="card">
   <div class="rows">

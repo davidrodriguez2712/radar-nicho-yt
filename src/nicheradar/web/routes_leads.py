@@ -11,7 +11,8 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Form, Request
 from starlette.responses import RedirectResponse, Response
 
-from nicheradar.web.client import ApiError
+from nicheradar.integrations.tweets import parse_tweet_url
+from nicheradar.web.client import MESSAGES, ApiError
 from nicheradar.web.deps import (
     SHAPE_ERRORS,
     SHAPE_MESSAGE,
@@ -20,7 +21,7 @@ from nicheradar.web.deps import (
     render,
     shape_guard,
 )
-from nicheradar.web.leads import error_text, parse_candidate_ids, read_view
+from nicheradar.web.leads import error_text, parse_candidate_ids, read_view, result_text
 from nicheradar.web.proposals import (
     MAX_POLLS,
     idempotency_key,
@@ -47,8 +48,32 @@ AVISOS = {
         "No se propuso ningún canal: ya estaban propuestos, ya son semillas "
         "o se llegó al tope diario."
     ),
+    "cerrada": "La lectura ya está cerrada.",
+    "en_curso": "La búsqueda por nombre ya está en curso.",
+    "invalid_candidates": "Esos canales no pertenecen a esta lectura o no se pueden usar así.",
+    "no_lista": "La lectura todavía no terminó.",
+    "tope": "Se llegó al tope diario de propuestas.",
     "error": "No se pudo completar la acción.",
 }
+CODE_AVISOS = {
+    "read_closed": "cerrada",
+    "invalid_candidates": "invalid_candidates",
+    "not_ready": "no_lista",
+    "daily_limit": "tope",
+}
+
+
+def _fixed(err: ApiError) -> str:
+    """The web's own text for the failure kind; never the API's `message`, wrapped or not."""
+    return MESSAGES.get(err.kind, MESSAGES["error"])
+
+
+def _aviso(err: ApiError, *, names: bool = False) -> str:
+    aviso = CODE_AVISOS.get(err.code or "", "error")
+    # The second tap on «Buscar por nombre» finds the candidate already queued.
+    return "en_curso" if names and aviso == "invalid_candidates" else aviso
+
+
 DOMAIN_STATUSES = (409, 413, 422, 429, 503)
 
 
@@ -62,8 +87,10 @@ def _error_page(request: Request, session: Session, message: str, status: int) -
     )
 
 
-def _to(read_id: str, aviso: str | None = None, path: str = "") -> RedirectResponse:
-    query = f"?aviso={aviso}" if aviso else ""
+def _to(
+    read_id: str, aviso: str | None = None, path: str = "", query: str = ""
+) -> RedirectResponse:
+    query = f"?aviso={aviso}" if aviso else query
     return RedirectResponse(f"/lecturas/{read_id}{path}{query}", status_code=303)
 
 
@@ -81,7 +108,11 @@ def read_tweet(
     if found["kind"] != "tweet":
         context = share_context(found, error=error_text("invalid_tweet_url"))
         return render(request, "compartir.html", context, status_code=422, session=session)
-    body = {"url": found["link"]}
+    ref = parse_tweet_url(found["link"])
+    if ref is None:
+        context = share_context(found, error=error_text("invalid_tweet_url"))
+        return render(request, "compartir.html", context, status_code=422, session=session)
+    body = {"url": ref.canonical_url}  # the same tweet is the same body and the same key
     try:
         result = request.app.state.api.request(
             "POST",
@@ -101,7 +132,7 @@ def read_tweet(
         context = share_context(
             found,
             nonce=None if domain else nonce,
-            error=error_text(err.code) if domain else err.message,
+            error=error_text(err.code) if domain else _fixed(err),
         )
         status = err.status if domain and err.status else 503
         return render(request, "compartir.html", context, status_code=status, session=session)
@@ -150,9 +181,10 @@ def read_detail(
             return _missing(request, session, fragment)
         if fragment:
             return Response(status_code=204)  # keep the screen; the next poll retries
-        return _error_page(request, session, err.message, 503)
+        return _error_page(request, session, _fixed(err), 503)
     count = poll_count(n)
-    waiting = not view["closed"] and (view["state"] in ("en_cola", "leyendo") or view["searching"])
+    # Only the waiting screen polls; the form with the user's checkboxes is never swapped.
+    waiting = not view["closed"] and view["state"] in ("en_cola", "leyendo")
     response = render(
         request,
         "lecturas/_lectura.html" if fragment else "lecturas/lectura.html",
@@ -195,8 +227,8 @@ def search_name(
         request.app.state.api.request(
             "POST", f"/leads/{read_id}/names", body={"candidate_ids": [buscar]}
         )
-    except ApiError:
-        return _to(read_id, "error")
+    except ApiError as err:
+        return _to(read_id, _aviso(err, names=True))
     return _to(read_id, "buscando")
 
 
@@ -217,15 +249,15 @@ def propose(
         result = request.app.state.api.request(
             "POST", f"/leads/{read_id}/proposals", body={"candidate_ids": ids}
         )
-    except ApiError:
-        return _to(read_id, "error")
+    except ApiError as err:
+        return _to(read_id, _aviso(err))
     items = result.get("items")
-    if (
-        isinstance(items, list)
-        and items
-        and all(isinstance(i, dict) and i.get("outcome") != "queued" for i in items)
-    ):
-        return _to(read_id, "sin_propuestas")
+    if isinstance(items, list) and items and all(isinstance(i, dict) for i in items):
+        created = sum(1 for i in items if i.get("outcome") == "queued")
+        if created == 0:
+            return _to(read_id, "sin_propuestas")
+        counts = f"?creadas={min(created, 10)}&omitidas={min(len(items) - created, 10)}"
+        return _to(read_id, path="/propuestas", query=counts)
     return _to(read_id, path="/propuestas")
 
 
@@ -235,6 +267,8 @@ def proposals_screen(
     request: Request,
     read_id: str,
     session: Annotated[Session, Depends(current_session)],
+    creadas: str = "",
+    omitidas: str = "",
 ) -> Response:
     if UUID_RE.fullmatch(read_id) is None:
         return _error_page(request, session, MISSING, 404)
@@ -243,11 +277,11 @@ def proposals_screen(
     except ApiError as err:
         if err.kind in ("not_found", "invalid"):
             return _error_page(request, session, MISSING, 404)
-        return _error_page(request, session, err.message, 503)
+        return _error_page(request, session, _fixed(err), 503)
     return render(
         request,
         "lecturas/propuestas.html",
-        {"active_tab": "nichos", "view": view},
+        {"active_tab": "nichos", "view": view, "resultado": result_text(creadas, omitidas)},
         session=session,
     )
 
@@ -265,5 +299,5 @@ def cancel(
         request.app.state.api.request("POST", f"/leads/{read_id}/close")
     except ApiError as err:
         if err.kind != "not_found":
-            return _to(read_id, "error")
+            return _to(read_id, _aviso(err))
     return RedirectResponse("/subnichos", status_code=303)

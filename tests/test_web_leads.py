@@ -184,7 +184,7 @@ def test_ready_read_lists_channels_escaped_and_without_polling() -> None:
     assert "Canales encontrados (3)" in page.text and 'hx-trigger="every 5s"' not in page.text
     assert "<script>alert(1)</script>" not in page.text and "&lt;script&gt;" in page.text
     assert "Texto del tweet (de un tercero, sin verificar)" in page.text
-    assert "Proponer 1 canal" in page.text  # solo cuenta los resueltos marcados
+    assert "Proponer los canales marcados" in page.text  # rótulo neutro: no cuenta nada
     assert f'name="candidate" value="{CAND_A}" checked' in page.text
     boxes = re.findall(r'<input type="checkbox" name="candidate" value="([^"]+)"', page.text)
     assert boxes == [CAND_A]  # ni el nombre ni el no encontrado tienen casilla
@@ -220,7 +220,7 @@ def test_name_search_and_proposals_are_separate_posts() -> None:
     proposed = web.post(f"/lecturas/{READ_ID}/proponer", data={"csrf": csrf, "candidate": [CAND_A]})
     assert (
         proposed.status_code == 303
-        and proposed.headers["location"] == f"/lecturas/{READ_ID}/propuestas"
+        and proposed.headers["location"] == f"/lecturas/{READ_ID}/propuestas?creadas=1&omitidas=0"
     )
     sent = next(c for c in api.calls if c.url.path.endswith("/proposals"))
     assert sent.content == b'{"candidate_ids":["' + CAND_A.encode() + b'"]}'
@@ -257,7 +257,7 @@ def test_proposals_screen_lists_states() -> None:
         ]
     )
     page = make_client(api_for(with_proposals)).get(f"/lecturas/{READ_ID}/propuestas")
-    assert "2 propuestas en preparación" in page.text
+    assert "1 propuesta en preparación" in page.text  # solo cuenta las que siguen en preparación
     assert "En cola" in page.text and "Lista" in page.text and "Ver propuestas" in page.text
     assert "Aprobar es lo que gasta cuota de búsqueda." in page.text
     assert 'href="/subnichos"' in page.text  # no hay lista en /subnichos/propuestas
@@ -329,10 +329,33 @@ def test_ten_candidates_at_most_and_ambiguous_is_checkable_but_unchecked() -> No
     assert view["selected"] == 0
 
 
-def test_searching_candidate_polls_the_ready_page() -> None:
-    searching = lead(candidates=[candidate(CAND_B, "Batallas", "name_queued", kind="name")])
-    page = make_client(api_for(searching)).get(f"/lecturas/{READ_ID}")
-    assert 'hx-trigger="every 5s"' in page.text and "buscando por nombre" in page.text
+def test_searching_candidate_never_polls_the_form() -> None:
+    searching = lead(
+        candidates=[
+            candidate(
+                CAND_A,
+                "@canal_historia_uno",
+                "resolved",
+                channel={"id": "UC" + "a" * 22, "title": "Historia", "subscribers": 5},
+            ),
+            candidate(CAND_B, "Batallas", "name_queued", kind="name"),
+        ]
+    )
+    web = make_client(api_for(searching))
+    page = web.get(f"/lecturas/{READ_ID}")
+    assert "buscando por nombre" in page.text and "Actualizar" in page.text
+    assert 'hx-trigger="every 5s"' not in page.text and "hx-get" not in page.text
+    fragment = web.get(f"/lecturas/{READ_ID}", headers={"HX-Request": "true"})
+    assert "hx-get" not in fragment.text
+
+
+def test_polled_element_never_contains_the_form_or_checkboxes() -> None:
+    web = make_client(api_for(lead("queued", candidates=[])))
+    html = web.get(f"/lecturas/{READ_ID}").text
+    polled = html[html.index("hx-get") :]
+    assert "<form" not in polled and 'type="checkbox"' not in polled
+    fragment = web.get(f"/lecturas/{READ_ID}", headers={"HX-Request": "true"})
+    assert 'type="checkbox"' not in fragment.text and "<form" not in fragment.text
 
 
 def test_failed_read_with_unknown_code_shows_generic_text() -> None:
@@ -495,7 +518,7 @@ def test_read_tweet_rejects_bad_nonce_and_non_tweet_links() -> None:
     assert api.count("POST", "/api/v1/leads/tweets") == 0
 
 
-def test_read_tweet_sends_the_canonical_body_with_a_content_bound_key() -> None:
+def test_read_tweet_key_follows_the_tweet_not_the_nonce_reuse() -> None:
     api = api_for(lead())
     web = make_client(api)
     csrf = csrf_of(web.get("/compartir", params={"url": TWEET}).text)
@@ -505,7 +528,6 @@ def test_read_tweet_sends_the_canonical_body_with_a_content_bound_key() -> None:
         data={"csrf": csrf, "nonce": "a" * 32, "url": TWEET.replace("1850", "1851")},
     )
     calls = [c for c in api.calls if c.url.path == "/api/v1/leads/tweets"]
-    assert calls[0].content == b'{"url":"' + TWEET.encode() + b'"}'
     assert calls[0].headers["idempotency-key"] != calls[1].headers["idempotency-key"]
 
 
@@ -543,3 +565,84 @@ def test_read_tweet_with_a_non_uuid_id_in_the_answer_is_a_503() -> None:
     csrf = csrf_of(web.get("/compartir", params={"url": TWEET}).text)
     response = web.post("/compartir/tweet", data={"csrf": csrf, "nonce": "e" * 32, "url": TWEET})
     assert response.status_code == 503
+
+
+def test_partial_result_is_passed_as_bounded_counts_and_shown() -> None:
+    items = [
+        {"candidate_id": CAND_A, "outcome": "queued", "proposal_id": str(uuid4())},
+        {"candidate_id": CAND_B, "outcome": "duplicate", "proposal_id": None},
+        {"candidate_id": CAND_C, "outcome": "daily_limit", "proposal_id": None},
+    ]
+    api = post_api(**{f"{READ_ID}/proposals": (200, {"items": items})})
+    web = make_client(api)
+    csrf = csrf_of(web.get(f"/lecturas/{READ_ID}").text)
+    response = web.post(
+        f"/lecturas/{READ_ID}/proponer", data={"csrf": csrf, "candidate": [CAND_A, CAND_B, CAND_C]}
+    )
+    assert response.headers["location"] == f"/lecturas/{READ_ID}/propuestas?creadas=1&omitidas=2"
+    page = web.get(f"/lecturas/{READ_ID}/propuestas", params={"creadas": "1", "omitidas": "2"})
+    assert "Se creó 1 propuesta; 2 se omitieron (duplicadas, sin cupo o sin resolver)." in page.text
+    for bad in (
+        {"creadas": "99", "omitidas": "1"},
+        {"creadas": "x"},
+        {"creadas": "-1", "omitidas": "0"},
+    ):
+        shown = web.get(f"/lecturas/{READ_ID}/propuestas", params=bad)
+        assert "Se creó" not in shown.text and "Se crearon" not in shown.text
+    all_ok = web.get(f"/lecturas/{READ_ID}/propuestas", params={"creadas": "3", "omitidas": "0"})
+    assert "Se crearon 3 propuestas." in all_ok.text and "omitieron" not in all_ok.text
+
+
+def test_error_codes_map_to_their_own_fixed_notices() -> None:
+    def notice(path: str, status: int, code: str, data: dict[str, Any], action: str) -> str:
+        api = post_api(
+            **{f"{READ_ID}/{path}": (status, {"code": code, "message": "HOSTIL <b>x</b>"})}
+        )
+        web = make_client(api)
+        csrf = csrf_of(web.get(f"/lecturas/{READ_ID}").text)
+        location = web.post(f"/lecturas/{READ_ID}/{action}", data={"csrf": csrf} | data).headers[
+            "location"
+        ]
+        page = web.get(location.replace("/propuestas", ""))
+        assert "HOSTIL" not in page.text
+        return str(page.text)
+
+    twice = notice("names", 422, "invalid_candidates", {"buscar": CAND_B}, "nombre")
+    assert "La búsqueda por nombre ya está en curso." in twice
+    closed = notice("names", 409, "read_closed", {"buscar": CAND_B}, "nombre")
+    assert "La lectura ya está cerrada." in closed
+    wrong = notice("proposals", 422, "invalid_candidates", {"candidate": [CAND_A]}, "proponer")
+    assert "no pertenecen a esta lectura" in wrong
+    limit = notice("proposals", 429, "daily_limit", {"candidate": [CAND_A]}, "proponer")
+    assert "Se llegó al tope diario de propuestas." in limit
+    early = notice("proposals", 409, "not_ready", {"candidate": [CAND_A]}, "proponer")
+    assert "La lectura todavía no terminó." in early
+
+
+def test_wrapped_error_details_never_leak_their_message() -> None:
+    hostile = {"detail": {"code": "x_raro", "message": "HOSTIL <script>1</script>"}}
+    web = make_client(Api({("GET", f"/api/v1/leads/{READ_ID}"): (409, hostile)}))
+    page = web.get(f"/lecturas/{READ_ID}")
+    assert page.status_code == 503 and "HOSTIL" not in page.text
+    api = api_for(lead())
+    api.routes[("POST", "/api/v1/leads/tweets")] = (409, {"detail": {"message": "HOSTIL <b>"}})
+    web = make_client(api)
+    csrf = csrf_of(web.get("/compartir", params={"url": TWEET}).text)
+    sent = web.post("/compartir/tweet", data={"csrf": csrf, "nonce": "f" * 32, "url": TWEET})
+    assert sent.status_code == 503 and "HOSTIL" not in sent.text
+
+
+def test_same_tweet_with_other_query_gives_the_same_body_and_key() -> None:
+    api = api_for(lead())
+    web = make_client(api)
+    csrf = csrf_of(web.get("/compartir", params={"url": TWEET}).text)
+    for url in (
+        TWEET,
+        "https://x.com/autor_x/status/1850000000000000000?s=46&t=zzz",
+        "https://twitter.com/autor_x/status/1850000000000000000",
+    ):
+        web.post("/compartir/tweet", data={"csrf": csrf, "nonce": "a" * 32, "url": url})
+    calls = [c for c in api.calls if c.url.path == "/api/v1/leads/tweets"]
+    canonical = b'{"url":"https://x.com/autor_x/status/1850000000000000000"}'
+    assert [c.content for c in calls] == [canonical] * 3
+    assert len({c.headers["idempotency-key"] for c in calls}) == 1

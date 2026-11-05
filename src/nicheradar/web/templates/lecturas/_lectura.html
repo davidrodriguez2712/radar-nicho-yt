@@ -40,7 +40,13 @@
   <p class="caption">Las cifras del tweet son solo pistas: todo se recalcula con la API de YouTube.</p>
 </section>
 {% endif %}
-{% if exhausted %}<p class="muted" id="sondeo-agotado">La búsqueda sigue en curso. Ya no se actualiza sola: recarga la página.</p>{% endif %}
+{% if view.searching %}
+<section class="note note--amber" id="buscando" role="status">
+  <span class="note__title">Buscando por nombre</span>
+  <p>La búsqueda sigue en curso. Esta lista no se actualiza sola, para no mover tus casillas: usa «Actualizar».</p>
+  {{ button("Actualizar", "secondary", href="/lecturas/" ~ view.id) }}
+</section>
+{% endif %}
 <form class="card" method="post" action="/lecturas/{{ view.id }}/proponer">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
   <h2 class="card__heading">Marca los que quieres proponer</h2>
@@ -58,7 +64,7 @@
   </div>
   {% else %}<p>No se encontró ningún canal en el tweet.</p>{% endfor %}
   <p class="caption">Un @handle o un enlace de YouTube se resuelve con 1 o 2 unidades de cuota. Un nombre sin @handle se busca por nombre y gasta 100 unidades: solo se hace si lo pides.</p>
-  <button class="btn btn--primary" type="submit">Proponer {{ view.selected }} canal{{ "es" if view.selected != 1 else "" }}</button>
+  <button class="btn btn--primary" type="submit">Proponer los canales marcados</button>
 </form>
 <form method="post" action="/lecturas/{{ view.id }}/cancelar">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">

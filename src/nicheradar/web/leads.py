@@ -85,6 +85,24 @@ def error_text(code: str | None) -> str:
     return TEXTS.get(code, GENERIC) if isinstance(code, str) else GENERIC
 
 
+def count_param(raw: object) -> int | None:
+    """A 0..10 count from a query string; anything else is None (nothing is shown)."""
+    if isinstance(raw, str) and raw.isascii() and raw.isdigit() and len(raw) <= 2:
+        return int(raw) if int(raw) <= MAX_CANDIDATES else None
+    return None
+
+
+def result_text(created: object, skipped: object) -> str | None:
+    made, left = count_param(created), count_param(skipped)
+    if made is None or left is None:
+        return None
+    done = "Se creó 1 propuesta" if made == 1 else f"Se crearon {made} propuestas"
+    if left == 0:
+        return done + "."
+    verb = "omitió" if left == 1 else "omitieron"
+    return f"{done}; {left} se {verb} (duplicadas, sin cupo o sin resolver)."
+
+
 def parse_candidate_ids(values: list[str]) -> list[str] | None:
     """1 a 10 UUID distintos; cualquier otra cosa es None y nada viaja a la API."""
     unique = list(dict.fromkeys(values))

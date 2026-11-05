@@ -83,7 +83,7 @@ def test_form_shows_figma_texts_and_a_valid_nonce() -> None:
     for text in (
         "Proponer subnicho",
         "Consulta, video o canal",
-        "Los enlaces de X (tweets) todavía no se leen.",
+        "Para un tweet de X, compártelo con NicheRadar y usa «Leer tweet».",
         "Cuánto gasta proponer",
         "Una consulta no gasta nada.",
         "Sin modelo de lenguaje (manual)",
