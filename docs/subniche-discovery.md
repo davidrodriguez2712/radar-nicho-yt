@@ -329,8 +329,7 @@ Sigue el flujo de releases existente (formato en `docs/release-20261030-030.md`)
    `scripts/smoke_compose.py`.
 2. Publicar las imágenes **con aprobación del propietario** y registrar `docs/release-YYYYMMDD-NNN.md`
    (digests, suite, rollback sin `alembic downgrade`).
-3. **Pendiente al hacer la release:** añadir una acción `migrate-live-0022` en `scripts/easypanel_stage.mjs`,
-   siguiendo el patrón de `migrate-live-0019` (la 0022 sucede a la 0020 y 0021, que se aplican antes si faltan), más una acción de despliegue. Hoy no existe.
+3. Las acciones `migrate-live-0022` y `deploy-proposals-code` de `scripts/easypanel_stage.mjs` se ejecutaron en la release 036 (`docs/release-20261104-036.md`).
 
 Pasos del propietario tras el despliegue:
 
