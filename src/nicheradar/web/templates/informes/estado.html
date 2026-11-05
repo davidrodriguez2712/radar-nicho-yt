@@ -10,5 +10,5 @@
   <p class="muted">{{ v.text }}</p>
   {% if v.problems %}<ul>{% for p in v.problems %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
 </section>
-<p class="caption"><a href="/nichos">← Volver a Nichos</a></p>
+<p class="caption"><a href="{{ v.back_href }}">{{ v.back_text }}</a></p>
 {% endblock %}
