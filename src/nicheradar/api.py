@@ -894,5 +894,7 @@ def create_app(
         flow_research_router(authenticate=authenticate, db=db, config=config, clock=clock)
     )
     app.include_router(pilots_router(db=db, config=config, clock=clock))
-    app.include_router(subniche_router(authenticate=authenticate, db=db, clock=clock))
+    app.include_router(
+        subniche_router(authenticate=authenticate, db=db, clock=clock, config=config)
+    )
     return app
