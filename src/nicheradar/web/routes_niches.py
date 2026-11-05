@@ -43,6 +43,9 @@ RESEARCH_OLDER = (
     "Puede haber investigaciones más antiguas que no se ven; "
     "el botón Investigar podría repetir una."
 )
+PILOTS_OLDER = (
+    "Puede haber pilotos más antiguos que no se ven: el recorrido podría estar incompleto."
+)
 RESEARCH_DOWN = "La lista de investigaciones no está disponible: no se muestra su estado."
 
 
@@ -157,24 +160,31 @@ def _detail_page(
         )
     research: object
     pilot: object
+    research_capped = pilots_capped = False
     try:
-        research = latest_research(
-            api.request("GET", "/flow-research", params={"limit": str(RESEARCH_PAGE)})["items"],
-            etiqueta,
-            formato,
-        )
+        orders = api.request("GET", "/flow-research", params={"limit": str(RESEARCH_PAGE)})["items"]
+        research_capped = len(orders) >= RESEARCH_PAGE
+        research = latest_research(orders, etiqueta, formato)
     except (ApiError, KeyError, TypeError):
         research = UNREADABLE
     try:
-        pilot = open_pilot(
-            api.request("GET", "/pilots", params={"limit": str(RESEARCH_PAGE)})["items"],
-            etiqueta,
-            formato,
-        )
+        pilots = api.request("GET", "/pilots", params={"limit": str(RESEARCH_PAGE)})["items"]
+        pilots_capped = len(pilots) >= RESEARCH_PAGE
+        pilot = open_pilot(pilots, etiqueta, formato)
     except (ApiError, KeyError, TypeError):
         pilot = UNREADABLE
     try:
-        view = detail_view(detail, research, pilot, request.app.state.config.timezone)
+        view = detail_view(
+            detail,
+            research,
+            pilot,
+            request.app.state.config.timezone,
+            research_capped=research_capped,
+        )
+        if research_capped:
+            view["warnings"].append(RESEARCH_OLDER)
+        if pilots_capped:
+            view["warnings"].append(PILOTS_OLDER)
     except SHAPE_ERRORS:
         if form is None:
             raise

@@ -19,6 +19,7 @@ NOTICE = (
     "no son ingresos verificados."
 )
 RESEARCH_DOWN = "No se pudo leer el estado de la investigación"
+CAPPED_REASON = "No disponible: puede haber una investigación más antigua que no se ve."
 PILOTS_DOWN = "No se pudo leer el estado de los pilotos: el recorrido puede estar incompleto."
 HOW = (
     "Opportunity: Rentabilidad 30 · Eficiencia 30 · Validación 25 · Dinámica 15.",
@@ -147,7 +148,9 @@ def _listing(raw: object) -> dict[str, Any]:
     }
 
 
-def _research_card(niche: dict[str, Any], research: object, fmt: str) -> dict[str, Any]:
+def _research_card(
+    niche: dict[str, Any], research: object, fmt: str, *, capped: bool = False
+) -> dict[str, Any]:
     label = niche.get("niche_label")
     if research == UNREADABLE:
         return {"status": RESEARCH_DOWN, "action": None}
@@ -168,7 +171,14 @@ def _research_card(niche: dict[str, Any], research: object, fmt: str) -> dict[st
         and _score(niche.get("opportunity")) != "sin evidencia"
         and isinstance(label, str)
     ):
-        action = {"label": "Investigar", "href": investigate_href(label, fmt), "style": "primary"}
+        if capped:  # the read hit its cap: an older order may exist, so no repeat is offered
+            action = {"label": "Investigar", "style": "secondary", "disabled": CAPPED_REASON}
+        else:
+            action = {
+                "label": "Investigar",
+                "href": investigate_href(label, fmt),
+                "style": "primary",
+            }
     return {"status": status or "sin investigación", "action": action}
 
 
@@ -183,7 +193,9 @@ def _decision_form(niche: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def detail_view(detail: object, research: object, pilot: object, tz: str) -> dict[str, Any]:
+def detail_view(
+    detail: object, research: object, pilot: object, tz: str, *, research_capped: bool = False
+) -> dict[str, Any]:
     data = _dict(detail)
     niche = data["niche"]
     if not isinstance(niche, dict):
@@ -236,7 +248,7 @@ def detail_view(detail: object, research: object, pilot: object, tz: str) -> dic
             ("Riesgo de política", risk if isinstance(risk, str) and risk else "sin dato"),
             ("Tendencia", trend_text(niche.get("trend"))),
         ],
-        "research": _research_card(niche, research, fmt),
+        "research": _research_card(niche, research, fmt, capped=research_capped),
         "market": [
             ("Fichas", _count(metrics.get("n_listings"))),
             ("Con ingreso", _count(metrics.get("n_income"))),

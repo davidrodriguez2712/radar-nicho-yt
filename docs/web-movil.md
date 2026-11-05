@@ -140,15 +140,17 @@ Plan: `docs/superpowers/plans/2026-11-04-alineacion-web-con-figma.md`. Solo camb
 | Pieza | Ruta o lugar | Notas |
 |---|---|---|
 | Detalle de nicho (M19) | `GET /nichos/ver?etiqueta=&formato=` | Lee `GET /market/niches/{etiqueta}`. La etiqueta va por query (puede traer `/` u `other:`). «Ver más fichas» muestra 10 más por toque sobre las ya cargadas; hasta 100 fichas, con aviso si hay más. La tendencia es «sube», «baja», «estable» o «sin dato». |
-| Recorrido hasta el piloto | macro `journey` (`journey.py`) en el detalle de nicho y en la ficha de subnicho | Seis pasos: Candidato, Decisión, Listo para investigar, Investigación de flujo, Informe, Piloto. Regla: cada paso es `done` (✓), `now` (●) o `pending` (○); `now` es el **primer paso no hecho**; si todos están hechos, Piloto es `now` con «Piloto en marcha» (hay piloto abierto) o «Decide si lo lanzas». Nicho descartado: Decisión es `now` («Descartado: se oculta de la lista») y el resto `pending`. Subnicho pausado: Decisión `done` («Pausada») y «Listo para investigar» `pending`; archivado: Decisión `now`. Nunca lanza ante datos mal formados: dice qué falta. |
+| Recorrido hasta el piloto | macro `journey` (`journey.py`) en el detalle de nicho y en la ficha de subnicho | Seis pasos: Candidato, Decisión, Listo para investigar, Investigación de flujo, Informe, Piloto. Regla: cada paso es `done` (✓), `now` (●) o `pending` (○); `now` es el **primer paso no hecho**; si todos están hechos, Piloto es `now`. El texto de Piloto es «Piloto {estado}» (por ejemplo «Piloto en ejecución») si hay un piloto abierto, o «Decide si lo lanzas» si no. Nicho descartado: Decisión es `now` («Descartado: se oculta de la lista») y todo lo siguiente `pending`, aunque existan datos (Ruling 2). Subnicho pausado: Decisión `done` («Pausada») y «Listo para investigar» `now` («Reanúdala para medirla»); archivado: Decisión `now`. Nunca lanza ante datos mal formados: dice qué falta. |
 | Decisión del nicho | `POST /nichos/decidir` | Sin decidir, Tentativo, Descartado; reversible, con CSRF y sin pantalla de confirmación. |
-| Control con conteos | `Nichos (N) \| Subnichos (M)` en las dos listas | Los conteos salen de las lecturas de cada lista. |
+| Control con conteos | `Nichos (N) \| Subnichos (M)` en las dos listas | Cada lista hace una lectura cruzada extra para el conteo de la otra (`GET /subniches` o `GET /market/niches?limit=1`) con timeout de 3 s; si falla, el conteo se muestra como desconocido y la lista sigue. |
 | Informe y autorización | `/informes/{id}`, `/pilotos/autorizar` | Una sola pantalla para nichos y subnichos, con rótulo de origen; v1/v2 con aviso. |
 | Panel del piloto y Hoy | `/pilotos/{id}`, `/` | Calibración en el Resumen; Hoy con pendientes fusionados, títulos dinámicos y tarjetas con acciones. |
 
 ### Retorno seguro (`volver`)
 
 «Hoy» y el detalle de nicho envían `volver` en la decisión. Solo se acepta una lista blanca de rutas internas: `/`, `/nichos` y `/nichos/ver?...`. Cualquier otro valor (`https://…`, `//host`, `javascript:`, `/nichos/../x`) se ignora y se vuelve a `/nichos`.
+
+El detalle de nicho avisa (mismo aviso fijo que la lista) cuando la lectura de investigaciones o de pilotos llega al tope de 100, y entonces deshabilita «Investigar» con el motivo para no repetir una investigación que no se ve.
 
 ### Costo de lecturas del panel
 

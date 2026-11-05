@@ -436,3 +436,8 @@ def test_hostile_pilot_text_is_escaped_in_the_journey() -> None:
     mine = pilot_item(niche_label=f"subniche:{SLUG}", format="long", status=HOSTILE)
     text = with_pilots(subniche_card(), (200, {"items": [mine]}))
     assert "<script>alert(1)</script>" not in text
+
+
+def test_the_card_has_a_back_link_to_the_subniche_list() -> None:
+    text = page(subniche_card())
+    assert re.search(r'<a class="backlink" href="/subnichos">‹ Subnichos</a>', text)

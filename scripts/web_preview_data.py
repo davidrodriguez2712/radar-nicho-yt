@@ -349,7 +349,6 @@ REPORT: dict[str, Any] = {
     "created_at": "2026-11-02T02:05:45Z",
     "updated_at": "2026-11-02T03:00:00Z",
     "evidence": {
-        "source": "niche",
         "confidence": "media",
         "language_mix": [
             {"language": "en", "share_pct": 80.0},

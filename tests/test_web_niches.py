@@ -560,3 +560,13 @@ def test_only_tentative_gets_the_marked_notice_other_decisions_a_neutral_one() -
     page = web.get("/nichos", params={"aviso": "guardada"}).text
     assert '<div class="note note--green" role="status">Decisión guardada.</div>' in page
     assert "Marcado como tentativo" not in page
+
+
+def test_a_niche_whose_label_is_not_text_only_loses_its_own_link() -> None:
+    good = niche_item("historia militar explicada")
+    for bad_label in (7, None, ["x"], {"a": 1}):
+        bad = niche_item("x") | {"niche_label": bad_label}
+        response = make_client(api_with(bad, good)).get("/nichos")
+        assert response.status_code == 200, bad_label
+        assert "historia militar explicada" in response.text
+        assert response.text.count("/nichos/ver?etiqueta=historia") == 1

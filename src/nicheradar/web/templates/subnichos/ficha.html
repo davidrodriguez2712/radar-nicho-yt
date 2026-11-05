@@ -2,6 +2,7 @@
 {% from "components.html" import chip, button, journey %}
 {% block title %}{{ v.label }} · NicheRadar{% endblock %}
 {% block content %}
+<p class="caption"><a class="backlink" href="/subnichos">‹ Subnichos</a></p>
 <p class="eyebrow">Subnicho · {% if v.measured %}medido{% else %}sin medición{% endif %}</p>
 <h1 class="h1 h1--md">{{ v.label }}</h1>
 <div class="tags">

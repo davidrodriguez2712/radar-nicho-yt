@@ -110,6 +110,9 @@ def budget_body(dossier: dict[str, Any], max_videos: int, informe_id: str) -> di
     }
 
 
+AUTO_METRICS = {"pipeline_e2e", "avd_pct", "browse_share_pct"}
+
+
 def stop_rule_lines(format: str) -> list[tuple[str, str]]:
     """The format's default stop rules as read-only text, derived from the rules the API applies.
 
@@ -130,5 +133,6 @@ def stop_rule_lines(format: str) -> list[tuple[str, str]]:
             text = f"Un video publicado de punta a punta a la semana {at}"
         else:
             text = str(rule["text"])
-        lines.append((text, "la juzgas tú" if metric == "revenue_vs_cost" else "se compara sola"))
+        own = metric not in AUTO_METRICS  # manual, revenue_vs_cost and any unknown metric
+        lines.append((text, "la juzgas tú" if own else "se compara sola"))
     return lines

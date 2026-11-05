@@ -79,7 +79,7 @@
 {% if needs_no_go %}<label class="note note--amber"><input type="checkbox" name="accept_no_go" value="1"{% if accepted[0] %} checked{% endif %}> Acepto lanzarlo aunque el informe recomienda no avanzar.</label>{% endif %}
   {% if needs_gate %}<label class="note note--amber"><input type="checkbox" name="accept_gate_failure" value="1"{% if accepted[1] %} checked{% endif %}> Acepto lanzarlo aunque no pasa una compuerta de selección.</label>{% endif %}
   <button class="btn btn--primary" type="submit">Autorizar piloto</button>
-  <p class="caption">Si una compuerta de tiempo o derechos no se cumpliera, se pide aceptarlo de forma explícita y queda registrado en el piloto.</p>
+  <p class="caption">Si una compuerta no se cumpliera, se pide aceptarlo de forma explícita y queda registrado en el piloto.</p>
   <a class="btn btn--secondary" href="/informes/{{ report_id }}">Cancelar</a>
 </form>
 {% endblock %}

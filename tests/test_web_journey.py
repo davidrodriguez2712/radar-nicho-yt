@@ -83,8 +83,13 @@ def test_an_open_pilot_is_the_current_step() -> None:
 
 def test_a_discarded_niche_stops_at_the_decision() -> None:
     steps = niche_journey(niche("descartado"), None, None)
-    assert states(steps) == ["done", "now", "done", "pending", "pending", "pending"]
+    assert states(steps) == ["done", "now", "pending", "pending", "pending", "pending"]
     assert "se oculta" in steps[1].detail
+    # even with research, a report and a pilot on record, nothing after the decision is done
+    full = niche_journey(
+        niche("descartado"), {"status": "listo", "language": "en"}, {"status": "en_ejecucion"}
+    )
+    assert states(full) == ["done", "now", "pending", "pending", "pending", "pending"]
 
 
 def test_a_niche_without_scores_is_not_ready_to_research() -> None:

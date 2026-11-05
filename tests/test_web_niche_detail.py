@@ -323,3 +323,33 @@ def test_the_route_does_not_shadow_the_other_niche_routes() -> None:
 def test_hostile_titles_in_listings_are_escaped() -> None:
     text = page(niche_page(listings=[market_listing(HOSTILE)]))
     assert ESCAPED in text and "<script>alert(1)" not in text
+
+
+OLDER = "Puede haber investigaciones más antiguas que no se ven"
+
+
+def other_flow(i: int) -> dict[str, object]:
+    return flow_item("listo", id=f"{i:08d}-0000-4000-8000-000000000000", niche_label=f"otro {i}")
+
+
+def test_exactly_100_research_orders_warn_and_do_not_offer_to_investigate() -> None:
+    items = [other_flow(i) for i in range(100)]
+    text = page(flows=(200, {"items": items}))
+    assert OLDER in text
+    assert "Investigar</a>" not in text
+    assert "aria-disabled" in text and "podría repetir una" in text
+
+
+def test_99_research_orders_neither_warn_nor_block_investigating() -> None:
+    items = [other_flow(i) for i in range(99)]
+    text = page(flows=(200, {"items": items}))
+    assert OLDER not in text
+    assert "Investigar</a>" in text
+
+
+def test_exactly_100_pilots_warn_that_the_journey_may_be_incomplete() -> None:
+    items = [pilot_item(f"pil_20261102_c{i}", niche_label=f"otro {i}") for i in range(100)]
+    text = page(pilots=(200, {"items": items}))
+    assert "Puede haber pilotos más antiguos" in text
+    few = page(pilots=(200, {"items": items[:99]}))
+    assert "Puede haber pilotos más antiguos" not in few

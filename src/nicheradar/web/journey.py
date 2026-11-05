@@ -6,7 +6,7 @@ text of what is missing.
 """
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
 
@@ -143,9 +143,10 @@ def niche_journey(niche: object, research: object, pilot: object) -> list[Step]:
             "Necesita puntajes de Opportunity y de automatización (al menos 3 fichas con ingreso)",
         )
         candidate = _Draft(True, "Viene del scraper de mercado", "", "")
-        return _build(
-            [candidate, decide, ready, *_tail(research, pilot, "Se inicia desde el detalle")]
-        )
+        rest = [ready, *_tail(research, pilot, "Se inicia desde el detalle")]
+        if decision == "descartado":  # Ruling 2: nothing after a discard counts as done
+            rest = [replace(draft, done=False) for draft in rest]
+        return _build([candidate, decide, *rest])
     except Exception:  # noqa: BLE001 - a journey must never break a page
         return _build(
             [

@@ -18,7 +18,8 @@
 <section class="card">
   <h2 class="h2">Investigación de flujo</h2>
   <div class="row"><span class="row__label">Última investigación</span><span class="row__value">{{ v.research.status }}</span></div>
-  {% if v.research.action %}<a class="btn btn--{{ v.research.action.style }}" href="{{ v.research.action.href }}">{{ v.research.action.label }}</a>{% endif %}
+  {% if v.research.action and v.research.action.disabled %}<span class="btn btn--{{ v.research.action.style }}" aria-disabled="true">{{ v.research.action.label }}</span><p class="caption">{{ v.research.action.disabled }}</p>
+  {% elif v.research.action %}<a class="btn btn--{{ v.research.action.style }}" href="{{ v.research.action.href }}">{{ v.research.action.label }}</a>{% endif %}
 </section>
 <section class="card">
   <h2 class="h2">Mercado</h2>

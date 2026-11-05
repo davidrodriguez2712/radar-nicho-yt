@@ -26,7 +26,7 @@ from nicheradar.web.pilots_form import (
     parse_form,
     stop_rule_lines,
 )
-from nicheradar.web.report import report_view, subject_label
+from nicheradar.web.report import is_subniche_origin, report_view
 from nicheradar.web.research import LANGUAGE_NAMES, UUID_RE
 from nicheradar.web.security import Session
 
@@ -89,11 +89,10 @@ def _busy(request: Request) -> tuple[set[str], str | None]:
 def _evidence_block(request: Request, detail: dict[str, Any]) -> dict[str, Any] | None:
     """The single «Evidencia» card: one branch per origin; none if the origin is unknown."""
     evidence = detail.get("evidence")
-    source = evidence.get("source") if isinstance(evidence, dict) else None
-    if source == "niche":
-        return {"source": "niche"}
-    if not isinstance(evidence, dict) or source != "subniche":
+    if not isinstance(evidence, dict):
         return None
+    if not is_subniche_origin(str(detail.get("niche_label") or ""), evidence):
+        return {"source": "niche"}
     measurement = evidence.get("measurement")
     measured = measurement.get("measured_at") if isinstance(measurement, dict) else None
     when: str | None = None
@@ -159,7 +158,7 @@ def _page(
             "v": view,
             "report_id": detail.get("id"),
             "title_label": view["subject"],
-            "is_subniche": subject_label(str(detail["niche_label"]))[1],
+            "is_subniche": is_subniche_origin(str(detail["niche_label"]), detail.get("evidence")),
             "format_text": FORMAT_ONE[detail["format"]],
             "stop_rules": stop_rule_lines(detail["format"]),
             "language": LANGUAGE_NAMES.get(str(language), str(language) if language else "—"),

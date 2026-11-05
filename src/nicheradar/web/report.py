@@ -86,6 +86,14 @@ def subject_label(niche_label: str) -> tuple[str, bool]:
     return niche_label, False
 
 
+def is_subniche_origin(niche_label: str, evidence: object) -> bool:
+    """One origin for the whole page: `evidence.source`, else the label prefix."""
+    source = evidence.get("source") if isinstance(evidence, dict) else None
+    if isinstance(source, str) and source in ("niche", "subniche"):
+        return source == "subniche"
+    return niche_label.startswith("subniche:")
+
+
 def notice(aviso: str, pilot: str) -> tuple[str, str] | None:
     """Only a fixed key picks the text; the pilot id shows only if it has the pilot's shape."""
     found = AVISOS_INFORME.get(aviso)
@@ -333,12 +341,11 @@ def _time_lines(time: dict[str, Any]) -> list[tuple[str, str]]:
     ]
 
 
-def _firm(evidence: dict[str, Any], timezone: str) -> dict[str, Any] | None:
+def _firm(evidence: dict[str, Any], timezone: str, *, subniche: bool) -> dict[str, Any] | None:
     confidence = CONFIDENCE.get(str(evidence.get("confidence")))
     rows: list[tuple[str, str]] = []
     if confidence:
         rows.append(("Confianza de la medición", confidence))
-    subniche = evidence.get("source") == "subniche"
     count_line: str | None = None
     if subniche:
         measurement = _dict(evidence.get("measurement"))
@@ -351,7 +358,7 @@ def _firm(evidence: dict[str, Any], timezone: str) -> dict[str, Any] | None:
         elif isinstance(measured, str):
             try:
                 rows.append(("Medido el", local_datetime(measured, timezone)))
-            except ValueError:
+            except (ValueError, OverflowError):
                 pass
     else:
         mix = [
@@ -385,7 +392,8 @@ def report_view(detail: dict[str, Any], timezone: str) -> dict[str, Any]:
         return {"missing": True}
     evidence = _dict(detail.get("evidence"))
     label = str(detail.get("niche_label") or "")
-    subject, is_subniche = subject_label(label)
+    subject = subject_label(label)[0]
+    is_subniche = is_subniche_origin(label, evidence)
     subject = (_hypothesis_name(evidence) if is_subniche else None) or subject
     verdict = _dict(dossier.get("verdict"))
     headline, kind = RECOMMENDATION.get(
@@ -449,7 +457,7 @@ def report_view(detail: dict[str, Any], timezone: str) -> dict[str, Any]:
         else INCOMPLETE_NOTICE
         if dossier.get("schema_version") == "dossier-v3"
         else OLD_NOTICE,
-        "firm": _firm(evidence, timezone),
+        "firm": _firm(evidence, timezone, subniche=is_subniche),
         "time": time,
         "time_lines": _time_lines(time) if time else None,
         "subject": subject,
@@ -528,7 +536,8 @@ def status_view(detail: dict[str, Any]) -> dict[str, Any]:
             if isinstance(message, str) and message:
                 problems.append(f"{path}: {message}" if isinstance(path, str) and path else message)
     label = str(detail.get("niche_label") or "")
-    subject, is_subniche = subject_label(label)
+    subject = subject_label(label)[0]
+    is_subniche = is_subniche_origin(label, detail.get("evidence"))
     return {
         "chip": chip,
         "kind": kind,

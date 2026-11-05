@@ -309,7 +309,6 @@ def report_detail(
     """A flow-research order as the API returns it, with the frozen evidence and the dossier."""
     base: dict[str, Any] = flow_item(status) | {
         "evidence": {
-            "source": "niche",
             "confidence": "media",
             "language_mix": [
                 {"language": "en", "share_pct": 80.0},
