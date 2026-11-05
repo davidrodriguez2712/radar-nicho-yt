@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "components.html" import button %}
+{% block title %}Aprobar subnicho · NicheRadar{% endblock %}
+{% block content %}
+<h1 class="h1">Aprobar subnicho</h1>
+<section class="card card--accent">
+  <h2 class="card__heading">{{ v.label }}</h2>
+  {% if v.proposed %}
+  <p>Al aprobar, la hipótesis pasa a activa y se mide sola con la API de YouTube. Aprobar no mide al instante: la primera medición ocurre a más tardar en {{ v.cadence_days }} {{ "día" if v.cadence_days == 1 else "días" }}.</p>
+  <div class="rows">
+    <div class="row"><span class="row__label">Consultas</span><span class="row__value">{{ v.queries }}</span></div>
+    <div class="row"><span class="row__label">Búsqueda por medición</span><span class="row__value">{{ v.needed }} unidades</span></div>
+    <div class="row"><span class="row__label">Tope diario de búsqueda</span><span class="row__value">{{ v.cap }} unidades</span></div>
+  </div>
+  {% else %}
+  <p id="no-propuesta">{{ not_proposed }}</p>
+  {% endif %}
+</section>
+{% if v.proposed %}
+{% if not v.fits %}
+<div class="note note--amber" role="status"><span class="note__title">Atención</span><p>Con la cuota actual la medición se saltará hasta que haya cupo. Hacen falta {{ v.needed }} unidades por medición y el tope diario es de {{ v.cap }}.</p></div>
+{% endif %}
+<form method="post" action="{{ v.post_href }}" class="actions">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <button class="btn btn--primary" type="submit">Confirmar y aprobar</button>
+</form>
+{% endif %}
+<a class="backlink" href="{{ v.back_href }}">Volver sin cambios</a>
+{% endblock %}

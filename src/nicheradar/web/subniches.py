@@ -8,6 +8,8 @@ from urllib.parse import quote
 
 from nicheradar.web.format import compact, local_datetime, usd_range
 from nicheradar.web.journey import subniche_journey
+from nicheradar.web.lifecycle import AVISOS as LIFECYCLE_AVISOS
+from nicheradar.web.lifecycle import lifecycle_actions
 from nicheradar.web.niche_detail import UNREADABLE, open_pilot
 from nicheradar.web.research import valid_id
 
@@ -60,6 +62,7 @@ AVISOS: dict[str, tuple[str, str]] = {
     "existente": ("Ya había una investigación activa para este subnicho.", "amber"),
     "no-lista": (NOT_READY, "amber"),
     "error": ("No se pudo crear la investigación. Revisa la API e inténtalo de nuevo.", "rose"),
+    **LIFECYCLE_AVISOS,
 }
 
 
@@ -207,6 +210,7 @@ def detail_view(card: dict[str, Any], timezone: str, pilot: object = None) -> di
         steps[5] = replace(steps[5], detail=PILOT_DOWN)
     return {
         "journey": steps,
+        "lifecycle": lifecycle_actions(hypothesis["status"], hypothesis["slug"]),
         "decision": [(name, hypothesis["status"] == value) for value, name in DECISION_PILLS],
         "post_href": f"/subnichos/{quote(hypothesis['slug'], safe='')}/investigar",
         "label": hypothesis["label"],

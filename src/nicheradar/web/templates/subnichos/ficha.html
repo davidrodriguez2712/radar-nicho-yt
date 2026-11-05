@@ -48,7 +48,15 @@
   <h2 class="h2">Decisión de la hipótesis</h2>
   <div class="pills">{% for name, on in v.decision %}<span class="pill{% if on %} pill--on{% endif %}"{% if on %} aria-current="true"{% endif %}>{{ name }}</span>{% endfor %}</div>
   <p class="caption">Activa: se mide sola y se puede investigar. Pausada: deja de medirse. Archivada: se descarta. Solo una hipótesis activa y con al menos una medición se puede investigar.</p>
-  <p class="caption">Aprobar, pausar o archivar se hará desde aquí cuando esté disponible.</p>
+  {% set a = v.lifecycle %}
+  {% if a and (a.approve_href or a.pause_href or a.resume_href or a.archive_href) %}
+  <div class="actions">
+    {% if a.approve_href %}{{ button("Revisar y aprobar", "primary", href=a.approve_href) }}{% endif %}
+    {% if a.pause_href %}<form method="post" action="{{ a.pause_href }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="btn btn--secondary" type="submit">Pausar</button></form>{% endif %}
+    {% if a.resume_href %}<form method="post" action="{{ a.resume_href }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="btn btn--primary" type="submit">Reanudar</button></form>{% endif %}
+    {% if a.archive_href %}{{ button("Archivar", "danger", href=a.archive_href) }}{% endif %}
+  </div>
+  {% endif %}
 </section>
 {% if v.action.kind != "hidden" %}
 <section class="card">
