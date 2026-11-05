@@ -42,6 +42,16 @@ def _existing(conn: Connection, key: str) -> UUID | None:
     ).scalar_one_or_none()
 
 
+def expire_queued(conn: Connection, now: datetime, *, hours: int = 24) -> int:
+    """Lecturas que nadie atendió en `hours`: fallan y sueltan los bytes de imagen."""
+    result = conn.execute(
+        sa.update(reads)
+        .where(reads.c.status == "queued", reads.c.created_at < now - timedelta(hours=hours))
+        .values(status="failed", error_code="expired", image_data=None, finished_at=now)
+    )
+    return result.rowcount
+
+
 def _enqueue(
     conn: Connection, values: dict[str, Any], *, key: str, now: datetime, per_day: int
 ) -> tuple[UUID, bool]:
@@ -50,6 +60,7 @@ def _enqueue(
     conn.execute(sa.select(sa.func.pg_advisory_xact_lock(_LIMIT_LOCK)))
     if (found := _existing(conn, key)) is not None:  # otra petición ganó la carrera
         return found, False
+    expire_queued(conn, now)
     recent = conn.execute(
         sa.select(sa.func.count())
         .select_from(reads)
@@ -189,9 +200,7 @@ def finish_ready(
     return True
 
 
-def finish_failed(
-    conn: Connection, read_id: UUID, code: str, now: datetime, *, author: str | None = None
-) -> bool:
+def finish_failed(conn: Connection, read_id: UUID, code: str, now: datetime) -> bool:
     """Marca `failed` solo si la fila sigue `running`; devuelve si actualizó."""
     values: dict[str, Any] = {
         "status": "failed",
@@ -200,8 +209,6 @@ def finish_failed(
         "image_data": None,
         "finished_at": now,
     }
-    if author is not None:
-        values["tweet_author"] = author
     result = conn.execute(
         sa.update(reads).where(reads.c.id == read_id, reads.c.status == "running").values(**values)
     )
@@ -260,12 +267,12 @@ def get_read(conn: Connection, read_id: UUID) -> dict[str, Any] | None:
 
 
 def _read_status(conn: Connection, read_id: UUID) -> str:
-    status = conn.execute(
-        sa.select(reads.c.status).where(reads.c.id == read_id)
-    ).scalar_one_or_none()
-    if status != "ready":
+    row = conn.execute(
+        sa.select(reads.c.status, reads.c.closed_at).where(reads.c.id == read_id)
+    ).first()
+    if row is None or row.status != "ready" or row.closed_at is not None:
         raise LeadRejected("not_ready")
-    return str(status)
+    return str(row.status)
 
 
 def queue_names(
@@ -298,10 +305,11 @@ def queue_names(
 def claim_name_search(conn: Connection, now: datetime) -> dict[str, Any] | None:
     next_id = conn.execute(
         sa.select(cands.c.id)
-        .where(cands.c.resolution == "name_queued")
+        .select_from(cands.join(reads, reads.c.id == cands.c.read_id))
+        .where(cands.c.resolution == "name_queued", reads.c.closed_at.is_(None))
         .order_by(cands.c.updated_at, cands.c.id)
         .limit(1)
-        .with_for_update(skip_locked=True)
+        .with_for_update(skip_locked=True, of=cands)
     ).scalar_one_or_none()
     if next_id is None:
         return None
@@ -402,8 +410,7 @@ def propose(
                         .values(proposal_request_id=proposal_id, updated_at=now)
                     )
             except proposals.ProposalRejected as error:
-                outcome = "daily_limit" if error.code == "daily_limit" else "not_resolved"
-                out.append(item | {"outcome": outcome})
+                out.append(item | {"outcome": error.code})
             else:
                 out.append(item | {"outcome": "queued", "proposal_id": str(proposal_id)})
     conn.execute(sa.update(reads).where(reads.c.id == read_id).values(untrusted_text=None))

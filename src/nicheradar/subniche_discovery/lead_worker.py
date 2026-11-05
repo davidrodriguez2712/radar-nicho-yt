@@ -74,6 +74,8 @@ async def _read(
     with engine.begin() as connection:
         leads.set_stage(connection, request["id"], "mentions")
     run = _run(engine, config)
+    # YouTube primero: si no está configurado o no hay cupo, falla sin gastar el modelo.
+    active = resolver or build_reader(engine, config, run, clock)
     outcome = await extract_mentions(engine, run, config, text, images, clock(), client=client)
     warning = None if outcome["reason"] == "response_received" else str(outcome["reason"])
     if request["kind"] == "image" and warning is not None:
@@ -83,7 +85,6 @@ async def _read(
     if mentions:
         with engine.begin() as connection:
             leads.set_stage(connection, request["id"], "resolving")
-        active = resolver or build_reader(engine, config, run, clock)
         candidates = await resolve_mentions(mentions, active)
     return None, {
         "author": author,
@@ -191,6 +192,7 @@ def tick_leads(
     try:
         with database.begin() as connection:
             leads.release_stale(connection, clock())
+            leads.expire_queued(connection, clock())
             leads.purge(connection, clock())
         for _ in range(batch):
             with database.begin() as connection:

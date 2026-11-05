@@ -3,11 +3,13 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy import Engine
 from sqlalchemy.exc import OperationalError
 
 from nicheradar.config import Settings
 from nicheradar.integrations.tweets import ImageData, Tweet, TweetRef
+from nicheradar.repositories.schema import lead_read_requests as reads
 from nicheradar.subniche_discovery import leads
 from nicheradar.subniche_discovery.lead_worker import tick_leads
 from tests.lead_samples import (
@@ -158,6 +160,11 @@ def test_a_shared_image_is_read_and_its_bytes_are_purged(isolated_engine: Engine
     read = get(isolated_engine, read_id)
     assert [c["channel_id"] for c in read["candidates"]] == [UC_A]
     with isolated_engine.connect() as connection:
+        left = connection.execute(
+            sa.select(reads.c.image_data).where(reads.c.id == read_id)
+        ).scalar_one()
+    assert left is None
+    with isolated_engine.connect() as connection:
         assert leads.claim_next(connection, LLM_NOW) is None
 
 
@@ -288,10 +295,6 @@ def test_a_cancelled_read_is_failed_not_left_running(isolated_engine: Engine) ->
 
 
 def test_a_failed_read_purges_its_image_bytes(isolated_engine: Engine) -> None:
-    import sqlalchemy as sa
-
-    from nicheradar.repositories.schema import lead_read_requests as reads
-
     with isolated_engine.begin() as connection:
         read_id, _ = leads.enqueue_image(
             connection, ImageData("image/png", PNG), key="clave-img-03", now=LLM_NOW, per_day=50
@@ -398,6 +401,42 @@ def test_the_daily_search_cap_leaves_the_name_unresolved_without_spending(
     assert out["names"] == 1
     after = next(c for c in get(isolated_engine, read_id)["candidates"] if c["kind"] == "name")
     assert after["resolution"] == "name_only"
+
+
+def test_stale_queued_images_are_expired_by_the_tick(isolated_engine: Engine) -> None:
+    with isolated_engine.begin() as connection:
+        read_id, _ = leads.enqueue_image(
+            connection,
+            ImageData("image/png", PNG),
+            key="clave-img-vieja",
+            now=LLM_NOW - timedelta(hours=25),
+            per_day=50,
+        )
+    tick_leads(vision_settings(), isolated_engine, resolver=resolver(), clock=lambda: LLM_NOW)
+    assert get(isolated_engine, read_id)["error_code"] == "expired"
+    with isolated_engine.connect() as connection:
+        data = connection.execute(
+            sa.select(reads.c.image_data).where(reads.c.id == read_id)
+        ).scalar_one()
+    assert data is None
+
+
+def test_youtube_not_configured_fails_before_spending_the_model(isolated_engine: Engine) -> None:
+    ready_world(isolated_engine)
+    read_id = put_tweet(isolated_engine)
+    seen: list[Any] = []
+    client = mentions_client(
+        [{"kind": "handle", "value": "@historia_uno", "found_in": "image"}], seen
+    )
+    out = tick_leads(
+        vision_settings(),
+        isolated_engine,
+        tweet_reader=FakeTweetReader(tweet(photos=())),
+        client=client,
+        clock=lambda: LLM_NOW,
+    )
+    assert out["failed"] == 1 and seen == []
+    assert get(isolated_engine, read_id)["status"] == "failed"
 
 
 def test_a_provider_error_while_resolving_stores_only_its_code(isolated_engine: Engine) -> None:
