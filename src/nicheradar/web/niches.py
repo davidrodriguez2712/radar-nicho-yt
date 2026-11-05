@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
 
+from nicheradar.web.niche_decision import detail_url, valid_label
 from nicheradar.web.research import valid_id
 
 DECISION_CHIP = {
@@ -112,6 +113,7 @@ def card(item: dict[str, Any], research: dict[str, Any] | None, rank: int) -> di
     return {
         "rank": rank if opportunity is not None else "—",
         "label": label,
+        "href": detail_url(label, fmt) if valid_label(label) and fmt in FORMATS else None,
         "format": fmt,
         "format_text": "Shorts" if fmt == "shorts" else "Largo",
         "decision_text": d_text,

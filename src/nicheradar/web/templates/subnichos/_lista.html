@@ -25,3 +25,4 @@
 {% endfor %}
 <p class="caption">«Despegaron»: canales pequeños con un video muy por encima de su tamaño. «Constantes»: canales con vistas estables. «Grandes»: canales grandes en el tema.</p>
 {% endif %}
+{% if fragment %}{% set oob = true %}{% set active_tab_segment = "subnichos" %}{% include "_segmento.html" %}{% endif %}

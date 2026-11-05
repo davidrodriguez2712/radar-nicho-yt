@@ -25,6 +25,7 @@ from nicheradar.web.niche_detail import (
 )
 from nicheradar.web.niches import AVISOS_NICHOS, list_view, parse_filters
 from nicheradar.web.security import Session
+from nicheradar.web.segment import UNKNOWN, counts, subniche_total
 
 router = APIRouter()
 VARY = "HX-Request, HX-History-Restore-Request"
@@ -68,6 +69,8 @@ def niche_list(request: Request, session: Annotated[Session, Depends(current_ses
                 "filtros": filters,
                 "notice": None,
                 "warnings": [],
+                "seg_counts": counts(UNKNOWN, subniche_total(api)),
+                "fragment": htmx,
             },
             status_code=200 if htmx else 503,
             session=session,
@@ -101,6 +104,8 @@ def niche_list(request: Request, session: Annotated[Session, Depends(current_ses
                 "filtros": filters,
                 "notice": notice,
                 "warnings": warnings,
+                "seg_counts": counts(view["api_total"], subniche_total(api)),
+                "fragment": htmx,
             },
             session=session,
         )

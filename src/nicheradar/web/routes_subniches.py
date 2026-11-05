@@ -10,6 +10,7 @@ from starlette.responses import RedirectResponse, Response
 from nicheradar.web.client import ApiError
 from nicheradar.web.deps import current_session, is_fragment, render, shape_guard
 from nicheradar.web.security import Session
+from nicheradar.web.segment import UNKNOWN, active_subniches, counts, niche_total
 from nicheradar.web.subniches import AVISOS, detail_view, list_view, parse_filters
 
 router = APIRouter()
@@ -40,7 +41,14 @@ def subniche_list(
         response = render(
             request,
             template,
-            {"active_tab": "nichos", "error": error.message, "view": None, "filtros": filters},
+            {
+                "active_tab": "nichos",
+                "error": error.message,
+                "view": None,
+                "filtros": filters,
+                "seg_counts": counts(niche_total(request.app.state.api), UNKNOWN),
+                "fragment": htmx,
+            },
             status_code=200 if htmx else 503,
             session=session,
         )
@@ -49,7 +57,16 @@ def subniche_list(
         response = render(
             request,
             template,
-            {"active_tab": "nichos", "error": None, "view": view, "filtros": view["filtros"]},
+            {
+                "active_tab": "nichos",
+                "error": None,
+                "view": view,
+                "filtros": view["filtros"],
+                "seg_counts": counts(
+                    niche_total(request.app.state.api), active_subniches(data["items"])
+                ),
+                "fragment": htmx,
+            },
             session=session,
         )
     response.headers["Vary"] = VARY

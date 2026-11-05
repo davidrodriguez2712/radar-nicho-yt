@@ -1,0 +1,4 @@
+{% from "components.html" import segmented %}
+<div id="segmento"{% if oob %} hx-swap-oob="true"{% endif %}>
+{{ segmented([("Nichos", "/nichos", active_tab_segment == "nichos", seg_counts.nichos), ("Subnichos", "/subnichos", active_tab_segment == "subnichos", seg_counts.subnichos)]) }}
+</div>

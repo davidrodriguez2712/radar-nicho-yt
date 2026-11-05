@@ -1,8 +1,7 @@
 {% extends "base.html" %}
-{% from "components.html" import segmented %}
 {% block title %}Subnichos · NicheRadar{% endblock %}
 {% block content %}
-{{ segmented([("Nichos", "/nichos", False, None), ("Subnichos", "/subnichos", True, view.total if view else None)]) }}
+{% set active_tab_segment = "subnichos" %}{% include "_segmento.html" %}
 <h1 class="h1">Subnichos</h1>
 <p class="caption">Ideas de nicho que medimos en YouTube. El ingreso es una estimación de un canal típico, no lo que ganarías.</p>
 <form class="filters" id="filtros" method="get" action="/subnichos"

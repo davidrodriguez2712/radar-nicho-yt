@@ -10,7 +10,7 @@
 <div class="countline"><span><strong>{{ view.shown }}</strong>{% if view.truncated and not filtros.formato and not filtros.alta and not filtros.ingresos %} de {{ view.api_total }}{% endif %} nichos</span><span>{% if filtros.orden == "automation" %}Automatización ↓{% else %}Opportunity ↓{% endif %}</span></div>
 {% for c in view.cards %}
 <article class="card">
-  <div class="card__title"><span class="rank">{{ c.rank }}</span><span class="card__name">{{ c.label }}</span></div>
+  <div class="card__title"><span class="rank">{{ c.rank }}</span>{% if c.href %}<a class="card__name" href="{{ c.href }}">{{ c.label }}</a>{% else %}<span class="card__name">{{ c.label }}</span>{% endif %}</div>
   <div class="tags">{{ chip(c.format_text, "neutral") }}{{ chip(c.decision_text, c.decision_kind) }}{% if c.research_text %}{{ chip(c.research_text, c.research_kind) }}{% endif %}</div>
   <dl class="stats">{% for label, value in c.scores %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
   {% if c.action.kind == "link" %}<a class="btn btn--{{ c.action.style }}" href="{{ c.action.href }}">{{ c.action.label }}</a>
@@ -30,3 +30,4 @@
 {% endfor %}
 {% endif %}
 {% endif %}
+{% if fragment %}{% set oob = true %}{% set active_tab_segment = "nichos" %}{% include "_segmento.html" %}{% endif %}
