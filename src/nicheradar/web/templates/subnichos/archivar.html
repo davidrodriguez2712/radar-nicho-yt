@@ -14,7 +14,7 @@
 {% if error %}<div class="note note--rose" role="alert"><p>{{ error }}</p></div>{% endif %}
 <form method="post" action="/subnichos/{{ slug }}/archivar" class="stack">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
-  <label class="pill"><input type="checkbox" name="confirmar" value="1">Entiendo que no se puede deshacer</label>
+  <label class="confirm"><input type="checkbox" name="confirmar" value="1">Entiendo que no se puede deshacer</label>
   <button class="btn btn--danger" type="submit">Archivar subnicho</button>
 </form>
 {% endif %}

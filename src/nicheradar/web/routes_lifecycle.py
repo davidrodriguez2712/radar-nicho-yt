@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from starlette.responses import RedirectResponse, Response
 
 from nicheradar.web.client import ApiError
-from nicheradar.web.deps import SHAPE_ERRORS, current_session, render, shape_guard
+from nicheradar.web.deps import SHAPE_ERRORS, SHAPE_MESSAGE, current_session, render, shape_guard
 from nicheradar.web.lifecycle import (
     ACTIONS,
     ALREADY_ARCHIVED,
@@ -40,12 +40,19 @@ def _error_page(request: Request, session: Session, message: str, status: int) -
 def _card_hypothesis(request: Request, slug: str) -> dict[str, Any] | None:
     """The hypothesis of the card (label and status), None if it cannot be read."""
     try:
-        hypothesis = request.app.state.api.request("GET", f"/subniches/{quote(slug, safe='')}")[
-            "hypothesis"
-        ]
+        return _read_hypothesis(request, slug)
     except (ApiError, KeyError, TypeError):
         return None
-    return hypothesis if isinstance(hypothesis, dict) else None
+
+
+def _read_hypothesis(request: Request, slug: str) -> dict[str, Any]:
+    """Same read, but the failure is the caller's: ApiError, or TypeError on a wrong shape."""
+    hypothesis = request.app.state.api.request("GET", f"/subniches/{quote(slug, safe='')}")[
+        "hypothesis"
+    ]
+    if not isinstance(hypothesis, dict):
+        raise TypeError("hypothesis is not an object")
+    return hypothesis
 
 
 def _label(hypothesis: dict[str, Any] | None) -> str | None:
@@ -79,9 +86,16 @@ def approve_form(
 def _archive_page(
     request: Request, session: Session, slug: str, *, error: str | None = None, status: int = 200
 ) -> Response:
-    hypothesis = _card_hypothesis(request, slug)
-    if hypothesis is None:
-        return _error_page(request, session, MISSING, 404)
+    try:
+        hypothesis = _read_hypothesis(request, slug)
+    except ApiError as err:
+        missing = err.kind in ("not_found", "invalid")
+        return _error_page(
+            request, session, MISSING if missing else err.message, 404 if missing else 503
+        )
+    except SHAPE_ERRORS:
+        _log.exception("unexpected API payload shape on the archive screen")
+        return _error_page(request, session, SHAPE_MESSAGE, 503)
     return render(
         request,
         "subnichos/archivar.html",
@@ -108,6 +122,11 @@ def archive_form(
     return _archive_page(request, session, slug)
 
 
+def _is_active(request: Request, slug: str) -> bool:
+    hypothesis = _card_hypothesis(request, slug)
+    return hypothesis is not None and hypothesis.get("status") == "active"
+
+
 def _transition(
     request: Request, slug: str, action: str, session: Session, csrf: str, confirmar: str
 ) -> Response:
@@ -124,6 +143,8 @@ def _transition(
     except ApiError as err:
         if err.kind == "not_found":
             return _error_page(request, session, MISSING, 404)
+        if err.kind == "conflict" and action == "aprobar" and _is_active(request, slug):
+            return RedirectResponse(f"{target}?aviso=aprobado", status_code=303)  # double tap
         key = "transicion_invalida" if err.kind == "conflict" else "transicion_fallida"
         return RedirectResponse(f"{target}?aviso={key}", status_code=303)
     except SHAPE_ERRORS:

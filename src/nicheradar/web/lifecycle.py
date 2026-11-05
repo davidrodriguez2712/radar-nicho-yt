@@ -51,17 +51,22 @@ def approval_view(data: object, label: str | None, slug: str) -> dict[str, Any]:
     """The M28 numbers. A payload that does not fit raises (the route turns it into a 503)."""
     if not isinstance(data, dict) or not isinstance(data["status"], str):
         raise TypeError("approval payload")
-    fits = data["fits"]
-    if not isinstance(fits, bool):
+    if not isinstance(data["fits"], bool):
         raise TypeError("fits is not a boolean")
+    needed = _count(data, "search_units_needed")
+    cap = _count(data, "daily_cap")
+    cadence = _count(data, "cadence_days", minimum=1)
+    # The figures rule over the flag: whoever reads them must not see a contradiction.
+    fits = needed <= cap
     return {
         "label": label or slug,
         "proposed": data["status"] == "proposed",
         "queries": _count(data, "queries"),
-        "needed": _count(data, "search_units_needed"),
-        "cap": _count(data, "daily_cap"),
+        "pages": _count(data, "pages", minimum=1),
+        "needed": needed,
+        "cap": cap,
         "fits": fits,
-        "cadence_days": _count(data, "cadence_days", minimum=1),
+        "cadence_days": cadence,
         "post_href": f"/subnichos/{slug}/aprobar",
         "back_href": f"/subnichos/{slug}",
     }

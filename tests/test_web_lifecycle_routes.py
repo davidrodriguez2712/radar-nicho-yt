@@ -79,7 +79,7 @@ def test_m28_shows_the_exact_figures_and_the_warning_when_it_does_not_fit() -> N
         "Tope diario de búsqueda",
         "100 unidades",
         "Con la cuota actual la medición se saltará hasta que haya cupo",
-        "Aprobar no mide al instante: la primera medición ocurre a más tardar en 3 días.",
+        "Aprobar no mide al instante: la primera medición ocurre en la próxima ronda con cupo.",
         "Confirmar y aprobar",
         "Volver sin cambios",
     ):
@@ -178,7 +178,7 @@ def test_the_archive_confirmation_screen_has_the_checkbox_and_back_link() -> Non
 
 def test_an_invalid_transition_409_becomes_the_fixed_notice() -> None:
     body = {"code": "invalid_transition", "message": HOSTILE}
-    a = api("active", approve=(409, body))
+    a = api("archived", approve=(409, body))
     web = make_client(a)
     response = web.post(f"/subnichos/{SLUG}/aprobar", data={"csrf": token(web)})
     assert response.status_code == 303
@@ -256,3 +256,98 @@ def test_approving_does_not_say_it_measured() -> None:
     web = make_client(api())
     page = web.get(f"/subnichos/{SLUG}?aviso=aprobado").text
     assert "no mide al instante" in page.lower()
+
+
+def test_m28_shows_the_pages_per_query_and_rejects_a_broken_shape() -> None:
+    text = make_client(api(pre=(200, preview(pages=2)))).get(f"/subnichos/{SLUG}/aprobar").text
+    assert re.search(r"Páginas por consulta</span><span[^>]*>2</span>", text)
+    for pages in (0, -1, "1", None, True, 1.5):
+        web = make_client(api(pre=(200, preview(pages=pages))))
+        assert web.get(f"/subnichos/{SLUG}/aprobar").status_code == 503, pages
+
+
+def test_m28_never_shows_the_message_of_a_failing_api() -> None:
+    for status in (500, 503):
+        body = {"code": "zzz", "message": HOSTILE}
+        response = make_client(api(pre=(status, body))).get(f"/subnichos/{SLUG}/aprobar")
+        assert response.status_code == 503
+        assert "negrita" not in response.text and "evil.test" not in response.text
+
+
+def test_a_409_on_approve_of_an_already_active_subniche_is_a_benign_double_tap() -> None:
+    conflict = (409, {"code": "invalid_transition", "message": HOSTILE})
+    web = make_client(api("active", approve=conflict))
+    response = web.post(f"/subnichos/{SLUG}/aprobar", data={"csrf": token(web)})
+    assert response.headers["location"] == f"/subnichos/{SLUG}?aviso=aprobado"
+    web = make_client(api("archived", approve=conflict))
+    response = web.post(f"/subnichos/{SLUG}/aprobar", data={"csrf": token(web)})
+    assert response.headers["location"].endswith("?aviso=transicion_invalida")
+    a = api("active", approve=conflict)
+    a.routes[CARD] = (500, {"detail": "x"})
+    web = make_client(a)
+    response = web.post(f"/subnichos/{SLUG}/aprobar", data={"csrf": "x"})
+    assert response.status_code == 403
+    a.routes[CARD] = (200, card("active"))
+    csrf = token(web)
+    a.routes[CARD] = (500, {"detail": "x"})
+    response = web.post(f"/subnichos/{SLUG}/aprobar", data={"csrf": csrf})
+    assert response.headers["location"].endswith("?aviso=transicion_invalida")
+
+
+def test_the_archive_screen_tells_a_missing_subniche_from_an_unavailable_api() -> None:
+    for status in (404, 422):
+        a = api("active")
+        a.routes[CARD] = (status, {"code": "not_found", "message": HOSTILE})
+        web = make_client(a)
+        csrf = csrf_of(make_client(api("active")).get(f"/subnichos/{SLUG}").text)
+        assert web.get(f"/subnichos/{SLUG}/archivar").status_code == 404
+        assert web.post(f"/subnichos/{SLUG}/archivar", data={"csrf": csrf}).status_code == 403
+    for status in (500, 503):
+        a = api("active")
+        web = make_client(a)
+        csrf = token(web)
+        a.routes[CARD] = (status, {"code": "zzz", "message": HOSTILE})
+        for response in (
+            web.get(f"/subnichos/{SLUG}/archivar"),
+            web.post(f"/subnichos/{SLUG}/archivar", data={"csrf": csrf}),
+        ):
+            assert response.status_code == 503, status
+            assert "negrita" not in response.text and "No se encontró" not in response.text
+    a = api("active")
+    web = make_client(a)
+    csrf = token(web)
+    a.routes[CARD] = (404, {"code": "not_found", "message": HOSTILE})
+    response = web.post(f"/subnichos/{SLUG}/archivar", data={"csrf": csrf})
+    assert response.status_code == 404 and "No se encontró lo que buscabas." in response.text
+
+
+def test_m28_does_not_promise_days_when_it_does_not_fit() -> None:
+    text = make_client(api()).get(f"/subnichos/{SLUG}/aprobar").text
+    assert "a más tardar" not in text
+    assert "la primera medición ocurre en la próxima ronda con cupo" in text
+    fits = (200, preview(fits=True, search_units_needed=100, cadence_days=3))
+    assert (
+        "a más tardar en 3 días"
+        in make_client(api(pre=fits)).get(f"/subnichos/{SLUG}/aprobar").text
+    )
+
+
+def test_m28_trusts_the_figures_over_the_fits_flag() -> None:
+    web = make_client(api(pre=(200, preview(fits=True))))  # 300 needed > 100 cap
+    text = web.get(f"/subnichos/{SLUG}/aprobar").text
+    assert "se saltará hasta que haya cupo" in text and "a más tardar" not in text
+    web = make_client(api(pre=(200, preview(fits=False, search_units_needed=100))))
+    assert "se saltará" not in web.get(f"/subnichos/{SLUG}/aprobar").text
+
+
+def test_a_card_with_an_unknown_status_has_no_lifecycle_buttons() -> None:
+    text = make_client(api("weird")).get(f"/subnichos/{SLUG}").text
+    block = text.split("Decisión de la hipótesis")[1].split("</section>")[0]
+    assert "btn" not in block
+
+
+def test_the_checkbox_pill_has_spacing() -> None:
+    css = open("src/nicheradar/web/static/css/app.css").read()
+    assert re.search(r"\.confirm\{[^}]*gap:\d+px", css)
+    archive = open("src/nicheradar/web/templates/subnichos/archivar.html").read()
+    assert '<label class="confirm"><input type="checkbox" name="confirmar"' in archive

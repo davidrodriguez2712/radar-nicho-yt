@@ -6,9 +6,10 @@
 <section class="card card--accent">
   <h2 class="card__heading">{{ v.label }}</h2>
   {% if v.proposed %}
-  <p>Al aprobar, la hipótesis pasa a activa y se mide sola con la API de YouTube. Aprobar no mide al instante: la primera medición ocurre a más tardar en {{ v.cadence_days }} {{ "día" if v.cadence_days == 1 else "días" }}.</p>
+  <p>Al aprobar, la hipótesis pasa a activa y se mide sola con la API de YouTube. Aprobar no mide al instante: {% if v.fits %}la primera medición ocurre a más tardar en {{ v.cadence_days }} {{ "día" if v.cadence_days == 1 else "días" }}{% else %}la primera medición ocurre en la próxima ronda con cupo{% endif %}.</p>
   <div class="rows">
     <div class="row"><span class="row__label">Consultas</span><span class="row__value">{{ v.queries }}</span></div>
+    <div class="row"><span class="row__label">Páginas por consulta</span><span class="row__value">{{ v.pages }}</span></div>
     <div class="row"><span class="row__label">Búsqueda por medición</span><span class="row__value">{{ v.needed }} unidades</span></div>
     <div class="row"><span class="row__label">Tope diario de búsqueda</span><span class="row__value">{{ v.cap }} unidades</span></div>
   </div>
