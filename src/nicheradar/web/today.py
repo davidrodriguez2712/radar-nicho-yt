@@ -39,10 +39,13 @@ def attention_cards(
         pilot_id = pilot.get("pilot_id")
         valid = isinstance(pilot_id, str) and PILOT_RE.fullmatch(pilot_id) is not None
         label, channel = pilot.get("niche_label"), pilot.get("target_channel")
+        # The chip comes from the same source as the text shown beside it.
         if pilot.get("needs_decision") is True:
             chip = "decisión pendiente"
-        elif found and found[0]["kind"] == "falta":
-            chip = "antes de producir"
+        elif action:
+            chip = "requiere atención"
+        elif found and found[0]["kind"] == "falta" and status == "autorizado":
+            chip = "antes de producir"  # only before the pilot produces anything
         else:
             chip = "requiere atención"
         cards.append(

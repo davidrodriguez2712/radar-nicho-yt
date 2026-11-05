@@ -17,7 +17,7 @@
     <div class="list__item">{% if p.href %}<a class="list__name" href="{{ p.href }}">{{ p.label }}</a>{% else %}<span class="list__name">{{ p.label }}</span>{% endif %}{% if p.channel %}<span class="muted">{{ p.channel }}</span>{% elif p.format_text %}<span class="muted">{{ p.format_text }}</span>{% endif %}<span>{{ p.text }}</span><span class="tags">{{ chip(p.chip, "amber") }}</span></div>
     {% endfor %}
   </div>
-  {% if v.pending.hidden %}<p class="caption">y {{ v.pending.hidden }} más en Ver pendientes</p>{% endif %}
+  {% if v.pending.hidden %}<p class="caption">y {{ v.pending.hidden }} {% if v.pending.hidden == 1 %}informe más{% else %}informes más{% endif %}</p>{% endif %}
   <a class="btn btn--secondary" href="/pilotos">Ver pendientes</a>
 </section>
 {% endif %}

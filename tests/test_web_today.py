@@ -571,28 +571,71 @@ def test_a_nan_score_never_breaks_the_page() -> None:
 def test_exactly_one_hundred_records_warn_inside_the_affected_cards() -> None:
     many_flows = [flow_item("listo", id=ids()[0], niche_label="rep-label") for _ in range(100)]
     many_pilots = [pilot_item("pil_20261102_a", needs_decision=True) for _ in range(100)]
-    text = (
-        make_client(
-            full_api({FLOW: (200, {"items": many_flows}), PILOTS: (200, {"items": many_pilots})})
-        )
-        .get("/")
-        .text
-    )
-    assert OLDER in section(text, "pendientes") and OLDER in section(text, "pendientes")
+    both: dict[tuple[str, str], Route] = {
+        FLOW: (200, {"items": many_flows}),
+        PILOTS: (200, {"items": many_pilots}),
+    }
+    text = client_page(full_api(both))
+    assert OLDER in section(text, "pendientes")
     assert OLDER not in section(text, "subnichos")
-    quiet = (
-        make_client(
-            full_api(
-                {
-                    FLOW: (200, {"items": many_flows[:99]}),
-                    PILOTS: (200, {"items": many_pilots[:99]}),
-                }
-            )
-        )
-        .get("/")
-        .text
+    quiet: dict[tuple[str, str], Route] = {
+        FLOW: (200, {"items": many_flows[:99]}),
+        PILOTS: (200, {"items": many_pilots[:99]}),
+    }
+    assert OLDER not in section(client_page(full_api(quiet)), "pendientes")
+
+
+def test_only_the_reports_reaching_one_hundred_also_warn_in_pending() -> None:
+    many_flows = [flow_item("listo", id=ids()[0], niche_label="rep-label") for _ in range(100)]
+    text = client_page(full_api({FLOW: (200, {"items": many_flows})}))
+    assert OLDER in section(text, "pendientes")
+    quiet = client_page(full_api({FLOW: (200, {"items": many_flows[:99]})}))
+    assert OLDER not in section(quiet, "pendientes")
+
+
+def chip_of(pilot: dict[str, Any]) -> str:
+    (card,) = attention_cards([pilot], NOW)
+    return str(card["chip"])
+
+
+def failed_check() -> dict[str, Any]:
+    return {
+        "checks": [{"id": "k", "label": "Clave", "ok": False, "detail": "", "expires_at": None}]
+    }
+
+
+def test_the_chip_comes_from_the_same_source_as_the_text() -> None:
+    waiting = pilot_item(
+        "pil_20261102_a",
+        status="en_ejecucion",
+        channel=failed_check(),
+        totals={"videos": 2, "published": 0, "by_stage": {"awaiting_human": 2}},
     )
-    assert OLDER not in quiet
+    (card,) = attention_cards([waiting], NOW)
+    assert card["text"] == "2 videos esperan tu veredicto en el canal"
+    assert card["chip"] == "requiere atención"
+    running = pilot_item("pil_20261102_b", status="en_ejecucion", channel=failed_check())
+    (running_card,) = attention_cards([running], NOW)
+    assert running_card["text"].startswith("Falta: Clave")
+    assert running_card["chip"] == "requiere atención"
+    before = pilot_item(
+        "pil_20261102_c", status="autorizado", channel=failed_check(), delivered_at=None
+    )
+    assert chip_of(before) == "requiere atención"  # its text is the Mac download action
+    pre = pilot_item("pil_20261102_e", status="autorizado", delivered_at="2026-11-02T00:00:00Z")
+    pre = pre | {"channel": failed_check()}
+    assert chip_of(pre) == "antes de producir"
+    decide = pilot_item("pil_20261102_d", needs_decision=True, status="decision_pendiente")
+    assert chip_of(decide) == "decisión pendiente"
+
+
+def test_the_home_accepts_only_its_own_notice_keys() -> None:
+    web = make_client(full_api())
+    for key in ("marcado", "guardada", "invalida", "error"):
+        assert 'role="status"' in web.get(f"/?aviso={key}").text, key
+    for key in ("error-creada", "decidido", "x"):
+        page = web.get(f"/?aviso={key}")
+        assert page.status_code == 200 and 'role="status"' not in page.text, key
 
 
 def test_hostile_text_in_any_source_is_escaped() -> None:
@@ -972,7 +1015,8 @@ def test_pending_counts_every_ready_report_but_lists_three() -> None:
     card = pending_card(full_api({FLOW: (200, {"items": flows})}))
     assert ">6 cosas necesitan algo de ti<" in card
     assert card.count('class="list__item"') == 4  # one pilot + three reports
-    assert "y 2 más" in card
+    assert "y 2 informes más" in card
+    assert "Ver pendientes</p>" not in card and "más en Ver" not in card
 
 
 def test_a_failing_pilots_source_degrades_only_its_part_of_pending() -> None:
