@@ -9,9 +9,10 @@ from starlette.responses import RedirectResponse, Response
 
 from nicheradar.web.client import ApiError
 from nicheradar.web.deps import current_session, is_fragment, render, shape_guard
+from nicheradar.web.niche_detail import UNREADABLE
 from nicheradar.web.security import Session
 from nicheradar.web.segment import UNKNOWN, active_subniches, counts, niche_total
-from nicheradar.web.subniches import AVISOS, detail_view, list_view, parse_filters
+from nicheradar.web.subniches import AVISOS, detail_view, list_view, parse_filters, pilot_for
 
 router = APIRouter()
 
@@ -93,12 +94,22 @@ def subniche_card(
             status_code=404 if missing else 503,
             session=session,
         )
+    pilot: object
+    try:
+        hypothesis = card["hypothesis"]
+        pilot = pilot_for(
+            request.app.state.api.request("GET", "/pilots", params={"limit": "100"})["items"],
+            hypothesis["slug"],
+            hypothesis["format"],
+        )
+    except (ApiError, KeyError, TypeError):
+        pilot = UNREADABLE
     return render(
         request,
         "subnichos/ficha.html",
         {
             "active_tab": "nichos",
-            "v": detail_view(card, request.app.state.config.timezone),
+            "v": detail_view(card, request.app.state.config.timezone, pilot),
             "notice": AVISOS.get(aviso),
         },
         session=session,

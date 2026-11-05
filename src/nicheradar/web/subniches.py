@@ -7,6 +7,9 @@ from typing import Any
 from urllib.parse import quote
 
 from nicheradar.web.format import compact, local_datetime, usd_range
+from nicheradar.web.journey import subniche_journey
+from nicheradar.web.niche_detail import UNREADABLE, open_pilot
+from nicheradar.web.research import valid_id
 
 FAMILIES = {
     "nature_science": "Ciencia y naturaleza",
@@ -60,6 +63,23 @@ AVISOS: dict[str, tuple[str, str]] = {
 }
 
 
+PILOT_DOWN = "No se pudo leer el estado del piloto"
+# Read-only decision pills, in the order the Figma shows them.
+DECISION_PILLS = (
+    ("proposed", "Propuesta"),
+    ("active", "Activa"),
+    ("paused", "Pausada"),
+    ("archived", "Archivada"),
+)
+
+
+def pilot_for(items: object, slug: str, fmt: str) -> object:
+    """The open pilot of this sub-niche, None if there is none, UNREADABLE if the read is broken."""
+    if not isinstance(items, list):
+        return UNREADABLE
+    return open_pilot(items, f"subniche:{slug}", fmt)
+
+
 @dataclass(frozen=True)
 class Filters:
     finalistas: bool = False
@@ -83,12 +103,16 @@ def card(item: dict[str, Any], rank: int) -> dict[str, Any]:
     research = item["research"]
     state = research["status"] if research else None
     text, kind = RESEARCH.get(state, ("Investigación", "neutral"))
+    href = f"/subnichos/{quote(item['slug'], safe='')}"
     if item["status"] != "active" or measured is None:
         button = ("Ver subnicho", "secondary")
     elif state in (None, "rechazado"):
         button = ("Investigar", "primary")
     elif state in ("pendiente", "en_curso"):
         button = ("Ver estado", "secondary")
+    elif valid_id(research["id"]):
+        button = ("Ver dossier", "secondary")
+        href = f"/informes/{research['id']}"
     else:
         button = ("Ver subnicho", "secondary")
     return {
@@ -112,6 +136,7 @@ def card(item: dict[str, Any], rank: int) -> dict[str, Any]:
         "button_label": button[0],
         "button_kind": button[1],
         "href": f"/subnichos/{quote(item['slug'], safe='')}",
+        "button_href": href,
     }
 
 
@@ -136,7 +161,11 @@ def list_view(items: list[dict[str, Any]], filters: Filters) -> dict[str, Any]:
 
 
 def _action(
-    hypothesis: dict[str, Any], measured: Any, state: str | None, language: str
+    hypothesis: dict[str, Any],
+    measured: Any,
+    state: str | None,
+    language: str,
+    research: dict[str, Any] | None,
 ) -> dict[str, Any]:
     if measured is None:
         return {"kind": "hidden"}
@@ -150,15 +179,15 @@ def _action(
             "note": "Hay una investigación en curso para este subnicho.",
         }
     if state == "listo":
-        return {
-            "kind": "done",
-            "note": "Dossier listo. El informe móvil llega en el siguiente corte.",
-        }
+        report_id = (research or {}).get("id")
+        if valid_id(report_id):
+            return {"kind": "done", "href": f"/informes/{report_id}"}
+        return {"kind": "done", "href": None}
     prefix = "Reintentar" if state == "rechazado" else "Iniciar"
     return {"kind": "start", "label": f"{prefix} investigación en {language}"}
 
 
-def detail_view(card: dict[str, Any], timezone: str) -> dict[str, Any]:
+def detail_view(card: dict[str, Any], timezone: str, pilot: object = None) -> dict[str, Any]:
     hypothesis = card["hypothesis"]
     measured = card["measurement"]
     research = card["research"]
@@ -169,7 +198,16 @@ def detail_view(card: dict[str, Any], timezone: str) -> dict[str, Any]:
         (EXCLUSIONS.get(reason, reason), count)
         for reason, count in ((measured or {}).get("excluded") or {}).items()
     ]
+    steps = subniche_journey(
+        {"status": hypothesis["status"], "measurement": measured, "research": research},
+        None if pilot == UNREADABLE else pilot,
+        timezone,
+    )
+    if pilot == UNREADABLE:
+        steps[5] = replace(steps[5], detail=PILOT_DOWN)
     return {
+        "journey": steps,
+        "decision": [(name, hypothesis["status"] == value) for value, name in DECISION_PILLS],
         "post_href": f"/subnichos/{quote(hypothesis['slug'], safe='')}/investigar",
         "label": hypothesis["label"],
         "finalist": hypothesis["finalist"],
@@ -214,5 +252,5 @@ def detail_view(card: dict[str, Any], timezone: str) -> dict[str, Any]:
         "channels_available": card["channels_available"],
         "research_text": text,
         "research_kind": kind,
-        "action": _action(hypothesis, measured, state, language),
+        "action": _action(hypothesis, measured, state, language, research),
     }

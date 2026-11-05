@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components.html" import chip %}
+{% from "components.html" import chip, button, journey %}
 {% block title %}{{ v.label }} · NicheRadar{% endblock %}
 {% block content %}
 <p class="eyebrow">Subnicho · {% if v.measured %}medido{% else %}sin medición{% endif %}</p>
@@ -9,6 +9,7 @@
   {{ chip(v.family, "neutral") }}{{ chip(v.language, "blue") }}
   {{ chip(v.status_name, "green" if v.status == "active" else "neutral") }}
 </div>
+{{ journey(v.journey) }}
 {% if notice %}<div class="note note--{{ notice[1] }}" role="status">{{ notice[0] }}</div>{% endif %}
 {% if v.measured %}
 <p class="lead">Medimos {{ v.measured.included }} canales de YouTube el {{ v.measured.when }}. Las cifras son estimaciones, no ingresos verificados.</p>
@@ -42,6 +43,12 @@
 {% else %}
 <div class="note note--amber">Todavía no medimos este subnicho.</div>
 {% endif %}
+<section class="card" id="decision">
+  <h2 class="h2">Decisión de la hipótesis</h2>
+  <div class="pills">{% for name, on in v.decision %}<span class="pill{% if on %} pill--on{% endif %}"{% if on %} aria-current="true"{% endif %}>{{ name }}</span>{% endfor %}</div>
+  <p class="caption">Activa: se mide sola y se puede investigar. Pausada: deja de medirse. Archivada: se descarta. Solo una hipótesis activa y con al menos una medición se puede investigar.</p>
+  <p class="caption">Aprobar, pausar o archivar se hará desde aquí cuando esté disponible.</p>
+</section>
 {% if v.action.kind != "hidden" %}
 <section class="card">
   <h2 class="h2">Investigación de flujo</h2>
@@ -55,10 +62,9 @@
   {% elif v.action.kind == "disabled" %}
   <button class="btn btn--primary" type="button" disabled>{{ v.action.label }}</button>
   <p class="caption">{{ v.action.note }}</p>
-  {% else %}
-  <p class="caption">{{ v.action.note }}</p>
+  {% elif v.action.href %}
+  {{ button("Ver dossier", "secondary", href=v.action.href) }}
   {% endif %}
 </section>
 {% endif %}
-<p class="caption"><a href="/subnichos">← Volver a Subnichos</a></p>
 {% endblock %}

@@ -66,8 +66,21 @@ def test_the_buttons_follow_the_research_state() -> None:
     )
     text = make_client(api).get("/subnichos").text
     assert text.count("Investigar</a>") == 1
-    assert "Ver estado" in text and text.count("Ver subnicho") == 3
+    assert "Ver estado" in text and text.count("Ver subnicho") == 2
     assert 'href="/subnichos/a_new"' in text
+
+
+def test_a_ready_dossier_shows_ver_dossier_linking_to_the_report() -> None:
+    ready = research("listo")
+    api = api_with(
+        subniche_item("a_done", research=ready),
+        subniche_item("a_bad_id", research=research("listo", id="../x")),
+        subniche_item("a_new", research=None),
+    )
+    text = make_client(api).get("/subnichos").text
+    assert text.count("Ver dossier</a>") == 1
+    assert f'href="/informes/{ready["id"]}"' in text
+    assert "../x" not in text
 
 
 def test_an_unmeasured_subniche_says_so_instead_of_showing_numbers() -> None:
