@@ -121,6 +121,15 @@ const subnicheDashDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:95
 const proposalsBackend = 'davidrodriguez2712/nicheradar-backend@sha256:80be0172c82035c56d5aa715d835b943fee7e99b53007fe4e8c6e6e713a28a5d';
 const proposalsWorker = 'davidrodriguez2712/nicheradar-worker@sha256:78a0b0a6a4b26ac34eb00093248a4c8b582509fc025346d316228494b7920be7';
 const proposalsDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:c4c35fba419c2732f825301deecf956dafe749477838692eb079d26e682e8578';
+// Release 037: los digests se completan al publicar las imágenes (docs/release-20261105-037.md); hasta entonces las acciones se niegan a correr.
+const PENDING_DIGEST = 'sha256:PENDIENTE';
+const leadsBackend = 'davidrodriguez2712/nicheradar-backend@' + PENDING_DIGEST;
+const leadsWorker = 'davidrodriguez2712/nicheradar-worker@' + PENDING_DIGEST;
+const leadsDashboard = 'davidrodriguez2712/nicheradar-dashboard@' + PENDING_DIGEST;
+function requireLeadsDigests() {
+  if([leadsBackend,leadsWorker,leadsDashboard].some(image=>image.endsWith(PENDING_DIGEST)))
+    throw new Error('Release 037 digests are not set; publish the images and fill them in first');
+}
 const names = ['nicheradar-db', 'nicheradar-api', 'nicheradar-worker', 'nicheradar-dashboard'];
 const secret = () => randomBytes(32).toString('hex');
 const resources = (cpu) => ({memoryLimit:512,memoryReservation:128,cpuLimit:cpu,cpuReservation:0.1});
@@ -805,6 +814,43 @@ try {
        env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
       throw new Error('Proposals release preconditions failed');
     const image=isDashboard?proposalsDashboard:name==='nicheradar-worker'?proposalsWorker:proposalsBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='migrate-live-0023') {
+    requireLeadsDigests();
+    const env=appEnv('nicheradar-api');
+    // Revisión 0023: lecturas de tweets e imágenes (tablas nuevas y dos columnas nulas; aditiva). Exige radar pausado.
+    if(env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true' || env.NR_DATABASE_URL!==dbURL())
+      throw new Error('Live migration preconditions failed');
+    const code='import json,os,subprocess,sys; os.environ.update(json.load(sys.stdin)); sys.exit(subprocess.call(["alembic","upgrade","head"]))';
+    const args=['docker','run','--rm','-i','--name','nicheradar-migration-20261105-023',
+      '--network','easypanel-proy1-credito-riesgo','--memory','512m','--cpus','1',
+      '--read-only','--tmpfs','/tmp:rw,noexec,nosuid,size=64m','--cap-drop','ALL',
+      '--security-opt','no-new-privileges',leadsBackend,'python','-c',code];
+    const result=spawnSync('ssh',[...sshArgs,args.map(quote).join(' ')],{
+      input:JSON.stringify({NR_DATABASE_URL:env.NR_DATABASE_URL}),
+      encoding:'utf8',timeout:180000,maxBuffer:1024*1024});
+    console.log(JSON.stringify({migrationExit:result.status,processError:result.error?.code ?? null}));
+    if(result.error || result.status!==0) throw new Error('Migration failed; raw response withheld. Inspect only this migration safely.');
+  } else if(action==='deploy-leads-code') {
+    requireLeadsDigests();
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?proposalsDashboard:name==='nicheradar-worker'?proposalsWorker:proposalsBackend;
+    if(before.source?.image!==expected || before.ports?.length ||
+       before.deploy?.replicas!==1 || before.resources?.memoryLimit!==512 ||
+       env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Leads release preconditions failed');
+    const image=isDashboard?leadsDashboard:name==='nicheradar-worker'?leadsWorker:leadsBackend;
     cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
     const after=cli(['app','inspect',`${project}/${name}`]);
     for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
