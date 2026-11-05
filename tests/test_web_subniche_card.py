@@ -382,6 +382,7 @@ def test_a_ready_dossier_with_a_bad_id_has_no_link() -> None:
     for bad in ("../x", "javascript:1", REPORT_ID + "\n", None):
         text = page(subniche_card(research=research("listo", id=bad)))
         assert "Ver dossier" not in text and "siguiente corte" not in text, bad
+        assert '<p class="caption">El informe no está disponible.</p>' in text, bad
         assert "javascript:" not in text
 
 
@@ -390,11 +391,9 @@ def test_the_footer_back_link_is_gone() -> None:
 
 
 def test_broken_shapes_never_cause_a_500() -> None:
-    broken_hypothesis = {**hypothesis_of(subniche_item(SLUG)), "status": ["x"]}
     for over in (
         {"research": "roto"},
         {"research": {"status": ["x"], "id": 3}},
-        {"hypothesis": broken_hypothesis},
         {"measurement": {"measured_at": "no-fecha"}},
     ):
         api = Api(
@@ -406,6 +405,31 @@ def test_broken_shapes_never_cause_a_500() -> None:
         )
         response = make_client(api).get(f"/subnichos/{SLUG}")
         assert response.status_code in (200, 503), over
+
+
+def test_a_non_string_hypothesis_status_is_a_shape_error() -> None:
+    broken = {**hypothesis_of(subniche_item(SLUG)), "status": ["x"]}
+    api = Api(
+        {
+            CARD: (200, subniche_card(hypothesis=broken)),
+            PILOTS: (200, {"items": []}),
+            STATUS: (200, {}),
+        }
+    )
+    assert make_client(api).get(f"/subnichos/{SLUG}").status_code == 503
+
+
+def test_a_shorts_subniche_crosses_only_shorts_pilots() -> None:
+    item = subniche_item(SLUG, format="shorts")
+    card = subniche_card(hypothesis=hypothesis_of(item), research=research("listo"))
+    short = pilot_item(
+        "pil_s", niche_label=f"subniche:{SLUG}", format="shorts", status="en_ejecucion"
+    )
+    long = pilot_item("pil_l", niche_label=f"subniche:{SLUG}", format="long", status="entregado")
+    text = with_pilots(card, (200, {"items": [long, short]}))
+    assert journey_of(text)[-1] == ("now", "Piloto", "Piloto en ejecución")
+    text = with_pilots(card, (200, {"items": [long]}))
+    assert journey_of(text)[-1] == ("now", "Piloto", "Decide si lo lanzas")
 
 
 def test_hostile_pilot_text_is_escaped_in_the_journey() -> None:

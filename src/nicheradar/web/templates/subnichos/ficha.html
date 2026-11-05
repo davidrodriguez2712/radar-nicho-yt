@@ -64,6 +64,8 @@
   <p class="caption">{{ v.action.note }}</p>
   {% elif v.action.href %}
   {{ button("Ver dossier", "secondary", href=v.action.href) }}
+  {% else %}
+  <p class="caption">{{ v.action.note }}</p>
   {% endif %}
 </section>
 {% endif %}

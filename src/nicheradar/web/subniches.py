@@ -182,7 +182,7 @@ def _action(
         report_id = (research or {}).get("id")
         if valid_id(report_id):
             return {"kind": "done", "href": f"/informes/{report_id}"}
-        return {"kind": "done", "href": None}
+        return {"kind": "done", "href": None, "note": "El informe no está disponible."}
     prefix = "Reintentar" if state == "rechazado" else "Iniciar"
     return {"kind": "start", "label": f"{prefix} investigación en {language}"}
 
@@ -200,10 +200,10 @@ def detail_view(card: dict[str, Any], timezone: str, pilot: object = None) -> di
     ]
     steps = subniche_journey(
         {"status": hypothesis["status"], "measurement": measured, "research": research},
-        None if pilot == UNREADABLE else pilot,
+        None if pilot is UNREADABLE else pilot,
         timezone,
     )
-    if pilot == UNREADABLE:
+    if pilot is UNREADABLE:
         steps[5] = replace(steps[5], detail=PILOT_DOWN)
     return {
         "journey": steps,
