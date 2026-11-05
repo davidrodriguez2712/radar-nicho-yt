@@ -176,3 +176,18 @@ def test_llm_label_without_usable_text_creates_nothing(isolated_engine: Engine) 
     assert result == {"error": "invalid_proposal", "detail": "label has no usable text"}
     with isolated_engine.connect() as connection:
         assert list_hypotheses(connection) == []
+
+
+@pytest.mark.postgres
+@pytest.mark.parametrize("label", ["Proponer", "Propuestas", "Proposals"])
+def test_reserved_labels_get_a_suffixed_slug(isolated_engine: Engine, label: str) -> None:
+    result = asyncio.run(
+        add_hypothesis(
+            isolated_engine,
+            Settings(mode="live"),
+            "dinosaur facts",
+            manual=ManualFields(label=label, family="history", parent=None),
+            clock=lambda: NOW,
+        )
+    )
+    assert result["slug"] == f"{label.lower()}_2"

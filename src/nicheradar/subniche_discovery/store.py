@@ -34,8 +34,10 @@ class UnknownHypothesis(Exception):
     pass
 
 
-# Segmentos fijos de /api/v1/subniches que chocarían con /{slug}.
-RESERVED_SLUGS = frozenset({"proposals"})
+# Slugs que pisarían una ruta fija: `/api/v1/subniches/proposals` en la API y, en la web,
+# `/subnichos/proponer` y `/subnichos/propuestas/{id}` frente a `/subnichos/{slug}`.
+# `web/proposals.py` duplica esta lista (módulo puro); una prueba compara ambas.
+RESERVED_SLUGS = frozenset({"proposals", "proponer", "propuestas"})
 
 
 def unique_slug(connection: Connection, base: str) -> str:

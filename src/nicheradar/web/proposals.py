@@ -33,7 +33,9 @@ NONCE = re.compile(r"[0-9a-f]{32}")
 PROPOSAL_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.ASCII)
 AUTHOR = re.compile(r"[A-Za-z0-9_]{1,15}", re.ASCII)
 SLUG = re.compile(r"[a-z0-9][a-z0-9_-]{0,59}", re.ASCII)
-RESERVED_SLUGS = ("proponer",)  # `/subnichos/proponer` is a screen, not a sub-niche card
+# Same list as `subniche_discovery.store.RESERVED_SLUGS` (this module stays pure: a test compares
+# both). `/subnichos/proponer` and `/subnichos/propuestas/{id}` are screens, not sub-niche cards.
+RESERVED_SLUGS = ("proposals", "proponer", "propuestas")
 HYPOTHESIS_STATUS = {"active": "Activa", "paused": "Pausada", "archived": "Archivada"}
 MAX_POLLS = 120  # 120 polls of 5 s: about 10 minutes
 COUNT_DIGITS = 6

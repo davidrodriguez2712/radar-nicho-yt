@@ -11,6 +11,7 @@ from nicheradar.subniche_discovery.contracts import (
     slugify,
 )
 from nicheradar.subniche_discovery.store import (
+    RESERVED_SLUGS,
     DuplicateHypothesis,
     InvalidTransition,
     UnknownHypothesis,
@@ -182,7 +183,13 @@ def test_export_yaml_is_valid_flow_scalars(db: Connection) -> None:
     assert f'seed_channels: ["{SEED}"]' in text
 
 
-def test_proposals_is_a_reserved_slug(db: Connection) -> None:
-    assert unique_slug(db, "proposals") == "proposals_2"
-    with pytest.raises(DuplicateHypothesis):
-        create_proposed(db, draft(slug="proposals"), NOW)
+def test_reserved_slugs_are_one_public_constant() -> None:
+    assert RESERVED_SLUGS == frozenset({"proposals", "proponer", "propuestas"})
+
+
+@pytest.mark.parametrize("slug", ["proposals", "proponer", "propuestas"])
+def test_reserved_slugs_get_a_suffix_and_cannot_be_created(db: Connection, slug: str) -> None:
+    assert unique_slug(db, slug) == f"{slug}_2"
+    with pytest.raises(DuplicateHypothesis) as error:
+        create_proposed(db, draft(slug=slug), NOW)
+    assert str(error.value) == "slug"
