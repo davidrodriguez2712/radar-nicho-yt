@@ -31,7 +31,7 @@ Apps válidas: `nicheradar-api`, `nicheradar-worker`, `nicheradar-dashboard`.
 |---|---|
 | `probe` | Estado de salud (API, base, modo, claves configuradas) |
 | `inspect`, `rollouts` | Configuración y despliegues de las apps |
-| `migrate-live-00NN` | Migración de esquema en vivo (la última: `migrate-live-0020`) |
+| `migrate-live-00NN` | Migración de esquema en vivo (la última: `migrate-live-0022`) |
 | `deploy-subniche-code <app>` | Release 031 (subnichos) |
 | `deploy-subniche-import-code <app>` | Release 032 (`subniche import`) |
 | `deploy-subniche-quota-day-code <app>` | Release 033 (día de cuota en hora del Pacífico) |
