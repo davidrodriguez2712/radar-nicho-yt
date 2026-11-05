@@ -229,11 +229,15 @@ lectura); volver a verificar la tarifa en la página de precios antes de cargarl
 
   | Ruta | Tope |
   | --- | --- |
-  | `/api/v1/leads/images` | exenta (autentica antes y tiene su propio tope de 7,1 MB) |
+  | `/api/v1/leads/images` (igualdad exacta) | exenta (autentica antes y tiene su propio tope de 7,1 MB) |
   | `/api/v1/leads/*` (`tweets`, `{id}/names`, `{id}/proposals`, `{id}/close`) | 64 KiB |
   | `/api/v1/subniches/proposals` | 64 KiB |
   | resto de `/api/v1` | 4 MiB (el dossier teórico máximo, unos 2,3 MB, con margen) |
 
+  Criterio de la tabla: una exención es siempre por igualdad exacta de ruta (`/api/v1/leads/images/names` es otra ruta, con
+  cuerpo JSON, y conserva los 64 KiB); un tope cubre la ruta y sus subrutas por segmentos. El corte también se captura si llega
+  dentro de un `BaseExceptionGroup`; si la respuesta ya había empezado no se envía un segundo inicio y se relanza.
+  `llm_input_too_large` tiene texto propio en la API y la web (propuesta y lectura de tweets).
   La auditoría de cuerpos legítimos está en el docstring del módulo. Si un contrato crece (p. ej. el dossier), revisa el tope.
 - **Cancelación en `propose_hypothesis`:** liquida la reserva como `unknown_charge` ante cualquier `BaseException` (incluida
   `asyncio.CancelledError`) y relanza si no es `Exception`, igual que `extract_mentions`; el cuerpo y su tamaño (64 000 bytes)
