@@ -123,9 +123,9 @@ const proposalsWorker = 'davidrodriguez2712/nicheradar-worker@sha256:78a0b0a6a4b
 const proposalsDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:c4c35fba419c2732f825301deecf956dafe749477838692eb079d26e682e8578';
 // Release 037: los digests se completan al publicar las imágenes (docs/release-20261105-037.md); hasta entonces las acciones se niegan a correr.
 const PENDING_DIGEST = 'sha256:PENDIENTE';
-const leadsBackend = 'davidrodriguez2712/nicheradar-backend@' + PENDING_DIGEST;
-const leadsWorker = 'davidrodriguez2712/nicheradar-worker@' + PENDING_DIGEST;
-const leadsDashboard = 'davidrodriguez2712/nicheradar-dashboard@' + PENDING_DIGEST;
+const leadsBackend = 'davidrodriguez2712/nicheradar-backend@sha256:56ecfa363b76273045dcc71dfff86243d365ee28dc0a3e54613985aac41a074e';
+const leadsWorker = 'davidrodriguez2712/nicheradar-worker@sha256:504c704482345f1ca9a7734f619ba93353e109dd4a18df8cb2cd4f467bfececb';
+const leadsDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:32ff665246c281664cc1861047dfd2406d968fdd4a45b9d79d70c463ab846741';
 function requireLeadsDigests() {
   if([leadsBackend,leadsWorker,leadsDashboard].some(image=>image.endsWith(PENDING_DIGEST)))
     throw new Error('Release 037 digests are not set; publish the images and fill them in first');
