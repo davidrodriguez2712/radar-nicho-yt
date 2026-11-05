@@ -10,12 +10,13 @@ from typing import TypedDict
 from urllib.parse import parse_qs, quote, urlsplit
 
 from nicheradar.subniche_discovery.inputs import parse_input
+from nicheradar.web.deps import UNSAFE_CATEGORIES
 
 LINK_MAX = 500
 FIELD_MAX = 8000  # a share field is cut before any scanning; the link itself is cut to LINK_MAX
 _HTTP = re.compile(r"https?://\S+", re.IGNORECASE)
 _BARE = re.compile(
-    r"(?<![\w.@/-])(?:www\.|m\.|mobile\.)?(?:youtube\.com|youtu\.be|x\.com|twitter\.com)(?:/\S*)?",
+    r"(?<![\w.@/-])(?:www\.|m\.|mobile\.)?(?:youtube\.com|youtu\.be|x\.com|twitter\.com)(?![\w.-])(?:/\S*)?",
     re.IGNORECASE,
 )
 _HANDLE = re.compile(r"@[A-Za-z0-9._-]{3,30}")
@@ -23,18 +24,18 @@ _TWEET_HOSTS = frozenset(
     {"x.com", "twitter.com", "mobile.twitter.com", "www.x.com", "www.twitter.com"}
 )
 _YOUTUBE_HOSTS = frozenset({"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"})
-_BAD_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})
 
 
 class Classified(TypedDict):
     kind: str
     link: str
+    propose: str  # canonical YouTube form that «Proponer» sends; "" when nothing is proposable
 
 
 def _clean(candidate: str) -> str | None:
     """The candidate cut to LINK_MAX, or None if it carries control/format characters."""
     candidate = candidate[:LINK_MAX]
-    if any(unicodedata.category(c) in _BAD_CATEGORIES for c in candidate):
+    if any(unicodedata.category(c) in UNSAFE_CATEGORIES for c in candidate):
         return None
     return candidate
 
@@ -45,10 +46,10 @@ def _find(value: str) -> str | None:
         return None
     if _HANDLE.fullmatch(value):
         return _clean(value)
-    for pattern in (_HTTP, _BARE):
-        if found := pattern.search(value):
-            return _clean(found.group(0))
-    return None
+    matches = [m for m in (_HTTP.search(value), _BARE.search(value)) if m is not None]
+    if not matches:
+        return None
+    return _clean(min(matches, key=lambda m: m.start()).group(0))
 
 
 def extract_link(title: str, text: str, url: str) -> str | None:
@@ -77,27 +78,48 @@ def _host(link: str) -> str | None:
     return host.lower()
 
 
-def _youtube_core(link: str) -> str:
-    """Host, path and the `v` parameter only: a tweet URL buried in the query must not count."""
+def _youtube_core(link: str) -> str | None:
+    """Host, path and the `v` parameter only: a tweet URL buried in the query must not count.
+
+    A repeated `v` with different values is ambiguous (parse_input and parse_qs disagree): None.
+    """
     parts = urlsplit(link if "://" in link else "https://" + link)
-    v = parse_qs(parts.query).get("v", [""])[0]
+    values = set(parse_qs(parts.query).get("v", []))
+    if len(values) > 1:
+        return None
+    v = next(iter(values), "")
     return f"{parts.hostname}{parts.path}" + (f"?v={quote(v, safe='')}" if v else "")
 
 
+def _canonical(kind: str, value: str) -> str:
+    if kind == "video":
+        return f"https://www.youtube.com/watch?v={value}"
+    if value.startswith("@"):
+        return f"https://www.youtube.com/{value}"
+    return f"https://www.youtube.com/channel/{value}"
+
+
+def _unknown(link: str) -> Classified:
+    return {"kind": "unknown", "link": link, "propose": ""}
+
+
 def classify(link: str | None) -> Classified:
-    """`{"kind": "channel|video|tweet|unknown|none", "link": ...}`; no network, no writes."""
+    """What the page shows is exactly what «Proponer» sends: `propose` is rebuilt from the parse."""
     if not link:
-        return {"kind": "none", "link": ""}
+        return {"kind": "none", "link": "", "propose": ""}
     if _HANDLE.fullmatch(link):
-        return {"kind": "channel", "link": link}
+        return {"kind": "channel", "link": link, "propose": _canonical("channel", link)}
     host = _host(link)
     if host in _TWEET_HOSTS:
-        return {"kind": "tweet", "link": link}
+        return {"kind": "tweet", "link": link, "propose": ""}
     if host in _YOUTUBE_HOSTS:
+        core = _youtube_core(link)
         try:
-            parsed = parse_input(_youtube_core(link))
+            parsed = parse_input(core) if core is not None else None
         except ValueError:
-            return {"kind": "unknown", "link": link}
-        if parsed.kind in ("video", "channel"):
-            return {"kind": parsed.kind, "link": link}
-    return {"kind": "unknown", "link": link}
+            return _unknown(link)
+        if parsed is not None and parsed.kind in ("video", "channel"):
+            propose = _canonical(parsed.kind, parsed.value)
+            if parse_input(propose).kind == parsed.kind:
+                return {"kind": parsed.kind, "link": link, "propose": propose}
+    return _unknown(link)

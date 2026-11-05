@@ -7,6 +7,8 @@
   {% if link %}<p class="resumen-cierre">{{ link }}</p>{% endif %}
   {% if kind == "tweet" %}
   <p class="caption">Los enlaces de X todavía no se leen. Copia el canal o el enlace de YouTube que menciona.</p>
+  {% elif kind == "none" %}
+  <p class="caption">No se compartió ningún enlace.</p>
   {% elif not propose_href %}
   <p class="caption">No reconocimos ese enlace.</p>
   {% endif %}

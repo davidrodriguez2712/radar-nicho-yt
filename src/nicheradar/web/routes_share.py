@@ -32,10 +32,9 @@ def shared(
 ) -> Response:
     found = classify(extract_link(title, text, url))
     kind = found["kind"]
+    shown = found["propose"] or found["link"]
     propose = (
-        f"/subnichos/proponer?q={quote(found['link'], safe='')}"
-        if kind in ("channel", "video")
-        else None
+        f"/subnichos/proponer?q={quote(found['propose'], safe='')}" if found["propose"] else None
     )
     return render(
         request,
@@ -44,7 +43,7 @@ def shared(
             "active_tab": "nichos",
             "kind": kind,
             "kind_label": KIND_LABELS[kind],
-            "link": found["link"],
+            "link": shown,
             "propose_href": propose,
         },
         session=session,

@@ -3,6 +3,7 @@
 
 import functools
 import logging
+import unicodedata
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,8 @@ def make_templates() -> Jinja2Templates:
 
 
 NEXT_MAX = 2048
+# Control, format (RLO, ZWSP), separator and unassigned characters: never in a link or a path.
+UNSAFE_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zs", "Zl", "Zp"})
 
 
 def safe_next(value: str | None) -> str:
@@ -32,7 +35,9 @@ def safe_next(value: str | None) -> str:
     """
     if not value or len(value) > NEXT_MAX or not value.startswith("/") or value.startswith("//"):
         return "/"
-    if "\\" in value or any(ord(c) < 33 or ord(c) == 127 for c in value):
+    if "\\" in value or any(
+        ord(c) < 33 or unicodedata.category(c) in UNSAFE_CATEGORIES for c in value
+    ):
         return "/"
     try:
         parts = urlsplit(value)

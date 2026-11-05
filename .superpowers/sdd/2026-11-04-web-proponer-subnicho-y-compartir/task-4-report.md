@@ -28,3 +28,10 @@
 ## Preocupaciones
 - Pagina con sesion expirada usa el mecanismo existente de `current_session` (303 a /login?next=...).
 - M30 muestra «Leer tweet» en Figma; el diseno deberia actualizarse o dejarse para el plan de tweets.
+
+## Ronda de correcciones (revision Opus)
+- I1: `classify` devuelve ademas `propose` (forma canonica `https://www.youtube.com/watch?v=<id>`, `/@handle`, `/channel/UC...`) reconstruida desde lo analizado y verificada con `parse_input(propose).kind == kind`; «Proponer» envia esa forma y la pagina la muestra. `v` repetido con valores distintos -> `unknown` (parse_input toma el ultimo y parse_qs el primero: ambiguo). Pruebas de extremo a extremo con los casos del revisor.
+- I2: casos `youtube.com.evil.com/youtube.com/@canal` y `evil.com/youtube.com/@canal` en `test_classify_kinds`; el mutante «acepta youtube.com.*» hace fallar `test_classify_kinds[...evil.com/youtube.com/@canal]` (verificado y revertido).
+- M1: sin enlace «No se compartio ningun enlace.» (chip «Sin enlace»); no reconocido mantiene «No reconocimos ese enlace.».
+- M2: `_BARE` con `(?![\w.-])`. M3: primer enlace = match mas a la izquierda entre `_HTTP` y `_BARE`. M4: `UNSAFE_CATEGORIES` (Cc, Cf, Cs, Co, Cn, Zs, Zl, Zp) en `deps`, usado por `safe_next` y `share._clean`.
+- Validacion: share 89 passed; ruff y mypy limpios; suite completa 3115 passed (422 s).

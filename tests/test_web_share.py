@@ -101,6 +101,9 @@ def test_extract_link_accepts_a_scheme_less_youtube_link_and_a_bare_handle() -> 
         ("https://evilx.com/u/status/1", "unknown"),
         ("https://notyoutube.com/watch?v=" + VIDEO, "unknown"),
         ("https://evil.com/?u=youtube.com/@canal", "unknown"),
+        ("https://youtube.com.evil.com/youtube.com/@canal", "unknown"),
+        ("https://evil.com/youtube.com/@canal", "unknown"),
+        (f"https://www.youtube.com/watch?v={VIDEO}&v=AAAAAAAAAAA", "unknown"),
         ("https://evil.com/?u=x.com/a/status/1", "unknown"),
         ("https://youtube.com@evil.com/@canal", "unknown"),
         ("https://youtube.com:8080@evil.com/@canal", "unknown"),
@@ -115,10 +118,11 @@ def test_classify_kinds(link: str, kind: str) -> None:
 
 
 def test_classify_none_and_the_link_is_returned() -> None:
-    assert share.classify(None) == {"kind": "none", "link": ""}
+    assert share.classify(None) == {"kind": "none", "link": "", "propose": ""}
     assert share.classify("https://x.com/u/status/1") == {
         "kind": "tweet",
         "link": "https://x.com/u/status/1",
+        "propose": "",
     }
 
 
@@ -153,7 +157,9 @@ def test_a_video_offers_proponer_with_the_encoded_link() -> None:
     assert "Compartido contigo" in html and "Video de YouTube" in html
     href = re.search(r'href="(/subnichos/proponer\?q=[^"]+)"', html)
     assert href, html
-    assert parse_qs(urlsplit(href.group(1).replace("&amp;", "&")).query)["q"] == [link]
+    assert parse_qs(urlsplit(href.group(1).replace("&amp;", "&")).query)["q"] == [
+        f"https://www.youtube.com/watch?v={VIDEO}"
+    ]
     assert "Proponer" in html
     assert api.calls == []
 
@@ -172,7 +178,8 @@ def test_the_proponer_link_leads_to_the_existing_form_with_the_prefilled_input()
     target = re.search(r'href="(/subnichos/proponer\?q=[^"]+)"', html)
     assert target
     form = client.get(target.group(1).replace("&amp;", "&"))
-    assert form.status_code == 200 and f'value="{link}"' in form.text
+    canonical = f"https://www.youtube.com/watch?v={VIDEO}"
+    assert form.status_code == 200 and f'value="{canonical}"' in form.text
 
 
 def test_a_tweet_shows_the_fixed_notice_and_no_action() -> None:
@@ -201,9 +208,18 @@ def test_a_tweet_shows_the_fixed_notice_and_no_action() -> None:
 def test_unknown_or_missing_links_say_so_and_offer_nothing(params: dict[str, str]) -> None:
     client, api = web()
     html = page(client, **params)
-    assert "No reconocimos ese enlace." in html
+    assert "No reconocimos ese enlace." in html or "No se compartió ningún enlace." in html
     assert "/subnichos/proponer" not in html
     assert api.calls == []
+
+
+def test_no_link_and_unrecognized_link_have_their_own_text() -> None:
+    client, _ = web()
+    empty = page(client)
+    assert "No se compartió ningún enlace." in empty and "Sin enlace" in empty
+    assert "No reconocimos ese enlace." not in empty
+    other = page(client, url="https://ejemplo.com/x")
+    assert "No reconocimos ese enlace." in other and "No se compartió" not in other
 
 
 def test_the_shared_link_is_escaped_text() -> None:
@@ -334,3 +350,67 @@ def test_the_service_worker_still_caches_only_static_files() -> None:
     assert precache
     entries = re.findall(r'"([^"]+)"', precache.group(1))
     assert all(e.startswith("/static/") or e == "/sin-conexión" for e in entries)
+
+
+# --- lo clasificado es exactamente lo que se propone ---------------------------------
+
+
+@pytest.mark.parametrize(
+    ("link", "kind", "canonical"),
+    [
+        (f"https://www.youtube.com/watch?v={VIDEO}&u=x.com/a/status/1", "video", None),
+        ("https://www.youtube.com/@canal?x=youtu.be/dQw4w9WgXcQ", "channel", None),
+        (f"https://youtu.be/{VIDEO}?si=x", "video", f"https://www.youtube.com/watch?v={VIDEO}"),
+        ("youtube.com/@canal", "channel", "https://www.youtube.com/@canal"),
+        ("@canal", "channel", "https://www.youtube.com/@canal"),
+        (
+            f"https://youtube.com/channel/{CHANNEL_ID}?a=b",
+            "channel",
+            f"https://www.youtube.com/channel/{CHANNEL_ID}",
+        ),
+    ],
+)
+def test_the_proposed_q_is_canonical_and_parses_to_the_shown_kind(
+    link: str, kind: str, canonical: str | None
+) -> None:
+    from nicheradar.subniche_discovery.inputs import parse_input
+
+    client, _ = web()
+    html = page(client, url=link)
+    href = re.search(r'href="(/subnichos/proponer\?q=[^"]+)"', html)
+    assert href, html
+    q = parse_qs(urlsplit(href.group(1).replace("&amp;", "&")).query)["q"][0]
+    assert parse_input(q).kind == kind
+    assert q.startswith("https://www.youtube.com/") and "?" not in q.replace("watch?v=", "")
+    if canonical:
+        assert q == canonical
+    assert share.classify(link)["propose"] == q
+
+
+def test_repeated_v_with_different_values_is_not_proposed() -> None:
+    client, _ = web()
+    html = page(client, url=f"https://www.youtube.com/watch?v={VIDEO}&v=AAAAAAAAAAA")
+    assert "/subnichos/proponer" not in html and "No reconocimos ese enlace." in html
+
+
+# --- M2, M3, M4 -----------------------------------------------------------------------
+
+
+def test_bare_hosts_need_a_right_boundary() -> None:
+    assert share.extract_link("", "youtube.com.evil.com/@canal", "") is None
+    assert share.extract_link("", "x.com-evil.net/a", "") is None
+    assert share.extract_link("", "youtube.comx", "") is None
+
+
+def test_the_first_link_is_the_leftmost_one() -> None:
+    assert share.extract_link("", "youtube.com/@uno luego https://ejemplo.com/dos", "") == (
+        "youtube.com/@uno"
+    )
+    assert share.extract_link("", "https://ejemplo.com/dos y youtube.com/@uno", "") == (
+        "https://ejemplo.com/dos"
+    )
+
+
+@pytest.mark.parametrize("target", ["/a\u202eb", "/a\u3000b", "/a\u2028b", "/a\u200bb"])
+def test_login_return_rejects_unicode_format_and_space_characters(target: str) -> None:
+    assert safe_next(target) == "/"
