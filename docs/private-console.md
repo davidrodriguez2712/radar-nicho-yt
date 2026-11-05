@@ -28,6 +28,14 @@ Errores de validación devuelven 422 sin copiar valores enviados. Los conflictos
 edición devuelven 409, recursos inexistentes 404 y fallos de base de datos 503 sin
 detalles de conexión. La autenticación se comprueba antes de acceder a los datos.
 
+## Subnichos: propuestas y ciclo de vida
+
+Endpoints bajo `/api/v1/subniches` (mismo token de servicio): `POST /proposals` (202, con `Idempotency-Key`),
+`GET /proposals`, `GET /proposals/{id}`, `GET /{slug}/approval` (vista previa de cuota, solo lectura) y
+`POST /{slug}/approve|pause|resume|archive`. La petición solo encola; la prepara el worker. Ejemplos de `curl`,
+códigos y la forma de error (raíz `{"code","message"}` frente a `{"detail":{...}}` en los 404 de lectura) en
+`docs/subniche-discovery.md`, sección «API de propuestas y ciclo de vida».
+
 ## Backlog
 
 Admite búsqueda literal por tema —no patrones SQL—, formato, revisión, confianza,

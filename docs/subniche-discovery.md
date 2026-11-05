@@ -78,6 +78,54 @@ máximo; las nuevas se miden primero, ordenadas por fecha de aprobación) → `s
 - Si el LLM no está disponible o no valida, `add` falla con una razón estable (`llm_disabled`,
   `configuration_missing`, `llm_tariff_not_current`, `policy_not_enabled`, …) y sugiere `--manual`.
 
+## API de propuestas y ciclo de vida
+
+Mismo token de servicio (`Authorization: Bearer ...`) que el resto de `/api/v1`. La API **solo valida, encola y lee**:
+nunca llama a YouTube ni al modelo de lenguaje desde una petición.
+
+```sh
+# Proponer (202). Exige Idempotency-Key de 8 a 100 caracteres: repetirla devuelve la misma solicitud.
+curl -X POST "$API/api/v1/subniches/proposals" \
+  -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: mi-clave-0001" \
+  -H "Content-Type: application/json" -d '{"input": "faceless history documentary"}'
+# -> {"id": "<uuid>", "status": "queued", "created": true}   (created=false si la clave ya existía)
+
+# Modo manual (sin modelo; solo con una consulta como entrada)
+curl -X POST "$API/api/v1/subniches/proposals" ... \
+  -d '{"input": "ancient rome facts", "manual": {"label": "Ancient Rome", "family": "history", "parent": "historical_stories"}}'
+
+curl "$API/api/v1/subniches/proposals/<id>" -H "Authorization: Bearer $TOKEN"   # estado de una solicitud
+curl "$API/api/v1/subniches/proposals?limit=20" -H "Authorization: Bearer $TOKEN"  # las más recientes
+curl "$API/api/v1/subniches/<slug>/approval" -H "Authorization: Bearer $TOKEN"  # vista previa de cuota (solo lectura)
+curl -X POST "$API/api/v1/subniches/<slug>/approve" -H "Authorization: Bearer $TOKEN"   # o pause / resume / archive
+```
+
+- `input` es una consulta, un video o un canal (3 a 500 caracteres); se guarda y se devuelve como texto.
+  Los enlaces de X se rechazan (`tweet_not_supported_yet`, 422).
+- La respuesta de una solicitud trae `status` (`queued`, `running`, `ready`, `failed`), `error` (`{"code","message"}` con
+  mensaje fijo en español, o `null`) y, si está `ready`, la `hypothesis` (`slug`, `label`, `family`, `parent_niche`,
+  `queries`, `seed_channels`, `status`).
+- **La preparación es asíncrona y la hace el worker** (`tick_proposals`), que solo corre con `NR_SUBNICHE_ENABLED=true`.
+  Procesa hasta 3 solicitudes por vuelta; una `running` de más de 30 minutos pasa a `failed` (`abandoned`).
+  Con el interruptor apagado las solicitudes quedan en `queued`.
+- Tope diario: `subniche_proposals_per_day` (defecto 100) solicitudes nuevas en 24 horas; al superarlo, 429 `daily_limit`.
+- **Aprobar no mide al instante**: pasa la hipótesis a `active` y la mide el worker en su próxima corrida (a más
+  tardar a los 3 días). Nada se aprueba solo.
+- **Regla de cuota en la vista previa** (`/approval`): `search_units_needed = consultas × páginas × 100` contra el
+  menor de `NR_SUBNICHE_SEARCH_UNITS_PER_DAY` y `NR_SUBNICHE_SEARCH_QUOTA_PER_RUN` (`daily_cap`); `fits` dice si cabe.
+  Aprobar sigue siendo posible aunque no quepa (la medición se saltará con `insufficient_search_cap`); nunca da un 500.
+- Códigos de error: 422 `invalid_input`, `tweet_not_supported_yet`, `manual_needs_a_query`, `invalid_proposal`,
+  `unknown_parent_niche`; 429 `daily_limit`; 404 `not_found`; 409 `invalid_transition`
+  (aprobar una activa, pausar o reanudar una propuesta, salir de `archived`). Validación de formato: 422 de FastAPI.
+- **Forma del error:** los rechazos de dominio de proposals y de ciclo de vida devuelven `{"code","message"}` en la
+  raíz del JSON; los 404 de `GET /subniches/{slug}` y de `GET /proposals/{id}` devuelven
+  `{"detail": {"code","message"}}`.
+- Fallos de una solicitud ya encolada (`failed`): `llm_disabled` y afines (modelo no disponible: usar el modo manual),
+  `not_found`, `duplicate`, `youtube_not_configured`, `abandoned`; el detalle del proveedor nunca se expone.
+
+**Despliegue:** la migración `0022` (tabla `subniche_proposal_requests`) y la nueva imagen del worker necesitan una
+release con aprobación del propietario; nada de esto está desplegado.
+
 ## Cadencia del worker
 
 - Un tick cada **3 días** (`CADENCE`), con un cerrojo asesor de Postgres. Mide primero las hipótesis
