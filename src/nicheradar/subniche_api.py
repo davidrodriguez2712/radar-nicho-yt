@@ -15,7 +15,7 @@ from sqlalchemy import Connection
 from nicheradar.config import Settings
 from nicheradar.repositories.schema import hypothesis_seed_channels as seeds
 from nicheradar.repositories.schema import niche_hypotheses as nh
-from nicheradar.subniche_discovery import proposals, store
+from nicheradar.subniche_discovery import proposals, store, worker
 from nicheradar.subniche_discovery.catalog import list_subniches, subniche_detail
 from nicheradar.subniche_discovery.intake import ManualFields
 from nicheradar.subniche_discovery.proposals import ProposalRejected
@@ -35,6 +35,11 @@ MESSAGES: dict[str, str] = {
     "unknown_parent_niche": "Ese nicho padre no existe en el catálogo.",
     "invalid_proposal": "La propuesta no es válida.",
     "youtube_not_configured": "YouTube no está configurado en el servidor.",
+    "youtube_quota_exhausted": (
+        "La cuota de búsqueda de YouTube de hoy está agotada; "
+        "inténtalo mañana o usa una consulta manual."
+    ),
+    "youtube_unreachable": "No se pudo consultar YouTube; vuelve a intentarlo.",
     "abandoned": "La preparación se interrumpió; vuelve a intentarlo.",
     **{
         code: LLM_UNAVAILABLE
@@ -49,6 +54,14 @@ MESSAGES: dict[str, str] = {
             "incomplete_response",
         )
     },
+}
+
+PROVIDER_CODES = {
+    "integration_disabled": "youtube_not_configured",
+    "authentication_required": "youtube_not_configured",
+    "quota": "youtube_quota_exhausted",
+    "subniche_daily_search_cap": "youtube_quota_exhausted",
+    "connection_failed": "youtube_unreachable",
 }
 
 
@@ -81,7 +94,7 @@ class ProposalBody(BaseModel):
 def error_message(code: str | None) -> dict[str, str] | None:
     if code is None:
         return None
-    normalized = "duplicate" if code.startswith("duplicate") else code
+    normalized = "duplicate" if code.startswith("duplicate") else PROVIDER_CODES.get(code, code)
     if normalized not in MESSAGES:
         return {"code": "unknown", "message": GENERIC}
     return {"code": normalized, "message": MESSAGES[normalized]}
@@ -224,7 +237,7 @@ def subniche_router(
             "search_units_needed": needed,
             "daily_cap": cap,
             "fits": needed <= cap,
-            "cadence_days": 3,
+            "cadence_days": worker.CADENCE.days,
         }
 
     def _transition(

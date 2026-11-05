@@ -250,3 +250,32 @@ def test_hostile_text_is_returned_verbatim_as_data(isolated_engine: Engine) -> N
     created = post(api, {"input": hostile}).json()
     detail = api.get(f"{BASE}/{created['id']}", headers=AUTH).json()
     assert detail["input"] == hostile.strip()
+
+
+@pytest.mark.parametrize(
+    ("raw", "code"),
+    [
+        ("integration_disabled", "youtube_not_configured"),
+        ("authentication_required", "youtube_not_configured"),
+        ("quota", "youtube_quota_exhausted"),
+        ("subniche_daily_search_cap", "youtube_quota_exhausted"),
+        ("connection_failed", "youtube_unreachable"),
+    ],
+)
+def test_youtube_provider_codes_are_normalized_to_fixed_messages(raw: str, code: str) -> None:
+    from nicheradar.subniche_api import error_message
+
+    out = error_message(raw)
+    assert out is not None
+    assert out["code"] == code
+    assert out["message"] == MESSAGES[code]
+    assert raw not in out["message"] or raw == code
+
+
+def test_unknown_provider_text_is_never_returned() -> None:
+    from nicheradar.subniche_api import error_message
+
+    assert error_message("boom: secret detail") == {
+        "code": "unknown",
+        "message": "No se pudo preparar la propuesta.",
+    }

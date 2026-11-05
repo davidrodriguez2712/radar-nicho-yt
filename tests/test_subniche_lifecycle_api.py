@@ -227,3 +227,16 @@ def test_approval_preview_reads_without_locking_rows(isolated_engine: Engine) ->
     assert response.status_code == 200
     assert any("niche_hypotheses" in statement for statement in statements)
     assert not any("FOR UPDATE" in statement.upper() for statement in statements)
+
+
+def test_cadence_days_comes_from_the_worker_constant(
+    isolated_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import timedelta
+
+    import nicheradar.subniche_discovery.worker as worker
+
+    monkeypatch.setattr(worker, "CADENCE", timedelta(days=5))
+    seed(isolated_engine)
+    body = client(isolated_engine).get(f"{BASE}/history_revenge/approval", headers=AUTH).json()
+    assert body["cadence_days"] == 5

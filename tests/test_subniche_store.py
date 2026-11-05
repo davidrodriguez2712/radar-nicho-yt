@@ -180,3 +180,9 @@ def test_export_yaml_is_valid_flow_scalars(db: Connection) -> None:
     assert '- slug: "history_revenge"' in text
     assert 'parent_niche: "historical_stories"' in text
     assert f'seed_channels: ["{SEED}"]' in text
+
+
+def test_proposals_is_a_reserved_slug(db: Connection) -> None:
+    assert unique_slug(db, "proposals") == "proposals_2"
+    with pytest.raises(DuplicateHypothesis):
+        create_proposed(db, draft(slug="proposals"), NOW)

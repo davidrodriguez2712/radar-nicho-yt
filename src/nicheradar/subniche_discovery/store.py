@@ -34,8 +34,12 @@ class UnknownHypothesis(Exception):
     pass
 
 
+# Segmentos fijos de /api/v1/subniches que chocarían con /{slug}.
+RESERVED_SLUGS = frozenset({"proposals"})
+
+
 def unique_slug(connection: Connection, base: str) -> str:
-    taken = set(connection.execute(select(nh.c.slug)).scalars())
+    taken = set(connection.execute(select(nh.c.slug)).scalars()) | RESERVED_SLUGS
     if base not in taken:
         return base
     for suffix in range(2, 50):
@@ -46,7 +50,10 @@ def unique_slug(connection: Connection, base: str) -> str:
 
 
 def create_proposed(connection: Connection, draft: HypothesisDraft, now: datetime) -> UUID:
-    if connection.execute(select(nh.c.id).where(nh.c.slug == draft.slug)).first():
+    if (
+        draft.slug in RESERVED_SLUGS
+        or connection.execute(select(nh.c.id).where(nh.c.slug == draft.slug)).first()
+    ):
         raise DuplicateHypothesis("slug")
     live = connection.execute(select(nh.c.queries).where(nh.c.status != "archived")).scalars()
     taken = {query for queries in live for query in queries}
