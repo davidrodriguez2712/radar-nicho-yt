@@ -1156,3 +1156,72 @@ def test_the_stop_rules_with_hostile_text_and_without_evaluation() -> None:
     assert "1 de 1 medidos" in flat(block(text, "res-reglas"))
     none = page(api_with(detail_with(evaluation={"rules": []})))
     assert "res-reglas-lista" not in none and "medidos" not in none
+
+
+def lower_bound_videos(count: int = 3) -> list[dict[str, object]]:
+    return [
+        pilot_video(
+            f"v{i}",
+            human_minutes=40,
+            human_minutes_method="claude_sessions_plus_assumed",
+            published_at="2026-11-01T12:00:00Z",
+        )
+        for i in range(1, count + 1)
+    ]
+
+
+def test_the_line_says_possible_when_the_figures_are_a_lower_bound() -> None:
+    running = detail_with(status="en_ejecucion")
+    text = page(calib_api(lower_bound_videos(), detail=running))
+    assert cal_labels(text)[4] == "pasa a régimen (posible)"
+    assert cal_marked(text, "current") == ["pasa a régimen (posible)"]
+    exact = page(calib_api(dated(40, 40, 40), detail=running))
+    assert cal_labels(exact)[4] == "pasa a régimen"
+    assert "posible" not in flat(block(exact, "linea-estados"))
+
+
+def chip_of(text: str) -> str:
+    return flat(block(text, "cabecera")).split(" Largo")[0]
+
+
+@pytest.mark.parametrize(
+    ("status", "api_chip"),
+    [
+        ("autorizado", "Autorizado"),
+        ("entregado", "Preparando"),
+        ("decision_pendiente", "Decisión pendiente"),
+        ("cerrado", "Cerrado"),
+        ("cancelado", "Cancelado"),
+    ],
+)
+def test_the_chip_is_the_api_one_outside_running_calibration(status: str, api_chip: str) -> None:
+    text = page(calib_api(measured(90), detail=detail_with(status=status)))
+    assert chip_of(text) == api_chip
+
+
+def test_the_chip_says_in_calibration_only_when_running_and_readable() -> None:
+    running = detail_with(status="en_ejecucion")
+    assert chip_of(page(calib_api(measured(90), detail=running))) == "En calibración"
+    assert chip_of(page(calib_api(dated(40, 40, 40), detail=running))) == "En calibración"
+    unreadable = page(calib_api(report=(500, {"detail": "x"}), detail=running))
+    assert chip_of(unreadable) == "En ejecución"
+    old = page(api_with(detail_with(status="en_ejecucion", package=v2_package())))
+    assert chip_of(old) == "En ejecución"
+
+
+def test_the_day_and_the_calibration_text_only_in_open_states() -> None:
+    for status in ("cerrado", "cancelado"):
+        text = page(calib_api(dated(92, 71, 58), detail=detail_with(status=status)))
+        estado = flat(block(text, "res-estado"))
+        assert "desde el primer video" not in estado
+        assert "Todavía sin reportes del canal" in estado or "publicados" in estado
+    for status in ("autorizado", "entregado", "en_ejecucion", "decision_pendiente"):
+        text = page(calib_api(dated(92), detail=detail_with(status=status)))
+        assert "Día 9 desde el primer video" in flat(block(text, "res-estado"))
+
+
+def test_the_delivered_step_explains_it_is_still_preparing() -> None:
+    text = page(calib_api(measured(90), detail=detail_with(status="entregado")))
+    assert 'title="Entregado: el canal se está preparando"' in block(text, "linea-estados")
+    other = page(calib_api(measured(90), detail=detail_with(status="en_ejecucion")))
+    assert "title=" not in block(other, "linea-estados")

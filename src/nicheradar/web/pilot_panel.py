@@ -64,6 +64,7 @@ CAL_STATES = (
 )
 CAL_CURRENT = {"autorizado": 0, "entregado": 2, "en_ejecucion": 3, "decision_pendiente": 5}
 CAL_PASSES_STEP = 4
+DELIVERED_TITLE = "Entregado: el canal se está preparando"
 CALIBRATION_CHIP = "En calibración"
 RULE_PROGRESS_TEXT = {
     "cumple": "cumple",
@@ -205,7 +206,9 @@ def _states(status: str) -> list[dict[str, str]]:
     return rows
 
 
-def _calibration_states(status: str, passes: bool) -> list[dict[str, str]] | None:
+def _calibration_states(
+    status: str, passes: bool, lower_bound: bool = False
+) -> list[dict[str, str]] | None:
     current = CAL_CURRENT.get(status)
     if current is None:
         return None
@@ -214,7 +217,12 @@ def _calibration_states(status: str, passes: bool) -> list[dict[str, str]] | Non
     rows = []
     for index, label in enumerate(CAL_STATES):
         state = "current" if index == current else "done" if index < current else "todo"
-        rows.append({"label": label, "state": state})
+        if index == CAL_PASSES_STEP and lower_bound:
+            label = f"{label} (posible)"
+        row = {"label": label, "state": state}
+        if status == "entregado" and index == current:
+            row["title"] = DELIVERED_TITLE
+        rows.append(row)
     return rows
 
 
@@ -436,7 +444,7 @@ def _summary(
         state_text = f"Día {day} · {progress}"
     else:
         state_text = "Todavía sin reportes del canal"
-    ready = cal is not None and not cal.get("failed")
+    ready = cal is not None and not cal.get("failed") and status in CAL_CURRENT
     if cal is not None and ready:
         state_text = _calibration_state_text(cal, now)
     found = [{**b, "owner": OWNER.get(b["kind"], "Tú")} for b in blockers(detail, now, timezone)]
@@ -519,7 +527,9 @@ def panel_view(
     chip_text, chip_kind = STATUS_CHIP.get(status, (status or "Estado desconocido", "neutral"))
     cal = _calibration_view(dossier, videos, now, timezone, status) if has_calibration else None
     cal_states = (
-        _calibration_states(status, bool(cal.get("passes"))) if cal and not cal["failed"] else None
+        _calibration_states(status, bool(cal.get("passes")), bool(cal.get("lower_bound")))
+        if cal and not cal["failed"]
+        else None
     )
     if cal_states and status == "en_ejecucion":
         chip_text = CALIBRATION_CHIP
