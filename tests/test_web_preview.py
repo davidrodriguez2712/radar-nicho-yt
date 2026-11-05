@@ -26,6 +26,7 @@ def test_the_preview_renders_the_corte_1_screens_with_local_assets(tmp_path: Pat
     expected = {
         "hoy": "nichos que merecen tu atención",
         "nichos": "historia militar explicada",
+        "nicho_detalle": "Recorrido hasta el piloto",
         "investigar": "Iniciar investigación en inglés",
         "informe": "Qué tan firme es",
         "autorizar": "Autorizar piloto",
@@ -66,3 +67,12 @@ def test_the_preview_renders_the_corte_3a_operation_screens_with_local_assets(
         assert "file://" in html and 'href="/static/' not in html, name
     operacion = (tmp_path / "operacion.html").read_text()
     assert "Pausado" in operacion and "parcial" in operacion and "falló" in operacion
+
+
+def test_the_preview_renders_the_niche_detail_and_the_card_journey(tmp_path: Path) -> None:
+    assert web_preview.main(["--out", str(tmp_path), "--no-screenshots"]) == 0
+    detalle = (tmp_path / "nicho_detalle.html").read_text()
+    ficha = (tmp_path / "ficha.html").read_text()
+    assert "Decisión" in detalle and "Ver más fichas" in detalle
+    assert "historia militar explicada" in detalle
+    assert "Recorrido hasta el piloto" in ficha

@@ -36,6 +36,7 @@ PID = "pil_20261102_historia"
 ROUTES = [
     "/",
     "/nichos",
+    "/nichos/ver?etiqueta=x&formato=long",
     "/nichos/investigar?etiqueta=x&formato=long",
     "/subnichos",
     "/subnichos/uno",
@@ -375,6 +376,15 @@ def test_no_screen_loads_third_party_origins_or_inline_code() -> None:
 
 POSTS: list[tuple[str, dict[str, str]]] = [
     ("/nichos/decidir", {"etiqueta": "x", "formato": "long", "decision": "descartado"}),
+    (
+        "/nichos/decidir",
+        {
+            "etiqueta": "x",
+            "formato": "long",
+            "decision": "tentativo",
+            "volver": "/nichos/ver?etiqueta=x&formato=long",
+        },
+    ),
     ("/nichos/investigar", {"etiqueta": "x", "formato": "long", "idioma": "en"}),
     ("/pilotos/autorizar", {"informe": REPORT_ID, "canal": "c"}),
     (f"/pilotos/{PID}/decidir?accion=seguir", {"note": "ok"}),

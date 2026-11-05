@@ -72,7 +72,7 @@ Porque la API no entrega el dato o el diseño lo difiere: Fit, Demanda y Volumen
 
 ### Pruebas transversales
 
-`tests/test_web_smoke_screens.py` recorre las rutas de los cortes 1, 2a y 3a (Operación, Ejecuciones y Más; los dos `POST` del scraper sin CSRF o en estado no permitido no escriben; `/mas` no lee la API) (incluidas las cinco pestañas del piloto, las confirmaciones y el cierre) con texto hostil en todas las cadenas, con la API caída, con cuerpos mal formados (cada campo reemplazado por `null`, texto, número, `NaN`, infinito, listas y objetos vacíos), con fechas sin zona horaria, y comprueba que no haya orígenes de terceros, código en línea, CSP distinto entre rutas ni `POST` sin CSRF que toque la API (también los de pilotos), y que un `POST` con CSRF en un estado no permitido no escriba nada.
+`tests/test_web_smoke_screens.py` recorre las rutas de los cortes 1, 2a y 3a y el detalle de nicho (`/nichos/ver`, con su `POST` de decisión y `volver`) (Operación, Ejecuciones y Más; los dos `POST` del scraper sin CSRF o en estado no permitido no escriben; `/mas` no lee la API) (incluidas las cinco pestañas del piloto, las confirmaciones y el cierre) con texto hostil en todas las cadenas, con la API caída, con cuerpos mal formados (cada campo reemplazado por `null`, texto, número, `NaN`, infinito, listas y objetos vacíos), con fechas sin zona horaria, y comprueba que no haya orígenes de terceros, código en línea, CSP distinto entre rutas ni `POST` sin CSRF que toque la API (también los de pilotos), y que un `POST` con CSRF en un estado no permitido no escriba nada.
 
 
 ## Pantallas del corte 2a (pilotos)
@@ -133,16 +133,47 @@ sale de la ruta y el actor lo fija el servidor. Tras una acción se vuelve al pa
 - **Calibración como mínimo estimado**: la cifra de minutos de `claude_sessions_plus_assumed` se rotula como mínimo (ver corte 2b).
 - **El radar de oportunidades no está en la web**, ni tampoco «Análisis de canal»: siguen solo en Streamlit hasta su retiro (3f). No se mostrará su estado, no se pausa ni se reanuda desde la web.
 
+## Alineación con el Figma ordenado (2026-11-04)
+
+Plan: `docs/superpowers/plans/2026-11-04-alineacion-web-con-figma.md`. Solo cambia `src/nicheradar/web/`; no toca la API ni la base.
+
+| Pieza | Ruta o lugar | Notas |
+|---|---|---|
+| Detalle de nicho (M19) | `GET /nichos/ver?etiqueta=&formato=` | Lee `GET /market/niches/{etiqueta}`. La etiqueta va por query (puede traer `/` u `other:`). «Ver más fichas» muestra 10 más por toque sobre las ya cargadas; hasta 100 fichas, con aviso si hay más. La tendencia es «sube», «baja», «estable» o «sin dato». |
+| Recorrido hasta el piloto | macro `journey` (`journey.py`) en el detalle de nicho y en la ficha de subnicho | Seis pasos: Candidato, Decisión, Listo para investigar, Investigación de flujo, Informe, Piloto. Regla: cada paso es `done` (✓), `now` (●) o `pending` (○); `now` es el **primer paso no hecho**; si todos están hechos, Piloto es `now` con «Piloto en marcha» (hay piloto abierto) o «Decide si lo lanzas». Nicho descartado: Decisión es `now` («Descartado: se oculta de la lista») y el resto `pending`. Subnicho pausado: Decisión `done` («Pausada») y «Listo para investigar» `pending`; archivado: Decisión `now`. Nunca lanza ante datos mal formados: dice qué falta. |
+| Decisión del nicho | `POST /nichos/decidir` | Sin decidir, Tentativo, Descartado; reversible, con CSRF y sin pantalla de confirmación. |
+| Control con conteos | `Nichos (N) \| Subnichos (M)` en las dos listas | Los conteos salen de las lecturas de cada lista. |
+| Informe y autorización | `/informes/{id}`, `/pilotos/autorizar` | Una sola pantalla para nichos y subnichos, con rótulo de origen; v1/v2 con aviso. |
+| Panel del piloto y Hoy | `/pilotos/{id}`, `/` | Calibración en el Resumen; Hoy con pendientes fusionados, títulos dinámicos y tarjetas con acciones. |
+
+### Retorno seguro (`volver`)
+
+«Hoy» y el detalle de nicho envían `volver` en la decisión. Solo se acepta una lista blanca de rutas internas: `/`, `/nichos` y `/nichos/ver?...`. Cualquier otro valor (`https://…`, `//host`, `javascript:`, `/nichos/../x`) se ignora y se vuelve a `/nichos`.
+
+### Costo de lecturas del panel
+
+Con un dossier v3, el panel del piloto hace 2 lecturas extra por página (`GET /flow-research/{id}` y `GET /pilots/{id}/videos`), una vez cada una y sin reintentos; sin v3 no hace ninguna (ver «Corte 2b»).
+
+### Lo que el diseño tiene y la web aún no
+
+- Cadencia y días de preparación al autorizar (M12): no existen en el contrato de pilotos, que es inmutable tras autorizar; es un corte propio.
+- Idioma por nicho en la lista y en Hoy (chip «EN 80 %» y filtro «Idioma»): exige un resumen de `language_mix` en `GET /market/niches`.
+- «Fit» de M2: se quitó del Figma el 2026-11-04 (no existe para nichos de mercado); no se muestra.
+- Decisión del subnicho editable (aprobar, pausar, reanudar, archivar) y «+ Proponer subnicho»: la tarjeta es de solo lectura hasta el plan de API `2026-11-04-api-propuestas-de-subnicho.md`.
+- Botones de acción por bloqueo del panel («Renovar paso a paso», «Revisar tabla»): sin destino definido.
+- Botones de nicho apilados en vez de en fila (Hoy y listas): diferencia de maquetación aceptada.
+- Presupuesto «por suscripción / por API» de M12: se conserva bajo, probable y alto del dossier.
+
 ## Comprobación visual contra el Figma
 
 ```
 uv run python scripts/web_preview.py --out /tmp/web-preview
 ```
 
-Renderiza Subnichos (lista y ficha), Hoy, Nichos, Investigar, Informe v3, Autorizar y, del corte 2a, Pilotos, Piloto (Resumen), Preparación y Confirmar, del corte 2b, Calibración (piloto en ejecución) y, del corte 3a, Operación, Ejecuciones, Más y Confirmar scraper con datos de ejemplo
-(`scripts/web_preview_data.py`, sin API real) y guarda `lista`, `ficha`, `hoy`, `nichos`, `investigar`,
+Renderiza Subnichos (lista y ficha con Recorrido), Hoy, Nichos, Detalle de nicho (`nicho_detalle`), Investigar, Informe v3, Autorizar y, del corte 2a, Pilotos, Piloto (Resumen), Preparación y Confirmar, del corte 2b, Calibración (piloto en ejecución) y, del corte 3a, Operación, Ejecuciones, Más y Confirmar scraper con datos de ejemplo
+(`scripts/web_preview_data.py`, sin API real) y guarda `lista`, `ficha`, `hoy`, `nichos`, `nicho_detalle`, `investigar`,
 `informe`, `autorizar`, `pilotos`, `piloto`, `preparacion`, `calibracion`, `confirmar`, `operacion`, `ejecuciones`, `mas` y `confirmar-scraper` como `.html` y, si hay Chrome (`--chrome RUTA`), como `.png` a 390 px de ancho con
-escala 2. Compárense con el Figma M9 (`29:2`) y M10 (`30:2`) y los demás marcos del archivo. Los estados de investigación de la lista son
+escala 2. Compárense con el Figma M9 (`29:2`), M10 (`30:2`), M19 (`47:37`), M14 (`36:2`), M11 (`31:2`), M12 (`32:2`), M13 (`35:2`) y los demás marcos del archivo. Los estados de investigación de la lista son
 ilustrativos, como en el Figma. Las rutas `file://` solo existen en esta vista previa. Chrome headless no
 baja de 500 px de ventana, por eso la página se mide dentro de un `iframe` de 390 px y se recorta con `sips`
 (macOS).

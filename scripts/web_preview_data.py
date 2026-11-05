@@ -282,7 +282,26 @@ NICHE_DETAIL: dict[str, Any] = {
         "decision": {"decision": "nuevo", "note": None, "decided_at": None},
         "trend": 3.0,
     },
-    "listings": [],
+    "listings": [
+        {
+            "title": f"Canal «Guerras al detalle {n}»",
+            "url": f"https://marketplace.test/anuncio/{n}",
+            "channel_url": None,
+            "status": "active" if n % 4 else "sold",
+            "category": "history",
+            "language": "en",
+            "price_usd": 12000.0 + 1500.0 * n,
+            "subscribers": 80000 + 9000 * n,
+            "income_monthly_usd": 900.0 + 120.0 * n,
+            "expense_monthly_usd": 250.0,
+            "first_seen_at": "2026-10-01T00:00:00Z",
+            "last_seen_at": "2026-11-03T00:00:00Z",
+            "verification": "verified" if n % 2 else "unverified",
+            "real_subscribers": None,
+            "seller_declared": n % 2 == 0,
+        }
+        for n in range(1, 13)
+    ],
     "language_mix": [
         {"language": "en", "share_pct": 80.0},
         {"language": "es", "share_pct": 15.0},
