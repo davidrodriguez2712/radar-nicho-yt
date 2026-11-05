@@ -859,6 +859,32 @@ try {
     if(after.source?.image!==image) throw new Error('Image setting not persisted');
     cli(['app','deploy',`${project}/${name}`,'--yes']);
     console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='set-dashboard-ui') {
+    // Elige la interfaz que sirve el dashboard: `web` (móvil) o `streamlit`. Uso: set-dashboard-ui <web|streamlit> [dry].
+    // Para `web` exige una contraseña de la app de al menos 32 caracteres y la autenticación Basic del proxy desactivada
+    // (la contraseña de la app es la única barrera). Nunca imprime el entorno ni la contraseña.
+    const name='nicheradar-dashboard';
+    const value=process.argv[3];
+    if(value!=='web' && value!=='streamlit') throw new Error('Usage: set-dashboard-ui <web|streamlit> [dry]');
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const basicAuthOn=Array.isArray(before.basicAuth) ? before.basicAuth.length>0 : Boolean(before.basicAuth && Object.keys(before.basicAuth).length);
+    const result={name,before:env.NR_DASHBOARD_UI ?? 'unset',after:value,passwordLength:(env.NR_DASHBOARD_PASSWORD ?? '').length,
+      basicAuthEnabled:basicAuthOn,hasApiUrl:Boolean(env.NR_API_URL),hasServiceToken:Boolean(env.NR_SERVICE_TOKEN),dryRun:process.argv[4]==='dry'};
+    if(value==='web' && (result.passwordLength<32 || basicAuthOn || !result.hasApiUrl || !result.hasServiceToken))
+      throw new Error('Web UI preconditions failed: '+JSON.stringify(result));
+    if(result.dryRun) {
+      console.log(JSON.stringify(result));
+    } else {
+      const next={...env,NR_DASHBOARD_UI:value};
+      cli(['app','update-env',`${project}/${name}`,'--yes'],{env:Object.entries(next).map(([k,v])=>`${k}=${v}`).join('\n')});
+      const after=cli(['app','inspect',`${project}/${name}`]);
+      for(const field of ['source','resources','deploy','ports','mounts','basicAuth']) {
+        if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected non-environment change');
+      }
+      cli(['app','deploy',`${project}/${name}`,'--yes']);
+      console.log(JSON.stringify({...result,deployRequested:true}));
+    }
   } else if(action==='set-subniche-enabled') {
     // Enciende o apaga el descubrimiento de subnichos en el worker. Uso: set-subniche-enabled <true|false> [dry].
     // Exige la configuración de Anthropic y los topes ya cargados (set-subniche-env). Nunca imprime el entorno.
