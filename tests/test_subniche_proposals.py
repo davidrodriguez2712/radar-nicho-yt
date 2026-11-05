@@ -152,8 +152,10 @@ def test_finish_ready_and_failed(db: Connection) -> None:
     ready, _ = put(db, "consulta lista", "clave-fin-0001")
     failed, _ = put(db, "consulta fallida", "clave-fin-0002")
     end = NOW + timedelta(minutes=1)
-    proposals.finish_ready(db, ready, "consulta_lista", end)
-    proposals.finish_failed(db, failed, "x" * 200, end)
+    proposals.claim_next(db, NOW)
+    proposals.claim_next(db, NOW)
+    assert proposals.finish_ready(db, ready, "consulta_lista", end) is True
+    assert proposals.finish_failed(db, failed, "x" * 200, end) is True
     done = proposals.get_request(db, ready)
     broken = proposals.get_request(db, failed)
     assert done is not None and broken is not None
@@ -214,3 +216,31 @@ def test_concurrent_same_key_makes_one_row(isolated_engine: Engine) -> None:
     assert sorted(created for _, created in results) == [False, False, False, True]
     with isolated_engine.connect() as conn:
         assert len(rows(conn)) == 1
+
+
+def test_finish_only_acts_on_running_rows(db: Connection) -> None:
+    queued, _ = put(db, "consulta en cola", "clave-run-0001")
+    late, _ = put(db, "consulta tardia", "clave-run-0002", now=NOW + timedelta(seconds=1))
+    assert proposals.finish_ready(db, queued, "x_slug", NOW) is False  # aun queued
+    assert proposals.finish_failed(db, queued, "boom", NOW) is False
+    assert proposals.get_request(db, queued)["status"] == "queued"  # type: ignore[index]
+    proposals.claim_next(db, NOW)  # queued -> running
+    proposals.claim_next(db, NOW)  # late -> running
+    assert proposals.release_stale(db, NOW + timedelta(hours=2)) == 2
+    assert proposals.finish_ready(db, late, "tarde", NOW + timedelta(hours=3)) is False
+    assert proposals.finish_failed(db, late, "otro", NOW + timedelta(hours=3)) is False
+    row = proposals.get_request(db, late)
+    assert row is not None
+    assert (row["status"], row["error_code"], row["hypothesis_slug"]) == (
+        "failed",
+        "abandoned",
+        None,
+    )
+
+
+def test_finish_ready_trims_the_slug(db: Connection) -> None:
+    request, _ = put(db, "consulta larga", "clave-slug-001")
+    proposals.claim_next(db, NOW)
+    assert proposals.finish_ready(db, request, "s" * 90, NOW) is True
+    row = proposals.get_request(db, request)
+    assert row is not None and row["hypothesis_slug"] == "s" * 60

@@ -16,6 +16,7 @@ from nicheradar.subniche_discovery.intake import ManualFields
 
 MAX_INPUT = 500
 MAX_ERROR_CODE = 80
+MAX_SLUG = 60
 _LIMIT_LOCK = 7_302_201  # serializa «contar + insertar» para que el tope no se rebase en carrera
 _PUBLIC = [column for column in requests.c if column.name != "idempotency_key"]
 
@@ -118,20 +119,24 @@ def release_stale(conn: Connection, now: datetime, *, minutes: int = 30) -> int:
     return result.rowcount
 
 
-def finish_ready(conn: Connection, request_id: UUID, slug: str, now: datetime) -> None:
-    conn.execute(
+def finish_ready(conn: Connection, request_id: UUID, slug: str, now: datetime) -> bool:
+    """Marca `ready` solo si la fila sigue `running`; devuelve si actualizó."""
+    result = conn.execute(
         sa.update(requests)
-        .where(requests.c.id == request_id)
-        .values(status="ready", hypothesis_slug=slug, error_code=None, finished_at=now)
+        .where(requests.c.id == request_id, requests.c.status == "running")
+        .values(status="ready", hypothesis_slug=slug[:MAX_SLUG], error_code=None, finished_at=now)
     )
+    return result.rowcount == 1
 
 
-def finish_failed(conn: Connection, request_id: UUID, code: str, now: datetime) -> None:
-    conn.execute(
+def finish_failed(conn: Connection, request_id: UUID, code: str, now: datetime) -> bool:
+    """Marca `failed` solo si la fila sigue `running`; devuelve si actualizó."""
+    result = conn.execute(
         sa.update(requests)
-        .where(requests.c.id == request_id)
+        .where(requests.c.id == request_id, requests.c.status == "running")
         .values(status="failed", error_code=code[:MAX_ERROR_CODE], finished_at=now)
     )
+    return result.rowcount == 1
 
 
 def get_request(conn: Connection, request_id: UUID) -> dict[str, Any] | None:

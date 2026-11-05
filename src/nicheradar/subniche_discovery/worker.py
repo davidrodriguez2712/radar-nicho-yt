@@ -12,12 +12,15 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from nicheradar.config import Settings
 from nicheradar.domain.profile import CreatorProfile, initial_catalog
+from nicheradar.integrations.anthropic import AnthropicClient
 from nicheradar.integrations.contracts import ProviderError
 from nicheradar.market_intel.context import utcnow
 from nicheradar.repositories.core import insert_record, seed_profile
 from nicheradar.repositories.database import database_engine
 from nicheradar.repositories.schema import discovery_runs as runs
 from nicheradar.repositories.schema_v1 import analysis_runs
+from nicheradar.subniche_discovery import proposals
+from nicheradar.subniche_discovery.intake import ManualFields, add_hypothesis
 from nicheradar.subniche_discovery.measure import measure_hypothesis
 from nicheradar.subniche_discovery.reader import (
     YouTubeReader,
@@ -29,6 +32,7 @@ from nicheradar.subniche_discovery.store import due_hypotheses
 CADENCE = timedelta(days=3)
 STALE_RUN = timedelta(hours=6)
 SUBNICHE_LOCK = 9_320_031
+PROPOSAL_BATCH = 3
 
 
 def cadence_open(connection: Connection, now: datetime, timezone: str) -> bool:
@@ -211,3 +215,93 @@ def _finish(
             .where(analysis_runs.c.id == analysis_id)
             .values(status="completed" if outcome == "complete" else outcome, finished_at=now)
         )
+
+
+def _process_request(
+    database: Engine,
+    config: Settings,
+    request: dict[str, Any],
+    reader: YouTubeReader | None,
+    client: AnthropicClient | None,
+    clock: Callable[[], datetime],
+) -> bool:
+    """Atiende una solicitud ya reclamada, fuera de la transacción de `claim_next`."""
+    manual = ManualFields(**request["manual"]) if request["manual"] is not None else None
+    try:
+        result = asyncio.run(
+            add_hypothesis(
+                database,
+                config,
+                request["input_text"],
+                origin=request["origin"],
+                manual=manual,
+                reader=reader,
+                client=client,
+                clock=clock,
+            )
+        )
+        slug = result.get("slug") if "error" not in result else None
+        code = str(result["error"]) if "error" in result else None
+        if code is None and not isinstance(slug, str):
+            code = "unexpected"
+    except SQLAlchemyError:
+        raise
+    except Exception:
+        slug, code = None, "unexpected"
+    with database.begin() as connection:
+        if code is None:
+            assert isinstance(slug, str)
+            return proposals.finish_ready(connection, request["id"], slug, clock())
+        proposals.finish_failed(connection, request["id"], code, clock())
+    return False
+
+
+def tick_proposals(
+    config: Settings,
+    engine: Engine | None = None,
+    *,
+    reader: YouTubeReader | None = None,
+    client: AnthropicClient | None = None,
+    clock: Callable[[], datetime] = utcnow,
+    batch: int = PROPOSAL_BATCH,
+) -> dict[str, object]:
+    """Atiende hasta `batch` solicitudes de propuesta de subnicho en cola."""
+    status: dict[str, object] = {
+        "service": "subniche_proposals",
+        "status": "idle",
+        "processed": 0,
+        "ready": 0,
+        "failed": 0,
+    }
+    if config.database_url is None and engine is None:
+        return status | {"status": "not_configured"}
+    database = engine or database_engine(config)
+    processed = ready = 0
+    try:
+        with database.begin() as connection:
+            proposals.release_stale(connection, clock())
+        for _ in range(batch):
+            with database.begin() as connection:
+                request = proposals.claim_next(connection, clock())
+            if request is None:
+                break
+            processed += 1
+            if _process_request(database, config, request, reader, client, clock):
+                ready += 1
+    except SQLAlchemyError:
+        return status | {
+            "status": "error",
+            "error_code": "database_unavailable",
+            "processed": processed,
+            "ready": ready,
+            "failed": processed - ready,
+        }
+    finally:
+        if engine is None:
+            database.dispose()
+    return status | {
+        "status": "processed" if processed else "idle",
+        "processed": processed,
+        "ready": ready,
+        "failed": processed - ready,
+    }
