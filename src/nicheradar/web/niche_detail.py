@@ -172,6 +172,17 @@ def _research_card(niche: dict[str, Any], research: object, fmt: str) -> dict[st
     return {"status": status or "sin investigación", "action": action}
 
 
+def _decision_form(niche: dict[str, Any]) -> dict[str, str]:
+    current = _dict(niche.get("decision"))
+    value = current.get("decision")
+    note = current.get("note")
+    return {
+        "decision": value if value in ("nuevo", "tentativo", "descartado") else "nuevo",
+        "note": note if isinstance(note, str) else "",
+        "error": "",
+    }
+
+
 def detail_view(detail: object, research: object, pilot: object, tz: str) -> dict[str, Any]:
     data = _dict(detail)
     niche = data["niche"]
@@ -243,5 +254,6 @@ def detail_view(detail: object, research: object, pilot: object, tz: str) -> dic
         "truncated": len(raw_listings) > MAX_LISTINGS,
         "warnings": warnings,
         "notice": NOTICE,
+        "form": _decision_form(niche),
         "tz": tz,
     }
