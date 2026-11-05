@@ -281,3 +281,39 @@ def test_unknown_provider_text_is_never_returned() -> None:
         "code": "unknown",
         "message": "No se pudo preparar la propuesta.",
     }
+
+
+@pytest.mark.parametrize(
+    ("author", "tweet_id", "expected"),
+    [
+        (
+            "autor_x",
+            "1850000000000000000",
+            ("autor_x", "https://x.com/autor_x/status/1850000000000000000"),
+        ),
+        (None, "1850000000000000000", (None, "https://x.com/i/status/1850000000000000000")),
+        ("a/../b?x=1", "1850000000000000000", (None, "https://x.com/i/status/1850000000000000000")),
+        ("autor_x", "12/../34", ("autor_x", None)),
+        ("ñandú", "１２３", (None, None)),
+    ],
+)
+def test_origin_revalidates_stored_lead_fields(
+    isolated_engine: Engine, author: str | None, tweet_id: str, expected: tuple[Any, Any]
+) -> None:
+    with isolated_engine.begin() as connection:
+        request_id, _ = proposals.enqueue(
+            connection,
+            "consulta origen",
+            manual=None,
+            origin="manual",
+            key="clave-origen-0001",
+            now=NOW,
+            per_day=100,
+        )
+        connection.execute(
+            sa.update(schema.subniche_proposal_requests)
+            .where(schema.subniche_proposal_requests.c.id == request_id)
+            .values(origin="lead", lead_author=author, lead_tweet_id=tweet_id)
+        )
+    body = client(isolated_engine).get(f"{BASE}/{request_id}", headers=AUTH).json()
+    assert body["origin"] == {"code": "lead", "tweet_author": expected[0], "tweet_url": expected[1]}

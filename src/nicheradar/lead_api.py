@@ -37,6 +37,7 @@ LEAD_MESSAGES: dict[str, str] = {
     "daily_limit": "Se llegó al tope diario de lecturas de tweets.",
     "invalid_image": "La imagen no es un PNG, JPEG o WEBP válido.",
     "image_too_large": "La imagen pasa de 5 MB.",
+    "read_closed": "La lectura ya está cerrada.",
     "not_ready": "La lectura todavía no terminó.",
     "invalid_candidates": "Esos canales no pertenecen a esta lectura o no se pueden usar así.",
     "tweet_unavailable": (
@@ -81,7 +82,7 @@ def _reject(code: str, status: int) -> JSONResponse:
     )
 
 
-STATUS = {"daily_limit": 429, "image_too_large": 413, "not_ready": 409}
+STATUS = {"daily_limit": 429, "image_too_large": 413, "not_ready": 409, "read_closed": 409}
 MAX_TEXT = 1000
 
 
@@ -115,6 +116,7 @@ def _present(read: dict[str, Any]) -> dict[str, Any]:
         "status": read["status"],
         "stage": read["stage"],
         "created_at": read["created_at"],
+        "closed": read["closed_at"] is not None,
         "finished_at": read["finished_at"],
         "tweet": tweet,
         "untrusted_text": (read["untrusted_text"] or "")[:MAX_TEXT] or None,
@@ -224,7 +226,8 @@ def lead_router(
     def names(
         read_id: UUID, body: CandidatesBody, connection: Annotated[Connection, Depends(db)]
     ) -> Any:
-        _existing(connection, read_id)
+        if _existing(connection, read_id)["closed_at"] is not None:
+            return _reject("read_closed", 409)
         try:
             return {"queued": leads.queue_names(connection, read_id, body.candidate_ids, clock())}
         except LeadRejected as error:
@@ -234,7 +237,8 @@ def lead_router(
     def propose(
         read_id: UUID, body: CandidatesBody, connection: Annotated[Connection, Depends(db)]
     ) -> Any:
-        _existing(connection, read_id)
+        if _existing(connection, read_id)["closed_at"] is not None:
+            return _reject("read_closed", 409)
         try:
             items = leads.propose(
                 connection,

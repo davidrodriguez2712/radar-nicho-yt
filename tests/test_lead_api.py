@@ -1,18 +1,25 @@
 import base64
 import json
+import socket
+from collections.abc import Iterator
 from typing import Any
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
 import sqlalchemy as sa
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
-from nicheradar.integrations.tweets import TweetRef
-from nicheradar.lead_api import LEAD_MESSAGES, lead_error
+from nicheradar.integrations.anthropic import AnthropicClient
+from nicheradar.integrations.tweets import FxTwitterReader, TweetRef
+from nicheradar.integrations.youtube import YouTubeProvider
+from nicheradar.lead_api import LEAD_MESSAGES, _present, lead_error
 from nicheradar.repositories import schema
+from nicheradar.subniche_api import MESSAGES
 from nicheradar.subniche_discovery import leads
 from nicheradar.subniche_discovery.resolve import Candidate
+from nicheradar.web.client import CODE_MESSAGES
 from tests.lead_samples import GIF, PNG, TWEET_ID
 from tests.subniche_samples import NOW
 from tests.test_market_api import AUTH
@@ -63,6 +70,23 @@ RESOLVED = Candidate("handle", "@historia_uno", "image", "resolved", UC_A, "Hist
 NAME = Candidate("name", "Batallas Olvidadas", "text", "name_only")
 
 
+def forbid_providers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cualquier uso de red saliente, lector de tweets, YouTube o modelo hace fallar la prueba."""
+
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("la API privada no debe llamar a proveedores")
+
+    async def aboom(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("la API privada no debe llamar a proveedores")
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", aboom)
+    monkeypatch.setattr(FxTwitterReader, "read", aboom)
+    monkeypatch.setattr(FxTwitterReader, "photo", aboom)
+    monkeypatch.setattr(YouTubeProvider, "fetch", aboom)
+    monkeypatch.setattr(AnthropicClient, "message", aboom)
+    monkeypatch.setattr(socket, "create_connection", boom)
+
+
 def test_every_endpoint_requires_the_service_token(isolated_engine: Engine) -> None:
     api = client(isolated_engine)
     some = uuid4()
@@ -80,7 +104,10 @@ def test_every_endpoint_requires_the_service_token(isolated_engine: Engine) -> N
         )
 
 
-def test_post_tweet_queues_once_and_never_calls_providers(isolated_engine: Engine) -> None:
+def test_post_tweet_queues_once_and_never_calls_providers(
+    isolated_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    forbid_providers(monkeypatch)
     api = client(isolated_engine)
     first = api.post(f"{BASE}/tweets", json={"url": TWEET}, headers=headers())
     again = api.post(f"{BASE}/tweets", json={"url": TWEET}, headers=headers())
@@ -300,17 +327,65 @@ def test_oversized_declared_body_is_413_before_reading(isolated_engine: Engine) 
     assert response.status_code == 413 and response.json()["code"] == "image_too_large"
 
 
-def test_untrusted_text_is_bounded(isolated_engine: Engine) -> None:
-    read_id = ready_read(isolated_engine, [RESOLVED])
-    with isolated_engine.begin() as connection:
-        connection.execute(
-            sa.update(schema.lead_read_requests)
-            .where(schema.lead_read_requests.c.id == read_id)
-            .values(untrusted_text="a" * 1000)
-        )
-    read = client(isolated_engine).get(f"{BASE}/{read_id}", headers=AUTH).json()
-    assert len(read["untrusted_text"]) <= 1000
-    assert "image_data" not in read and "idempotency_key" not in read
+def test_untrusted_text_is_bounded_by_the_presentation() -> None:
+    read = {
+        "id": uuid4(),
+        "kind": "image",
+        "status": "ready",
+        "stage": "done",
+        "created_at": NOW,
+        "finished_at": NOW,
+        "closed_at": None,
+        "untrusted_text": "a" * 5000,
+        "error_code": None,
+        "candidates": [],
+        "tweet_author": None,
+        "tweet_id": None,
+    }
+    assert len(_present(read)["untrusted_text"]) == 1000
+
+
+def test_repeated_key_at_the_cap_is_still_202(isolated_engine: Engine) -> None:
+    api = client(isolated_engine, lead_reads_per_day=1)
+    first = api.post(f"{BASE}/tweets", json={"url": TWEET}, headers=headers("clave-tope-0001"))
+    again = api.post(f"{BASE}/tweets", json={"url": TWEET}, headers=headers("clave-tope-0001"))
+    assert first.status_code == again.status_code == 202
+    assert again.json() == first.json() | {"created": False}
+
+
+def test_chunked_image_body_without_length_is_413(isolated_engine: Engine) -> None:
+    def chunks() -> Iterator[bytes]:
+        yield b'{"media_type":"image/png","data":"'
+        for _ in range(72):
+            yield b"A" * 100_000
+        yield b'"}'
+
+    response = client(isolated_engine).post(
+        f"{BASE}/images", content=chunks(), headers=headers("clave-chunk-0001")
+    )
+    assert response.status_code == 413 and response.json()["code"] == "image_too_large"
+
+
+def test_shared_messages_match_the_web_mirror() -> None:
+    shared = MESSAGES.keys() & CODE_MESSAGES.keys()
+    assert "tweet_not_supported_yet" in shared
+    assert {code: MESSAGES[code] for code in shared} == {
+        code: CODE_MESSAGES[code] for code in shared
+    }
+
+
+def test_closed_read_is_409_and_exposed_as_closed(isolated_engine: Engine) -> None:
+    api = client(isolated_engine)
+    read_id = ready_read(isolated_engine, [RESOLVED, NAME])
+    ids = [c["id"] for c in api.get(f"{BASE}/{read_id}", headers=AUTH).json()["candidates"]]
+    assert api.get(f"{BASE}/{read_id}", headers=AUTH).json()["closed"] is False
+    api.post(f"{BASE}/{read_id}/close", headers=AUTH)
+    read = api.get(f"{BASE}/{read_id}", headers=AUTH).json()
+    assert read["closed"] is True and "closed_at" not in read
+    for path, body in (("names", [ids[1]]), ("proposals", [ids[0]])):
+        response = api.post(f"{BASE}/{read_id}/{path}", json={"candidate_ids": body}, headers=AUTH)
+        assert response.status_code == 409
+        assert response.json() == {"code": "read_closed", "message": "La lectura ya está cerrada."}
 
 
 def test_expired_and_cancelled_errors_have_fixed_messages() -> None:
