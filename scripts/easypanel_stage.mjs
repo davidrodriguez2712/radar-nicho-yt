@@ -126,6 +126,7 @@ const PENDING_DIGEST = 'sha256:PENDIENTE';
 const leadsBackend = 'davidrodriguez2712/nicheradar-backend@sha256:56ecfa363b76273045dcc71dfff86243d365ee28dc0a3e54613985aac41a074e';
 const leadsWorker = 'davidrodriguez2712/nicheradar-worker@sha256:504c704482345f1ca9a7734f619ba93353e109dd4a18df8cb2cd4f467bfececb';
 const leadsDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:32ff665246c281664cc1861047dfd2406d968fdd4a45b9d79d70c463ab846741';
+const sessionDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:4947be7ee939943d32e8c9aeeaf009a9e99d602b8c922061be1d8ec88f1bcdf4';
 function requireLeadsDigests() {
   if([leadsBackend,leadsWorker,leadsDashboard].some(image=>image.endsWith(PENDING_DIGEST)))
     throw new Error('Release 037 digests are not set; publish the images and fill them in first');
@@ -859,6 +860,48 @@ try {
     if(after.source?.image!==image) throw new Error('Image setting not persisted');
     cli(['app','deploy',`${project}/${name}`,'--yes']);
     console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='deploy-session-code') {
+    // Release 038: solo cambia la imagen del dashboard (sesión de 50 días). Uso: deploy-session-code.
+    const name='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    if(before.source?.image!==leadsDashboard || before.ports?.length || before.deploy?.replicas!==1 ||
+       before.resources?.memoryLimit!==512 || (env.NR_DASHBOARD_PASSWORD ?? '').length<32)
+      throw new Error('Session release preconditions failed');
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image:sessionDashboard});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==sessionDashboard) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image:sessionDashboard,deployRequested:true}));
+  } else if(action==='set-dashboard-ui') {
+    // Elige la interfaz que sirve el dashboard: `web` (móvil) o `streamlit`. Uso: set-dashboard-ui <web|streamlit> [dry].
+    // Para `web` exige una contraseña de la app de al menos 32 caracteres y la autenticación Basic del proxy desactivada
+    // (la contraseña de la app es la única barrera). Nunca imprime el entorno ni la contraseña.
+    const name='nicheradar-dashboard';
+    const value=process.argv[3];
+    if(value!=='web' && value!=='streamlit') throw new Error('Usage: set-dashboard-ui <web|streamlit> [dry]');
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const basicAuthOn=Array.isArray(before.basicAuth) ? before.basicAuth.length>0 : Boolean(before.basicAuth && Object.keys(before.basicAuth).length);
+    const result={name,before:env.NR_DASHBOARD_UI ?? 'unset',after:value,passwordLength:(env.NR_DASHBOARD_PASSWORD ?? '').length,
+      basicAuthEnabled:basicAuthOn,hasApiUrl:Boolean(env.NR_API_URL),hasServiceToken:Boolean(env.NR_SERVICE_TOKEN),dryRun:process.argv[4]==='dry'};
+    if(value==='web' && (result.passwordLength<32 || basicAuthOn || !result.hasApiUrl || !result.hasServiceToken))
+      throw new Error('Web UI preconditions failed: '+JSON.stringify(result));
+    if(result.dryRun) {
+      console.log(JSON.stringify(result));
+    } else {
+      const next={...env,NR_DASHBOARD_UI:value};
+      cli(['app','update-env',`${project}/${name}`,'--yes'],{env:Object.entries(next).map(([k,v])=>`${k}=${v}`).join('\n')});
+      const after=cli(['app','inspect',`${project}/${name}`]);
+      for(const field of ['source','resources','deploy','ports','mounts','basicAuth']) {
+        if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected non-environment change');
+      }
+      cli(['app','deploy',`${project}/${name}`,'--yes']);
+      console.log(JSON.stringify({...result,deployRequested:true}));
+    }
   } else if(action==='set-subniche-enabled') {
     // Enciende o apaga el descubrimiento de subnichos en el worker. Uso: set-subniche-enabled <true|false> [dry].
     // Exige la configuración de Anthropic y los topes ya cargados (set-subniche-env). Nunca imprime el entorno.
