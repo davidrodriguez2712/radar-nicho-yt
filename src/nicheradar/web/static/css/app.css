@@ -155,7 +155,7 @@ a.list__item{min-height:44px;justify-content:center;color:inherit;text-decoratio
 .bar__seg--c3{background:#16a34a}
 .bar__seg--c4{background:#a8a29e}
 .legend{display:flex;flex-wrap:wrap;gap:4px 10px;margin:0;font-size:11px;color:var(--muted)}
-.legend__item{display:inline-flex;align-items:center;gap:4px}
+.legend__item{display:inline-flex;align-items:center;gap:4px;overflow-wrap:anywhere;min-width:0}
 .legend__dot{display:inline-block;width:8px;height:8px;border-radius:3px}
 .legend__dot--c0{background:#be123c}
 .legend__dot--c1{background:#f59e0b}

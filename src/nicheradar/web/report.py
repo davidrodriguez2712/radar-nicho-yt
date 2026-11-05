@@ -58,6 +58,11 @@ INCOMPLETE_NOTICE = (
     "ya está en marcha."
 )
 NO_DATA = "sin dato"
+MAX_STEP_MINUTES = 10_000  # the contract limit of one step
+MAX_STEPS = 15  # the contract limit of calibration steps
+MAX_VIDEOS = 12
+MAX_SETUP_HOURS = 1000
+STEPS_CUT_NOTICE = f"Se muestran los primeros {MAX_STEPS} pasos."
 BAR_COLOURS = 5  # classes bar__seg--c0..c4, in the order of the legend
 BAR_UNITS = 20  # a bar is cut in steps of 5 % (classes bar--p0..bar--p100)
 SCALE_NOTE = "mismos colores en las dos barras, a la misma escala"
@@ -108,9 +113,13 @@ def _texts(value: object) -> list[str]:
 
 
 def _number(value: object) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, int | float):
         return None
-    return float(value)
+    try:
+        number = float(value)
+    except OverflowError:  # an int beyond the float range
+        return None
+    return number if math.isfinite(number) else None
 
 
 def _hours(value: float) -> str:
@@ -124,7 +133,7 @@ def _money(value: object) -> str:
 def _step_minutes(value: object) -> float | None:
     """Minutes of one step; null, non-numeric, non-finite or negative values are no data."""
     number = _number(value)
-    return number if number is not None and number >= 0 else None
+    return number if number is not None and 0 <= number <= MAX_STEP_MINUTES else None
 
 
 def _minutes(items: list[dict[str, Any]], key: str) -> int:
@@ -225,7 +234,17 @@ def _gates(evidence: dict[str, Any]) -> Gates:
 def _calibration(dossier: dict[str, Any]) -> dict[str, Any] | None:
     """Calibration numbers of a dossier-v3, or None for older (or incomplete) dossiers."""
     block = _dict(dossier.get("calibration"))
-    videos, setup = _number(block.get("videos")), _number(block.get("setup_hours"))
+    raw_videos = block.get("videos")
+    videos = (
+        raw_videos
+        if isinstance(raw_videos, int)
+        and not isinstance(raw_videos, bool)
+        and 1 <= raw_videos <= MAX_VIDEOS
+        else None
+    )
+    setup = _number(block.get("setup_hours"))
+    if setup is not None and not 0 <= setup <= MAX_SETUP_HOURS:
+        setup = None
     steps = _items(block.get("minutes_by_step"))
     if (
         dossier.get("schema_version") != "dossier-v3"
@@ -236,7 +255,7 @@ def _calibration(dossier: dict[str, Any]) -> dict[str, Any] | None:
         return None
     by_step = _by_step(steps, "step", "minutes_per_video")
     per_video = _total(by_step)
-    count = round(videos)
+    count = videos
     return {
         "videos": count,
         "by_step": by_step,
@@ -252,14 +271,19 @@ def _calibration(dossier: dict[str, Any]) -> dict[str, Any] | None:
 def _time_card(calibration: dict[str, Any], flow: list[dict[str, Any]]) -> dict[str, Any]:
     """Both bars of the time card: same steps, same colours, one scale."""
     regime = _by_step(flow, "name", "human_minutes_per_video")
-    names = list(regime) + [name for name in calibration["by_step"] if name not in regime]
+    all_names = list(regime) + [name for name in calibration["by_step"] if name not in regime]
+    names = all_names[:MAX_STEPS]
     scale = max(_total(regime) or 0, _total(calibration["by_step"]) or 0)
     per_video, videos = calibration["per_video"], calibration["videos"]
     regime_total = _total(regime)
     cal_bar = _bar(names, calibration["by_step"], scale)
     regime_bar = _bar(names, regime, scale)
     return {
-        "legend": [{"name": seg["name"], "colour": seg["colour"]} for seg in cal_bar],
+        "legend": [
+            {"name": seg["name"], "colour": seg["colour"], "number": number}
+            for number, seg in enumerate(cal_bar, start=1)
+        ],
+        "cut_notice": STEPS_CUT_NOTICE if len(all_names) > MAX_STEPS else None,
         "scale_note": SCALE_NOTE,
         "calibration": {
             "title": f"Primeros {videos} videos (calibración)",

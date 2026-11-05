@@ -561,3 +561,76 @@ def test_the_way_back_of_an_order_without_report_depends_on_where_it_came_from()
         evidence={"source": "subniche", "subniche": {"label": "Criaturas del hielo"}},
     )
     assert "Criaturas del hielo" in page(named) and "Prehistoric" not in page(named)
+
+
+HUGE = (1e308, 10**400, 10_001, -1)
+
+
+@pytest.mark.parametrize("huge", HUGE)
+def test_huge_step_minutes_are_no_data_and_never_break_the_report(huge: Any) -> None:
+    dossier = five_step_dossier(calibration=(huge, huge, 10, 10, 10), regime=(huge, huge, 1, 1, 1))
+    text = page(report_detail(dossier=dossier))
+    section = block(text, "tiempo")
+    assert segments(section)[0][0][1] == 0 and segments(section)[0][1][1] == 0
+    assert ("Tu tiempo por video", "30 min") in rows(section)
+    auth = make_client(
+        Api(
+            {
+                GET: (200, report_detail(dossier=dossier)),
+                STATUS: (200, {"radar_paused": True}),
+                ("GET", "/api/v1/pilots"): (200, {"items": []}),
+            }
+        )
+    ).get(f"/pilotos/autorizar?informe={ID}")
+    assert auth.status_code == 200 and 'id="tiempo"' in auth.text
+
+
+@pytest.mark.parametrize(
+    ("key", "bad"),
+    [
+        ("videos", 1e308),
+        ("videos", 10**400),
+        ("videos", -3),
+        ("videos", 0),
+        ("videos", 13),
+        ("videos", 10**9),
+        ("videos", 2.5),
+        ("videos", True),
+        ("videos", "6"),
+        ("setup_hours", 1e308),
+        ("setup_hours", 10**400),
+        ("setup_hours", -1),
+        ("setup_hours", 1001),
+    ],
+)
+def test_unusable_videos_or_setup_make_the_calibration_unusable(key: str, bad: Any) -> None:
+    dossier = dossier_v3()
+    dossier["calibration"][key] = bad
+    text = page(report_detail(dossier=dossier))
+    assert "bar__seg" not in text
+    assert "no trae la calibración completa" in block(text, "aviso-dossier")
+
+
+def test_more_than_fifteen_steps_show_the_first_fifteen_with_a_fixed_notice() -> None:
+    names = [f"Paso largo {i} " + "x" * 150 for i in range(300)]
+    dossier = dossier_v3()
+    template = dossier["production_flow"][0]
+    dossier["production_flow"] = [
+        {**template, "order": 1, "name": n, "human_minutes_per_video": 1} for n in names
+    ]
+    dossier["calibration"]["minutes_by_step"] = [{"step": n, "minutes_per_video": 2} for n in names]
+    section = block(page(report_detail(dossier=dossier)), "tiempo")
+    first, second = segments(section)
+    assert len(first) == 15 and len(second) == 15
+    assert section.count('class="legend__item"') == 15
+    assert "Se muestran los primeros 15 pasos." in section
+    assert len(re.findall(r'aria-label="([^"]*)"', section)[0]) < 4000
+    assert "Se muestran los primeros" not in block(
+        page(report_detail(dossier=five_step_dossier())), "tiempo"
+    )
+
+
+def test_the_legend_numbers_the_steps() -> None:
+    section = block(page(report_detail(dossier=five_step_dossier())), "tiempo")
+    for number, name in enumerate(STEPS, start=1):
+        assert f"{number}. {name}" in section
