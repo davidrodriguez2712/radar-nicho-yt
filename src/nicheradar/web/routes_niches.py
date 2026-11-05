@@ -9,11 +9,19 @@ from starlette.responses import RedirectResponse, Response
 
 from nicheradar.web.client import ApiError
 from nicheradar.web.deps import current_session, is_fragment, render, shape_guard
+from nicheradar.web.niche_detail import (
+    UNREADABLE,
+    detail_view,
+    latest_research,
+    open_pilot,
+)
 from nicheradar.web.niches import AVISOS_NICHOS, list_view, parse_filters
 from nicheradar.web.security import Session
 
 router = APIRouter()
 VARY = "HX-Request, HX-History-Restore-Request"
+FORMATS = ("long", "shorts")
+MISSING = "No se encontró lo que buscabas."
 DECISIONS = ("nuevo", "tentativo", "descartado")
 RESEARCH_PAGE = 100
 RESEARCH_OLDER = (
@@ -92,6 +100,65 @@ def niche_list(request: Request, session: Annotated[Session, Depends(current_ses
         )
     response.headers["Vary"] = VARY
     return response
+
+
+@router.get("/nichos/ver")
+@shape_guard
+def niche_detail(
+    request: Request,
+    session: Annotated[Session, Depends(current_session)],
+    etiqueta: str = "",
+    formato: str = "",
+) -> Response:
+    if not (1 <= len(etiqueta) <= 140) or etiqueta in (".", "..") or formato not in FORMATS:
+        return _missing(request, session, MISSING, 404)
+    api = request.app.state.api
+    try:
+        detail = api.request(
+            "GET", f"/market/niches/{quote(etiqueta, safe='')}", params={"format": formato}
+        )
+    except ApiError as error:
+        missing = error.kind in ("not_found", "invalid")
+        return _missing(
+            request, session, MISSING if missing else error.message, 404 if missing else 503
+        )
+    research: object
+    pilot: object
+    try:
+        research = latest_research(
+            api.request("GET", "/flow-research", params={"limit": str(RESEARCH_PAGE)})["items"],
+            etiqueta,
+            formato,
+        )
+    except (ApiError, KeyError, TypeError):
+        research = UNREADABLE
+    try:
+        pilot = open_pilot(
+            api.request("GET", "/pilots", params={"limit": str(RESEARCH_PAGE)})["items"],
+            etiqueta,
+            formato,
+        )
+    except (ApiError, KeyError, TypeError):
+        pilot = UNREADABLE
+    view = detail_view(detail, research, pilot, request.app.state.config.timezone)
+    response = render(
+        request,
+        "nichos/detalle.html",
+        {"active_tab": "nichos", "v": view},
+        session=session,
+    )
+    response.headers["Vary"] = VARY
+    return response
+
+
+def _missing(request: Request, session: Session, message: str, status: int) -> Response:
+    return render(
+        request,
+        "error.html",
+        {"message": message, "active_tab": "nichos"},
+        status_code=status,
+        session=session,
+    )
 
 
 @router.post("/nichos/decidir")
