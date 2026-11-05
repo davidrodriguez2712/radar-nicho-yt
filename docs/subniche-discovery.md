@@ -217,11 +217,30 @@ lectura); volver a verificar la tarifa en la página de precios antes de cargarl
 5. `NR_SUBNICHE_ENABLED=true` (con `NR_MODE=live`).
 6. Reinstalar la PWA en el teléfono (ver `docs/web-movil.md`).
 
-### Seguimientos
+### Seguimientos resueltos
 
-- Reservar los slugs `proponer` y `propuestas` en la API (hoy `/subnichos/propuestas/aprobar` cae en el detalle de propuesta).
-- Middleware ASGI global que dé 413 antes de `authenticate`: hoy el cuerpo se lee antes de autenticar en los endpoints con modelo JSON (`/tweets`, `/names`, `/proposals`); `POST /leads/images` ya autentica antes de leer el cuerpo.
-- `propose_hypothesis` comparte con las lecturas el hueco de cancelación de reservas de gasto.
+- **Slugs reservados:** `store.RESERVED_SLUGS` reúne `proposals`, `proponer` y `propuestas` (rutas fijas de la API y de la web
+  que un slug pisaría). `unique_slug` devuelve la variante con sufijo (`proponer_2`) y `create_proposed` rechaza el slug
+  reservado con `DuplicateHypothesis("slug")`. La web duplica la lista (módulo puro) y una prueba compara ambas.
+- **Límite de cuerpo antes de autenticar:** `api_limits.ApiBodyLimitMiddleware`, ASGI puro, instalado en `create_app`. Solo
+  actúa en POST/PUT/PATCH bajo `/api/v1`; responde 413 `{"code":"payload_too_large","message":"El cuerpo de la solicitud es
+  demasiado grande."}` (mensaje fijo, también sin token) si el `Content-Length` declarado o los bytes recibidos pasan del
+  tope, y corta sin leer el resto. `lifespan` y websocket pasan intactos. Topes (`api_limits.BODY_LIMITS`):
+
+  | Ruta | Tope |
+  | --- | --- |
+  | `/api/v1/leads/images` | exenta (autentica antes y tiene su propio tope de 7,1 MB) |
+  | `/api/v1/leads/*` (`tweets`, `{id}/names`, `{id}/proposals`, `{id}/close`) | 64 KiB |
+  | `/api/v1/subniches/proposals` | 64 KiB |
+  | resto de `/api/v1` | 4 MiB (el dossier teórico máximo, unos 2,3 MB, con margen) |
+
+  La auditoría de cuerpos legítimos está en el docstring del módulo. Si un contrato crece (p. ej. el dossier), revisa el tope.
+- **Cancelación en `propose_hypothesis`:** liquida la reserva como `unknown_charge` ante cualquier `BaseException` (incluida
+  `asyncio.CancelledError`) y relanza si no es `Exception`, igual que `extract_mentions`; el cuerpo y su tamaño (64 000 bytes)
+  se validan antes de reservar (`llm_input_too_large`).
+
+### Seguimientos pendientes
+
 - Decisión del propietario sobre la atestación `EVIDENCE` de la política `lead_mentions`.
 - Elegir entre varios resultados de una búsqueda por nombre (M32 «ambiguo»): hoy se guarda el primero sin marcar.
 
