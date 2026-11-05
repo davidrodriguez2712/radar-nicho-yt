@@ -29,6 +29,7 @@ TEXTS: dict[str, str] = {
         "No se pudo leer el tweet: puede estar borrado, ser privado o de una cuenta protegida. "
         "Comparte la imagen."
     ),
+    "vision_not_configured": "No se pudo leer la imagen: el modelo de visión no está configurado.",
     "reader_failed": "El servicio de lectura de tweets no respondió. Comparte la imagen.",
     "expired": "La lectura caducó sin atenderse; vuelve a intentarla.",
     "cancelled": "La lectura se canceló; vuelve a intentarlo.",

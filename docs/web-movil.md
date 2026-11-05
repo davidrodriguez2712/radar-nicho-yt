@@ -237,7 +237,13 @@ Plan: `docs/superpowers/plans/2026-11-05-lectura-de-tweets-e-imagenes.md`. Solo 
   `X-Nonce`; el servidor lo lee con tope de 5 MiB, comprueba los bytes mágicos y lo reenvía en base64 a la API. La imagen se
   borra de la caché al leerla o al cancelar. El servidor nunca guarda la imagen antes de «Leer imagen»
   (`GET /compartir/imagen/archivo` siempre da 404). Un compartir sin service worker activo llega al servidor, no guarda nada y
-  redirige con el aviso «abre NicheRadar una vez desde el icono instalado».
+  redirige con el aviso «Para compartir imágenes, abre NicheRadar una vez desde el icono instalado y vuelve a compartir. Si «Compartir» sigue sin ofrecer NicheRadar con imagen, desinstala la app y vuelve a instalarla.» (el mismo texto fijo que muestra la web).
+- Si la caché del teléfono está vacía (la imagen ya se leyó, se canceló o el service worker no la guardó), la pantalla M33 lo
+  dice y ofrece «Volver a compartir» en lugar de una imagen rota. Ante una sesión caducada (401) «Leer imagen» muestra un enlace
+  «Iniciar sesión» que vuelve a `/compartir/imagen`; ante un 403 pide recargar la página. Reintentar no duplica lecturas: la clave
+  de idempotencia depende del contenido de la imagen y del nonce de la página.
+- Límites conocidos del service worker (diferidos): acepta un `POST /compartir` de navegación llegado desde otro sitio (solo guarda
+  en la caché del propio teléfono y redirige, no llama al servidor) y, si se comparten varios archivos, solo se guarda el primero.
 - La CSP no cambia (`script-src 'self'`); el service worker solo cachea `/static`, `/sin-conexión` y esa entrada única.
 - **Reinstalar la PWA:** al pasar del `share_target` `GET` al `POST` multipart hay que desinstalarla y volver a instalarla
   para que Android registre el nuevo destino.

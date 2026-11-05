@@ -196,6 +196,20 @@ def test_an_image_read_says_image_not_tweet() -> None:
     assert "No se pudo leer la imagen" in page.text
 
 
+def test_an_image_without_the_vision_model_says_so_in_image_terms() -> None:
+    failed = lead(
+        "failed",
+        kind="image",
+        tweet=None,
+        candidates=[],
+        untrusted_text=None,
+        error={"code": "vision_not_configured", "message": "x"},
+    )
+    page = make_client(api_for(failed)).get(f"/lecturas/{READ_ID}")
+    assert "No se pudo leer la imagen: el modelo de visión no está configurado." in page.text
+    assert "solo se leyeron los enlaces del texto" not in page.text
+
+
 def test_ready_read_lists_channels_escaped_and_without_polling() -> None:
     page = make_client(api_for(lead())).get(f"/lecturas/{READ_ID}")
     assert "Canales encontrados (3)" in page.text and 'hx-trigger="every 5s"' not in page.text

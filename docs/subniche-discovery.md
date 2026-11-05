@@ -206,7 +206,12 @@ lectura); volver a verificar la tarifa en la página de precios antes de cargarl
    nueva hace fallar `backup_snapshot` con `unreviewed_schema_revision`.
 2. `NR_ANTHROPIC_VISION_CONFIGURATION` (arriba). Sin ella la lectura sigue sacando los enlaces de YouTube del texto y avisa
    «El modelo con visión no está disponible».
-3. `uv run python scripts/seed_subniche_policy.py` (idempotente): siembra también la política `anthropic/lead_mentions`.
+3. `uv run python scripts/seed_subniche_policy.py` (idempotente): siembra solo `hypothesis_proposal` (4 filas) y avisa
+   «lead_mentions NO sembrada: requiere la decisión del propietario sobre la atestación». La política `lead_mentions` abre el
+   gasto del modelo sobre texto e imágenes de terceros con la atestación `owner_attested_personal_use_2026-10-31`, que el
+   propietario no hizo para este uso: solo se siembra con `--include-lead-mentions` (8 filas), **tras su decisión y antes
+   de la release**. Sin ella `extract_mentions` falla con `policy_not_enabled` y la lectura sigue sacando los enlaces de
+   YouTube del texto (las imágenes fallan con el aviso de modelo no disponible).
 4. **Tope semanal compartido:** `radar_usd_per_week` (US$5 por defecto) lo comparten las lecturas y «Proponer». Al tope de 50
    lecturas al día el peor caso agotaría la semana en unos 2 días. Recomendación: subirlo a US$15 (decisión del propietario).
 5. `NR_SUBNICHE_ENABLED=true` (con `NR_MODE=live`).
@@ -215,7 +220,7 @@ lectura); volver a verificar la tarifa en la página de precios antes de cargarl
 ### Seguimientos
 
 - Reservar los slugs `proponer` y `propuestas` en la API (hoy `/subnichos/propuestas/aprobar` cae en el detalle de propuesta).
-- Middleware ASGI global que dé 413 antes de `authenticate` (hoy el cuerpo se lee antes de autenticar en `POST /leads/images`).
+- Middleware ASGI global que dé 413 antes de `authenticate`: hoy el cuerpo se lee antes de autenticar en los endpoints con modelo JSON (`/tweets`, `/names`, `/proposals`); `POST /leads/images` ya autentica antes de leer el cuerpo.
 - `propose_hypothesis` comparte con las lecturas el hueco de cancelación de reservas de gasto.
 - Decisión del propietario sobre la atestación `EVIDENCE` de la política `lead_mentions`.
 - Elegir entre varios resultados de una búsqueda por nombre (M32 «ambiguo»): hoy se guarda el primero sin marcar.

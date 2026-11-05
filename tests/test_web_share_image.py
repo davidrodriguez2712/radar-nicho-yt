@@ -90,6 +90,18 @@ def test_share_script_has_no_eval_or_inner_html_or_external_resources() -> None:
     assert "textContent" in source
 
 
+def test_image_screen_has_an_empty_cache_message_and_the_script_handles_401_and_403() -> None:
+    page = make_client(api()).get("/compartir/imagen").text
+    assert (
+        'id="sin-imagen"' in page and "Volver a compartir" in page and 'id="vista-imagen"' in page
+    )
+    assert 'data-login="Iniciar sesión"' in page and "Recarga la página" in page
+    source = (STATIC / "js" / "compartir.js").read_text()
+    assert '"/login?next=/compartir/imagen"' in source
+    assert "pair[2] === 401" in source and "pair[2] === 403" in source
+    assert "sin-imagen" in source and "createElement" in source
+
+
 def api() -> Api:
     return Api(
         {
@@ -117,6 +129,10 @@ def test_image_screen_shows_the_fixed_notices() -> None:
     assert "Solo se aceptan imágenes PNG, JPEG o WEBP de hasta 5 MB." in bad.text
     again = web.get("/compartir/imagen?aviso=reinstala")
     assert "abre NicheRadar una vez desde el icono instalado" in again.text
+    assert "desinstala la app y vuelve a instalarla" in again.text
+    docs = (Path(__file__).parent.parent / "docs" / "web-movil.md").read_text()
+    assert "desinstala la app y vuelve a instalarla" in docs
+    assert "abre NicheRadar una vez desde el icono instalado" in docs
     assert "<script>alert" not in web.get("/compartir/imagen?aviso=<script>alert(1)</script>").text
 
 

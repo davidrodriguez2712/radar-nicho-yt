@@ -182,6 +182,22 @@ def test_a_shared_image_without_the_model_fails_clearly(isolated_engine: Engine)
     assert get(isolated_engine, read_id)["error_code"] == "llm_disabled"
 
 
+def test_a_shared_image_without_the_vision_configuration_has_its_own_code(
+    isolated_engine: Engine,
+) -> None:
+    with isolated_engine.begin() as connection:
+        read_id, _ = leads.enqueue_image(
+            connection, ImageData("image/png", PNG), key="clave-img-03", now=LLM_NOW, per_day=50
+        )
+    tick_leads(
+        vision_settings(anthropic_vision_configuration=None),
+        isolated_engine,
+        resolver=resolver(),
+        clock=lambda: LLM_NOW,
+    )
+    assert get(isolated_engine, read_id)["error_code"] == "vision_not_configured"
+
+
 def test_name_searches_run_only_when_queued(isolated_engine: Engine) -> None:
     ready_world(isolated_engine)
     read_id = put_tweet(isolated_engine)

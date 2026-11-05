@@ -100,7 +100,7 @@ def enqueue_image(
 def claim_next(conn: Connection, now: datetime) -> dict[str, Any] | None:
     next_id = conn.execute(
         sa.select(reads.c.id)
-        .where(reads.c.status == "queued")
+        .where(reads.c.status == "queued", reads.c.closed_at.is_(None))
         .order_by(reads.c.created_at, reads.c.id)
         .limit(1)
         .with_for_update(skip_locked=True)

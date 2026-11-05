@@ -253,12 +253,36 @@ def test_four_five_megabyte_images_fit_the_body_limit() -> None:
 
 
 @pytest.mark.postgres
-def test_seed_policies_enables_both_operations(db: Any) -> None:
+def test_seed_policies_skips_lead_mentions_unless_asked(db: Any) -> None:
     from datetime import UTC, datetime
 
     from scripts.seed_subniche_policy import seed_policies
 
-    assert seed_policies(db, datetime(2026, 11, 5, tzinfo=UTC)) == 8
+    now = datetime(2026, 11, 5, tzinfo=UTC)
+    assert seed_policies(db, now) == 4
+    rows = db.execute(
+        select(s.provider_policies.c.operation, s.provider_policies.c.data_type)
+    ).all()
+    assert {tuple(r) for r in rows} == {("hypothesis_proposal", "subniche_hypothesis")}
+    assert seed_policies(db, now) == 4  # idempotente
+    count = db.execute(select(func.count()).select_from(s.provider_policies)).scalar_one()
+    assert count == 4
+    enabled = db.execute(
+        select(func.count())
+        .select_from(s.provider_policies)
+        .where(s.provider_policies.c.operation == "lead_mentions")
+    ).scalar_one()
+    assert enabled == 0
+
+
+@pytest.mark.postgres
+def test_seed_policies_with_the_flag_enables_both_operations(db: Any) -> None:
+    from datetime import UTC, datetime
+
+    from scripts.seed_subniche_policy import seed_policies
+
+    now = datetime(2026, 11, 5, tzinfo=UTC)
+    assert seed_policies(db, now, include_lead_mentions=True) == 8
     rows = db.execute(
         select(s.provider_policies.c.operation, s.provider_policies.c.data_type)
     ).all()
@@ -267,9 +291,65 @@ def test_seed_policies_enables_both_operations(db: Any) -> None:
         ("hypothesis_proposal", "subniche_hypothesis"),
         ("lead_mentions", "lead_mentions"),
     }
-    assert seed_policies(db, datetime(2026, 11, 5, tzinfo=UTC)) == 8  # idempotente
+    assert seed_policies(db, now, include_lead_mentions=True) == 8  # idempotente
     count = db.execute(select(func.count()).select_from(s.provider_policies)).scalar_one()
     assert count == 8
+
+
+def test_the_seed_main_says_lead_mentions_was_not_seeded(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts import seed_subniche_policy as script
+
+    class Config:
+        anthropic_enabled = True
+        mode = "live"
+        radar_paused = True
+
+    class Engine:
+        def begin(self) -> Any:
+            from contextlib import nullcontext
+
+            return nullcontext(object())
+
+    monkeypatch.setattr(script, "Settings", Config)
+    monkeypatch.setattr(script, "database_engine", lambda config: Engine())
+    monkeypatch.setattr(script, "seed_policies", lambda connection, now, **kw: 4)
+    monkeypatch.setattr("sys.argv", ["seed_subniche_policy.py"])
+    script.main()
+    out = capsys.readouterr().out
+    assert "lead_mentions NO sembrada: requiere la decisión del propietario" in out
+
+
+@pytest.mark.postgres
+def test_without_the_seed_extract_mentions_declines_with_policy_not_enabled(
+    isolated_engine: Any,
+) -> None:
+    import asyncio
+    from datetime import UTC, datetime
+
+    from scripts.seed_subniche_policy import seed_policies
+    from tests.lead_samples import mentions_client, vision_settings
+    from tests.test_persistence import NOW as LLM_NOW
+    from tests.test_subniche_propose import seed_run
+
+    with isolated_engine.begin() as connection:
+        run = seed_run(connection)
+        seed_policies(connection, datetime(2026, 11, 5, tzinfo=UTC))
+    from nicheradar.subniche_discovery.mentions import extract_mentions
+
+    out = asyncio.run(
+        extract_mentions(
+            isolated_engine,
+            run,
+            vision_settings(),
+            "texto",
+            [],
+            LLM_NOW,
+            client=mentions_client([]),
+        )
+    )
+    assert out["reason"] == "policy_not_enabled"
 
 
 @pytest.mark.parametrize(

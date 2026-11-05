@@ -117,6 +117,15 @@ def test_claim_finish_and_read_back(db: Connection) -> None:
 
 
 @pytest.mark.postgres
+def test_claim_next_skips_closed_reads(db: Connection) -> None:
+    read_id, _ = leads.enqueue_tweet(db, REF, key="clave-cerrada-01", now=NOW, per_day=50)
+    leads.close(db, read_id, NOW)
+    assert leads.claim_next(db, NOW) is None
+    status = db.execute(sa.select(reads.c.status).where(reads.c.id == read_id)).scalar_one()
+    assert status == "queued"
+
+
+@pytest.mark.postgres
 def test_image_bytes_are_purged_when_the_read_finishes(db: Connection) -> None:
     read_id, _ = leads.enqueue_image(
         db, ImageData("image/png", PNG), key="clave-imagen-01", now=NOW, per_day=50

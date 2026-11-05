@@ -30,6 +30,7 @@ MAX_IMAGE_BODY = 7_100_000
 VISION_UNAVAILABLE = (
     "El modelo con visión no está disponible: solo se leyeron los enlaces del texto."
 )
+IMAGE_VISION_MISSING = "No se pudo leer la imagen: el modelo de visión no está configurado."
 GENERIC = "No se pudo leer."
 LEAD_MESSAGES: dict[str, str] = {
     "reading_disabled": "La lectura de tweets e imágenes no está activa en el servidor.",
@@ -44,6 +45,7 @@ LEAD_MESSAGES: dict[str, str] = {
         "No se pudo leer el tweet: puede estar borrado, ser privado o de una cuenta protegida. "
         "Comparte la imagen."
     ),
+    "vision_not_configured": IMAGE_VISION_MISSING,
     "reader_failed": "El servicio de lectura de tweets no respondió. Comparte la imagen.",
     "expired": "La lectura caducó sin atenderse; vuelve a intentarla.",
     "cancelled": "La lectura se canceló; vuelve a intentarlo.",

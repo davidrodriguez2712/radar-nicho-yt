@@ -24,8 +24,9 @@ SMALL_FORM = 16_384
 IMAGE_NOTICES = {
     "imagen_no_valida": "Solo se aceptan imágenes PNG, JPEG o WEBP de hasta 5 MB.",
     "reinstala": (
-        "Para compartir imágenes, abre NicheRadar una vez desde el icono instalado "
-        "y vuelve a compartir."
+        "Para compartir imágenes, abre NicheRadar una vez desde el icono instalado y vuelve a "
+        "compartir. Si «Compartir» sigue sin ofrecer NicheRadar con imagen, desinstala la app y "
+        "vuelve a instalarla."
     ),
 }
 KIND_LABELS = {

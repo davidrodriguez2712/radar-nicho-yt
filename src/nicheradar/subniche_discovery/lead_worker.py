@@ -79,7 +79,8 @@ async def _read(
     outcome = await extract_mentions(engine, run, config, text, images, clock(), client=client)
     warning = None if outcome["reason"] == "response_received" else str(outcome["reason"])
     if request["kind"] == "image" and warning is not None:
-        return warning, {}
+        # Una imagen sin el modelo de visión no tiene qué leer: texto propio de imagen.
+        return ("vision_not_configured" if warning == "configuration_missing" else warning), {}
     mentions = merge_mentions(text_mentions(text), outcome["mentions"])
     candidates = []
     if mentions:
