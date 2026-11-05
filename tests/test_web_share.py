@@ -182,15 +182,12 @@ def test_the_proponer_link_leads_to_the_existing_form_with_the_prefilled_input()
     assert form.status_code == 200 and f'value="{canonical}"' in form.text
 
 
-def test_a_tweet_shows_the_fixed_notice_and_no_action() -> None:
+def test_a_tweet_offers_read_tweet_and_nothing_else() -> None:
     client, api = web()
     html = page(client, url="https://x.com/usuario/status/180?s=20")
-    assert "Tweet de X" in html
-    assert (
-        "Los enlaces de X todavía no se leen. Copia el canal o el enlace de YouTube que menciona."
-        in html
-    )
-    assert "/subnichos/proponer" not in html and "Leer tweet" not in html
+    assert "Tweet de X" in html and "Leer tweet" in html
+    assert "todavía no se leen" not in html
+    assert "/subnichos/proponer" not in html
     assert api.calls == []
 
 
@@ -257,11 +254,13 @@ def test_a_long_link_is_clipped_in_the_page_and_in_the_proponer_query() -> None:
     assert href and len(href.group(1)) < 1700
 
 
-def test_compartir_does_not_write_or_call_the_api_and_is_get_only() -> None:
+def test_compartir_does_not_write_or_call_the_api_and_a_post_only_redirects() -> None:
     client, api = web()
     page(client, url=f"https://youtu.be/{VIDEO}")
     assert api.calls == []
-    assert client.post("/compartir", data={"url": "x"}).status_code == 405
+    posted = client.post("/compartir", data={"url": "x"})  # sin service worker: solo redirige
+    assert posted.status_code == 303 and posted.headers["location"] == "/compartir?url=x"
+    assert api.calls == []
 
 
 def test_compartir_keeps_the_site_security_headers() -> None:
@@ -323,15 +322,9 @@ def test_login_return_keeps_internal_paths_and_never_adds_a_host() -> None:
 # --- manifiesto y service worker ----------------------------------------------------
 
 
-def test_the_manifest_declares_a_get_share_target_without_files() -> None:
+def test_the_manifest_keeps_scope_and_start_url() -> None:
+    # El share_target (un único POST multipart) lo prueba tests/test_web_share_image.py.
     manifest = json.loads((STATIC / "manifest.webmanifest").read_text())
-    assert manifest["share_target"] == {
-        "action": "/compartir",
-        "method": "GET",
-        "params": {"title": "title", "text": "text", "url": "url"},
-    }
-    assert "files" not in manifest["share_target"].get("params", {})
-    assert "enctype" not in manifest["share_target"]
     assert manifest["scope"] == "/" and manifest["start_url"] == "/"
 
 
@@ -340,16 +333,18 @@ def test_the_manifest_is_served_as_valid_json() -> None:
     assert response.status_code == 200 and "share_target" in response.json()
 
 
-def test_the_service_worker_still_caches_only_static_files() -> None:
+def test_the_service_worker_caches_only_static_files_and_the_shared_image() -> None:
     body = (STATIC / "sw.js").read_text()
-    assert "/compartir" not in body and "/api/" not in body
-    assert body.count("cache.put") == 1
-    branch = body.split('startsWith("/static/")', 1)[1].split('request.mode === "navigate"', 1)[0]
+    assert "/api/" not in body
+    assert body.count("cache.put(") == 2
+    branch = body.split('startsWith("/static/")', 1)[1].split("SHARED_FILE", 1)[0]
     assert "cache.put" in branch
     precache = re.search(r"const PRECACHE = \[(.*?)\];", body, re.S)
     assert precache
     entries = re.findall(r'"([^"]+)"', precache.group(1))
     assert all(e.startswith("/static/") or e == "/sin-conexión" for e in entries)
+    assert 'const SHARED_FILE = "/compartir/imagen/archivo"' in body
+    assert 'const SHARE = "nicheradar-share-v1"' in body
 
 
 # --- lo clasificado es exactamente lo que se propone ---------------------------------

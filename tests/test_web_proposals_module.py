@@ -250,3 +250,27 @@ def test_reserved_slug_is_rejected_in_the_manual_label(label: str) -> None:
     assert parse_form("dinosaurios", True, label, "animales", "") == ({}, "manual_invalid")
     assert parse_form("dinosaurios", False, label, "animales", "")[1] is None
     assert parse_form("dinosaurios", True, "Proponer mas", "animales", "")[1] is None
+
+
+LEAD = {"code": "lead", "tweet_author": "autor_x", "tweet_url": "https://x.com/autor_x/status/1"}
+
+
+@pytest.mark.parametrize(
+    ("origin", "line"),
+    [
+        (LEAD, "Origen: tweet de @autor_x"),
+        (LEAD | {"tweet_author": None}, "Origen: imagen compartida"),
+        ({"code": "manual", "tweet_author": None, "tweet_url": None}, None),
+        (LEAD | {"tweet_author": "<b>x</b>"}, "Origen: tweet de X"),
+        (LEAD | {"tweet_author": "a" * 16}, "Origen: tweet de X"),
+        (LEAD | {"tweet_author": 7}, "Origen: tweet de X"),
+        ("lead", None),
+        (None, None),
+    ],
+)
+def test_proposal_view_origin_line(origin: object, line: str | None) -> None:
+    assert proposal_view(item() | {"origin": origin}, NOW)["origin_line"] == line
+
+
+def test_proposal_view_without_origin_has_no_line() -> None:
+    assert proposal_view(item(), NOW)["origin_line"] is None

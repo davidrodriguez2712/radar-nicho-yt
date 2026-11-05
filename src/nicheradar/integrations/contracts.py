@@ -24,6 +24,7 @@ class Operation(StrEnum):
     NICHE_MATCH = "niche_match"
     LISTING_EVIDENCE = "listing_evidence"
     HYPOTHESIS_PROPOSAL = "hypothesis_proposal"
+    LEAD_MENTIONS = "lead_mentions"
 
 
 class Contract(BaseModel):

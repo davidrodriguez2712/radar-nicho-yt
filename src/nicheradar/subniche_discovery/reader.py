@@ -104,6 +104,18 @@ class GatewayReader:
         batch, _, _ = await self.gateway.fetch(Operation.SEARCH, parameters, now)
         return list(batch.videos), batch.coverage.next_page
 
+    async def search_channels(self, name: str, limit: int = 5) -> list[Channel]:
+        """search.list type=channel: 100 unidades, mismo tope diario que `search`."""
+        now = self.clock()
+        with self.engine.connect() as connection:
+            used = search_units_used_today(connection, now, self.config.subniche_quota_timezone)
+        if used + SEARCH_COST > self.config.subniche_search_units_per_day:
+            raise ProviderError("subniche_daily_search_cap", not_sent=True)
+        batch, _, _ = await self.gateway.fetch(
+            Operation.SEARCH, {"type": "channel", "q": name, "maxResults": str(min(limit, 5))}, now
+        )
+        return list(batch.channels)[:limit]
+
     async def channels(self, ids: list[str]) -> dict[str, Channel]:
         batch, _, _ = await self.gateway.fetch(
             Operation.CHANNELS, {"id": ",".join(ids)}, self.clock()

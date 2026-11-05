@@ -191,3 +191,13 @@ a.list__item{min-height:44px;justify-content:center;color:inherit;text-decoratio
 .actions .btn{min-height:44px}
 .progress{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
 .progress__fill{height:100%;border-radius:3px;background:var(--primary)}
+.candidate{display:flex;gap:12px;align-items:flex-start;padding:12px 0}
+.candidate input[type=checkbox],.candidate__none{flex:0 0 24px;width:24px;height:24px;margin:0}
+.candidate__body{min-width:0;overflow-wrap:anywhere}
+.candidate__label{margin:0;font-weight:600}
+.quote{margin:0;color:var(--muted,inherit);overflow-wrap:anywhere}
+.btn--link{width:auto;justify-content:flex-start;background:none;border:0;color:var(--primary);font-weight:600;min-height:44px;padding:0;cursor:pointer}
+.plain--steps{list-style:none;padding-left:0}
+.preview{margin:0;padding:12px;text-align:center;background:var(--surface-2,#efe8e3);border-radius:16px}
+.preview img{max-width:100%;max-height:60vh;border-radius:var(--radius,12px)}
+.step--now{color:var(--primary);font-weight:600}

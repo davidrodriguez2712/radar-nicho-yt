@@ -36,6 +36,13 @@ Endpoints bajo `/api/v1/subniches` (mismo token de servicio): `POST /proposals` 
 códigos y la forma de error (raíz `{"code","message"}` frente a `{"detail":{...}}` en los 404 de lectura) en
 `docs/subniche-discovery.md`, sección «API de propuestas y ciclo de vida».
 
+## Lectura de tweets e imágenes
+
+Endpoints bajo `/api/v1/leads` (mismo token de servicio): `POST /tweets` y `POST /images` (202, con `Idempotency-Key`),
+`GET /{id}`, `POST /{id}/names` (202), `POST /{id}/proposals` y `POST /{id}/close`. La petición solo valida y encola; la
+lectura la hace el worker (`tick_leads`) con `NR_SUBNICHE_ENABLED=true`. Tope de 50 lecturas al día. Ejemplos, códigos y la
+forma de la lectura en `docs/subniche-discovery.md`, sección «Lectura de tweets e imágenes».
+
 ## Backlog
 
 Admite búsqueda literal por tema —no patrones SQL—, formato, revisión, confianza,

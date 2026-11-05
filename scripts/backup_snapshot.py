@@ -97,6 +97,10 @@ PROVIDER_EVIDENCE_TABLES = frozenset(
         "feature_values",
         "hypothesis_channel_hits",
         "jobs",
+        # Lecturas de tweets/imágenes: texto e imágenes de terceros y metadatos de YouTube; el
+        # esquema se respalda, las filas no.
+        "lead_candidates",
+        "lead_read_requests",
         "listing_channel_snapshots",
         "opportunities",
         "opportunity_decisions",
@@ -173,7 +177,7 @@ def inspect_snapshot(connection: Connection) -> dict[str, object]:
     ).scalar_one():
         raise ValueError("market_intel_not_paused")
     revision = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-    if revision != "0022":
+    if revision != "0023":
         raise ValueError("unreviewed_schema_revision")
     has_pilots = any(counts[name] for name in PILOT_TABLES)
     has_research = any(counts[name] for name in RESEARCH_TABLES)

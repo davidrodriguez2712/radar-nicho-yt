@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Propuestas · NicheRadar{% endblock %}
+{% block content %}
+<a class="backlink" href="/lecturas/{{ view.id }}">‹ Canales encontrados</a>
+{% set preparing = view.proposals|selectattr("state", "in", ("En cola", "En preparación"))|list|length %}
+<h1 class="h1 h1--md">{% if preparing %}{{ preparing }} propuesta{{ "s" if preparing != 1 else "" }} en preparación{% else %}Ninguna propuesta en preparación{% endif %}</h1>
+{% if resultado %}<div class="note note--green" id="resultado" role="status">{{ resultado }}</div>{% endif %}
+<p class="lead">Cada canal sigue el mismo camino que si lo hubieras pegado a mano.</p>
+<section class="card">
+  <div class="rows">
+  {% for p in view.proposals %}<div class="row"><span class="row__label">{% if p.href %}<a href="{{ p.href }}">{{ p.label }}</a>{% else %}{{ p.label }}{% endif %}</span><span class="chip chip--{{ {'En cola': 'blue', 'En preparación': 'blue', 'Lista': 'green'}.get(p.state, 'rose') }}">{{ p.state }}</span></div>
+  {% else %}<p>Ningún canal se pudo proponer.</p>{% endfor %}
+  </div>
+</section>
+<a class="btn btn--primary" href="/subnichos">Ver propuestas</a>
+<section class="card">
+  <h2 class="card__heading">Qué sigue</h2>
+  <p>Cada propuesta lista se revisa y se aprueba por separado (M27 y M28). Aprobar es lo que gasta cuota de búsqueda.</p>
+</section>
+{% endblock %}

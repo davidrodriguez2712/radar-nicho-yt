@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Imagen recibida · NicheRadar{% endblock %}
+{% block content %}
+<h1 class="h1">Imagen recibida</h1>
+{% if aviso %}<div class="note note--amber" role="status">{{ aviso }}</div>{% endif %}
+<figure class="preview" id="vista-imagen"><img src="/compartir/imagen/archivo" alt="Vista previa de la imagen"></figure>
+<section class="note note--amber" id="sin-imagen" role="status" hidden>
+  <p>No hay ninguna imagen guardada en este teléfono: ya se leyó, se canceló o no llegó.</p>
+  <a class="btn btn--secondary" href="/compartir">Volver a compartir</a>
+</section>
+<section class="card"><p>Se lee con el modelo de lenguaje (visión) para sacar los canales que aparecen. El texto de una imagen es de un tercero: sirve como pista, no como dato.</p><p class="caption">La imagen está solo en tu teléfono; se envía al servidor cuando pulsas «Leer imagen» y se borra al terminar.</p></section>
+<button class="btn btn--primary" type="button" id="leer-imagen" data-csrf="{{ csrf_token }}" data-nonce="{{ nonce }}"
+        data-generic="No se pudo enviar la imagen; vuelve a compartirla." data-sending="Enviando…" data-login="Iniciar sesión" data-reload="Recarga la página y vuelve a intentarlo.">Leer imagen</button>
+<p id="estado-imagen" role="status" class="caption"></p>
+<a class="btn btn--link" id="cancelar-imagen" href="/subnichos">Cancelar</a>
+<script src="/static/js/compartir.js" defer></script>
+{% endblock %}

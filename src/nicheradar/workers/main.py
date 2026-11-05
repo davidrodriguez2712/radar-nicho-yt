@@ -18,6 +18,7 @@ from nicheradar.market_intel.worker import tick_market
 from nicheradar.repositories import schema_v1 as s
 from nicheradar.repositories.core import seed_profile
 from nicheradar.repositories.database import database_engine
+from nicheradar.subniche_discovery.lead_worker import tick_leads
 from nicheradar.subniche_discovery.worker import tick_proposals, tick_subniche
 from nicheradar.workers.health import record
 from nicheradar.workers.pipeline import Pipeline
@@ -143,6 +144,10 @@ def main() -> None:
         market = run_market_tick(config, status, config.worker_poll_seconds)
         print(json.dumps(market), flush=True)
         if config.subniche_enabled:
+            leads_status = run_background_tick(
+                "leads", tick_leads, config, status, config.worker_poll_seconds
+            )
+            print(json.dumps(leads_status), flush=True)
             proposals_status = run_background_tick(
                 "subniche_proposals", tick_proposals, config, status, config.worker_poll_seconds
             )

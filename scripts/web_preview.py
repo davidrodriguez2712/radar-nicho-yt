@@ -27,6 +27,10 @@ from scripts.web_preview_data import (  # noqa: E402
     CARD,
     FLOWS,
     ITEMS,
+    LEAD_FAILED,
+    LEAD_IMAGE,
+    LEAD_QUEUED,
+    LEAD_READY,
     NICHE_DETAIL,
     NICHES,
     PILOT_DETAIL,
@@ -37,6 +41,10 @@ from scripts.web_preview_data import (  # noqa: E402
     PROPOSAL_QUEUED,
     PROPOSAL_READY,
     PROPOSED_SLUG,
+    READ_FAILED_ID,
+    READ_IMAGE_ID,
+    READ_QUEUED_ID,
+    READ_READY_ID,
     REPORT,
     RUNS,
     SCHEDULE,
@@ -53,13 +61,26 @@ PROPOSED_CARD = CARD | {
     "hypothesis": CARD["hypothesis"]
     | {"slug": PROPOSED_SLUG, "label": "Ancient Rome", "status": "proposed"}
 }
+LEADS = {
+    READ_READY_ID: LEAD_READY,
+    READ_QUEUED_ID: LEAD_QUEUED,
+    READ_FAILED_ID: LEAD_FAILED,
+    READ_IMAGE_ID: LEAD_IMAGE,
+}
+# A 1x1 PNG: the shared image only lives in the phone's cache, so the preview inlines a sample.
+SAMPLE_IMAGE = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg=="
+)
 PREVIEW_NOW = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)  # the sample data is dated around it
 
 
 def _api(request: httpx.Request) -> httpx.Response:
     path = request.url.path
     body: object
-    if path == "/api/v1/subniches":
+    if (lead := LEADS.get(path.removeprefix("/api/v1/leads/"))) is not None:
+        body = lead
+    elif path == "/api/v1/subniches":
         body = {"items": ITEMS}
     elif path == f"/api/v1/subniches/proposals/{PROPOSAL_ID}":
         body = PROPOSAL_READY
@@ -110,7 +131,9 @@ def _api(request: httpx.Request) -> httpx.Response:
 
 def _local(html: str) -> str:
     """Point the static assets at the package folder: only the preview uses file://."""
-    return html.replace('"/static/', f'"file://{STATIC}/')
+    return html.replace('"/static/', f'"file://{STATIC}/').replace(
+        'src="/compartir/imagen/archivo"', f'src="{SAMPLE_IMAGE}"'
+    )
 
 
 def render_pages(out: Path) -> dict[str, Path]:
@@ -137,6 +160,12 @@ def render_pages(out: Path) -> dict[str, Path]:
         "archivar": f"/subnichos/{slug}/archivar",
         "compartir": "/compartir?url=" + quote("https://youtu.be/dQw4w9WgXcQ?si=x", safe=""),
         "compartir_tweet": "/compartir?url=" + quote("https://x.com/u/status/1", safe=""),
+        "lectura_lista": f"/lecturas/{READ_READY_ID}",
+        "lectura_en_curso": f"/lecturas/{READ_QUEUED_ID}",
+        "lectura_fallida": f"/lecturas/{READ_FAILED_ID}",
+        "lectura_imagen": f"/lecturas/{READ_IMAGE_ID}",
+        "lectura_propuestas": f"/lecturas/{READ_READY_ID}/propuestas?creadas=1&omitidas=0",
+        "compartir_imagen": "/compartir/imagen",
         "hoy": "/",
         "nichos": "/nichos",
         "nicho_detalle": f"/nichos/ver?etiqueta={label}&formato=long",

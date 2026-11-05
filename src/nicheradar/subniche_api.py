@@ -1,6 +1,7 @@
 # src/nicheradar/subniche_api.py
 """Private API for sub-niche hypotheses and proposal requests; same Bearer as /api/v1."""
 
+import re
 from collections.abc import Callable, Iterator
 from datetime import datetime
 from typing import Annotated, Any
@@ -27,7 +28,7 @@ MESSAGES: dict[str, str] = {
     "invalid_input": (
         "No se reconoce esa entrada. Usa una consulta, un video, o un canal con @handle o enlace."
     ),
-    "tweet_not_supported_yet": "Los enlaces de X todavía no se leen.",
+    "tweet_not_supported_yet": "Para un enlace de X usa «Leer tweet».",
     "manual_needs_a_query": "La propuesta manual solo admite una consulta.",
     "daily_limit": "Se llegó al tope diario de propuestas.",
     "not_found": "No se encontró ese video o canal.",
@@ -122,6 +123,21 @@ def _hypothesis(connection: Connection, slug: str | None) -> dict[str, Any] | No
     }
 
 
+_LEAD_AUTHOR = re.compile(r"[A-Za-z0-9_]{1,15}")
+_LEAD_TWEET_ID = re.compile(r"[0-9]{1,20}")
+
+
+def _origin(row: dict[str, Any]) -> dict[str, Any]:
+    """Los campos del tweet se revalidan: lo guardado nunca arma un enlace sin comprobar."""
+    author, tweet_id = row["lead_author"], row["lead_tweet_id"]
+    if author is not None and not _LEAD_AUTHOR.fullmatch(author):
+        author = None
+    url = None
+    if tweet_id is not None and _LEAD_TWEET_ID.fullmatch(tweet_id):
+        url = f"https://x.com/{author or 'i'}/status/{tweet_id}"
+    return {"code": row["origin"], "tweet_author": author, "tweet_url": url}
+
+
 def _present(connection: Connection, row: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": str(row["id"]),
@@ -132,6 +148,7 @@ def _present(connection: Connection, row: dict[str, Any]) -> dict[str, Any]:
         "finished_at": row["finished_at"],
         "error": error_message(row["error_code"]),
         "hypothesis": _hypothesis(connection, row["hypothesis_slug"]),
+        "origin": _origin(row),
     }
 
 

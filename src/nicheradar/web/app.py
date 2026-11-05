@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from nicheradar.config import Settings
 from nicheradar.web import (
     routes_auth,
+    routes_leads,
     routes_lifecycle,
     routes_more,
     routes_niches,
@@ -98,6 +99,7 @@ def create_app(
     app.include_router(routes_pilot_actions.router)
     app.include_router(routes_proposals.router)
     app.include_router(routes_share.router)
+    app.include_router(routes_leads.router)
     app.include_router(routes_subniches.router)
     app.include_router(routes_lifecycle.router)
     app.include_router(routes_operation.router)

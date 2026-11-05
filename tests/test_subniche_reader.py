@@ -128,3 +128,34 @@ def test_reader_search_cap_resets_at_pacific_midnight(isolated_engine: Any) -> N
     assert gateway.calls == 0
     search_once(isolated_engine, gateway, datetime(2026, 10, 31, 7, 30, tzinfo=UTC))
     assert gateway.calls == 1
+
+
+class NameStubGateway:
+    def __init__(self) -> None:
+        self.calls: list[Any] = []
+
+    async def fetch(self, operation: Any, parameters: Any, *_: Any) -> tuple[Any, None, None]:
+        self.calls.append((operation, parameters))
+        batch = SimpleNamespace(channels=tuple(f"c{n}" for n in range(8)))
+        return batch, None, None
+
+
+@pytest.mark.postgres
+def test_search_channels_uses_the_channel_search_and_the_same_daily_cap(
+    isolated_engine: Any,
+) -> None:
+    gateway = NameStubGateway()
+    config = Settings(mode="live", subniche_search_units_per_day=100)
+    now = datetime(2026, 10, 31, 12, tzinfo=UTC)
+    reader = GatewayReader(cast(Gateway, gateway), isolated_engine, config, lambda: now)
+    found = asyncio.run(reader.search_channels("Batallas Olvidadas", 3))
+    assert [str(c) for c in found] == ["c0", "c1", "c2"]
+    assert gateway.calls == [
+        (Operation.SEARCH, {"type": "channel", "q": "Batallas Olvidadas", "maxResults": "3"})
+    ]
+    with isolated_engine.begin() as connection:
+        _, analysis_id, profile_id = make_run(connection)
+        reserve_search(connection, profile_id, analysis_id, now, 1)
+    with pytest.raises(ProviderError, match="subniche_daily_search_cap"):
+        asyncio.run(reader.search_channels("otro", 5))
+    assert len(gateway.calls) == 1

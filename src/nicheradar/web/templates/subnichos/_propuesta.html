@@ -3,6 +3,7 @@
 {% if v.state == "lista" and v.hypothesis %}
 {% set h = v.hypothesis %}
 <h1 class="h1 h1--md">{{ h.label }}</h1>
+{% if v.origin_line %}<p class="caption" id="origen">{{ v.origin_line }}</p>{% endif %}
 <div class="tags">{{ chip("Propuesta" if h.proposed else h.status_label, "amber" if h.proposed else "neutral") }}</div>
 <p class="lead">Revísala antes de aprobar.</p>
 <section class="card">

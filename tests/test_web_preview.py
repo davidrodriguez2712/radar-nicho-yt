@@ -87,9 +87,27 @@ def test_the_preview_renders_the_proponer_and_compartir_screens(tmp_path: Path) 
         "aprobar": "Confirmar y aprobar",
         "archivar": "Entiendo que no se puede deshacer",
         "compartir": "Compartido contigo",
-        "compartir_tweet": "Los enlaces de X todavía no se leen.",
+        "compartir_tweet": "Leer tweet",
     }
     for name, text in expected.items():
         html = (tmp_path / f"{name}.html").read_text()
         assert text in html, name
         assert "file://" in html and 'href="/static/' not in html, name
+
+
+def test_the_preview_renders_the_lectura_screens_m31_to_m34(tmp_path: Path) -> None:
+    assert web_preview.main(["--out", str(tmp_path), "--no-screenshots"]) == 0
+    expected = {
+        "compartir_tweet": "Leer tweet",
+        "lectura_lista": "Canales encontrados (3)",
+        "lectura_en_curso": "Leyendo el tweet",
+        "lectura_fallida": "No se pudo leer el tweet",
+        "lectura_imagen": "Leyendo la imagen",
+        "lectura_propuestas": "propuesta",
+        "compartir_imagen": "Leer imagen",
+    }
+    for name, text in expected.items():
+        html = (tmp_path / f"{name}.html").read_text()
+        assert text in html, name
+        assert "file://" in html and 'href="/static/' not in html, name
+    assert "data:image/png;base64," in (tmp_path / "compartir_imagen.html").read_text()
