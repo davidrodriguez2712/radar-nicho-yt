@@ -11,6 +11,7 @@ from nicheradar.web.proposals import (
     new_nonce,
     parse_form,
     proposal_view,
+    valid_nonce,
 )
 from nicheradar.web.security import Session, SessionSigner
 
@@ -139,23 +140,23 @@ def item(**over: object) -> dict[str, object]:
     ],
 )
 def test_proposal_view_maps_the_status(status: str, state: str) -> None:
-    assert proposal_view(item(status=status), "UTC")["state"] == state
+    assert proposal_view(item(status=status))["state"] == state
 
 
 @pytest.mark.parametrize(
     ("kind", "label"), [("query", "Consulta"), ("video", "Video"), ("channel", "Canal")]
 )
 def test_proposal_view_kind_label(kind: str, label: str) -> None:
-    assert proposal_view(item(kind=kind), "UTC")["kind_label"] == label
+    assert proposal_view(item(kind=kind))["kind_label"] == label
 
 
 def test_proposal_view_survives_garbage() -> None:
     for garbage in ({}, {"status": "rarísimo"}, {"status": 3, "kind": [], "input": None}):
-        view = proposal_view(garbage, "UTC")
+        view = proposal_view(garbage)
         assert view["state"] == "fallida"
         assert view["kind_label"] == "—" and view["input"] == "—"
         assert view["hypothesis"] is None
-    assert proposal_view("nope", "UTC")["state"] == "fallida"
+    assert proposal_view("nope")["state"] == "fallida"
 
 
 def test_proposal_view_error_is_fixed_text_never_the_api_text() -> None:
@@ -163,11 +164,11 @@ def test_proposal_view_error_is_fixed_text_never_the_api_text() -> None:
         status="failed",
         error={"code": "youtube_unreachable", "message": "<b>Traza interna</b>"},
     )
-    assert proposal_view(failed, "UTC")["error"] == API_MESSAGES["youtube_unreachable"]
+    assert proposal_view(failed)["error"] == API_MESSAGES["youtube_unreachable"]
     odd = item(status="failed", error={"code": "boom", "message": "secreto"})
-    assert proposal_view(odd, "UTC")["error"] == GENERIC_ERROR
-    assert proposal_view(item(status="failed", error="texto"), "UTC")["error"] == GENERIC_ERROR
-    assert proposal_view(item(), "UTC")["error"] is None
+    assert proposal_view(odd)["error"] == GENERIC_ERROR
+    assert proposal_view(item(status="failed", error="texto"))["error"] == GENERIC_ERROR
+    assert proposal_view(item())["error"] is None
 
 
 def test_proposal_view_hypothesis_caps_and_cleans_lists() -> None:
@@ -180,23 +181,54 @@ def test_proposal_view_hypothesis_caps_and_cleans_lists() -> None:
         "seed_channels": [f"UC{n}" for n in range(30)] + [None, 5],
         "status": "proposed",
     }
-    view = proposal_view(item(status="succeeded", hypothesis=hypothesis), "UTC")["hypothesis"]
+    view = proposal_view(item(status="succeeded", hypothesis=hypothesis))["hypothesis"]
     assert view["slug"] == "dinos" and view["label"] == "Dinosaurios"
     assert view["family"] == "animales" and view["parent_niche"] is None
     assert len(view["queries"]) == 20 and len(view["seed_channels"]) == 20
 
 
 def test_proposal_view_hypothesis_tolerates_missing_fields() -> None:
-    view = proposal_view(item(hypothesis={"queries": "no es lista"}), "UTC")["hypothesis"]
+    view = proposal_view(item(hypothesis={"queries": "no es lista"}))["hypothesis"]
     assert view["slug"] == "—" and view["queries"] == [] and view["seed_channels"] == []
 
 
 def test_proposal_view_hostile_text_stays_plain_data() -> None:
-    view = proposal_view(item(input="<script>alert(1)</script>"), "UTC")
+    view = proposal_view(item(input="<script>alert(1)</script>"))
     assert view["input"] == "<script>alert(1)</script>"  # the template escapes it
 
 
 def test_finished_ago_reads_the_finish_moment() -> None:
     done = item(status="succeeded", finished_at="2026-11-05T11:55:00Z")
-    assert proposal_view(done, "UTC", NOW)["finished_ago"] == "hace 5 min"
-    assert proposal_view(item(), "UTC", NOW)["finished_ago"] == "—"
+    assert proposal_view(done, NOW)["finished_ago"] == "hace 5 min"
+    assert proposal_view(item(), NOW)["finished_ago"] == "—"
+
+
+@pytest.mark.parametrize("raw", ["a\ud800b", "\udfff" * 3])
+def test_parse_form_rejects_lone_surrogates(raw: str) -> None:
+    assert parse_form(raw, False, "", "", "")[1] == "input_invalid"
+    assert parse_form("criaturas", True, raw, "animales", "")[1] == "manual_invalid"
+    assert parse_form("criaturas", True, "Criaturas", "animales", raw)[1] == "manual_invalid"
+
+
+def test_proposal_view_caps_every_text_at_500_characters() -> None:
+    long = "x" * 900
+    view = proposal_view(
+        item(input=long, hypothesis={"slug": long, "label": long, "queries": [long]})
+    )
+    assert len(view["input"]) == 500
+    assert len(view["hypothesis"]["slug"]) == 500 and len(view["hypothesis"]["label"]) == 500
+    assert len(view["hypothesis"]["queries"][0]) == 500
+
+
+def test_valid_nonce_accepts_only_32_lowercase_hex() -> None:
+    assert valid_nonce(new_nonce())
+    for bad in ("", "a" * 31, "a" * 33, "A" * 32, "g" * 32, "a" * 32 + "\n", "é" * 32, "٣" * 32):
+        assert not valid_nonce(bad)
+    assert not valid_nonce(None)
+
+
+def test_derive_is_domain_separated() -> None:
+    signer = SessionSigner(b"k" * 32)
+    assert signer.derive("idem", "m") != signer._mac("m")
+    assert signer.derive("idem", "m") != signer.derive("otro", "m")
+    assert signer.derive("idem", "m") == signer.derive("idem", "m")

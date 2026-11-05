@@ -4,7 +4,7 @@ from collections.abc import Iterator
 import httpx
 import pytest
 
-from nicheradar.web.client import ApiClient, ApiError
+from nicheradar.web.client import MESSAGES, ApiClient, ApiError
 from tests.web_helpers import TOKEN, Api, settings
 
 
@@ -217,17 +217,25 @@ def test_request_text_ignores_a_non_ascii_content_length(declared: str) -> None:
     assert client_for(text_api(response)).request_text("GET", "/t") == "hola"
 
 
-def test_extra_headers_reach_the_api_but_never_replace_authorization() -> None:
+@pytest.mark.parametrize(
+    "name", ["Authorization", "authorization", "AUTHORIZATION", "Authorization ", " authorization"]
+)
+def test_extra_headers_reach_the_api_but_never_replace_authorization(name: str) -> None:
     api = Api({("POST", "/api/v1/x"): (202, {"ok": True})})
     client_for(api).request(
-        "POST",
-        "/x",
-        body={},
-        headers={"Idempotency-Key": "nr-abc12345", "Authorization": "Bearer otro"},
+        "POST", "/x", body={}, headers={"Idempotency-Key": "nr-abc12345", name: "Bearer otro"}
     )
     call = api.calls[0]
     assert call.headers["idempotency-key"] == "nr-abc12345"
-    assert call.headers["authorization"] == f"Bearer {TOKEN}"
+    assert call.headers.get_list("authorization") == [f"Bearer {TOKEN}"]
+
+
+def test_a_root_code_message_is_never_shown_when_the_code_is_unknown() -> None:
+    api = Api({("POST", "/api/v1/x"): (409, {"code": "otro", "message": "TEXTO DEL SERVIDOR"})})
+    with pytest.raises(ApiError) as error:
+        client_for(api).request("POST", "/x", body={})
+    assert error.value.kind == "conflict" and error.value.code == "otro"
+    assert error.value.message == MESSAGES["conflict"]
 
 
 def test_a_domain_rejection_with_code_and_message_at_the_root_exposes_its_code() -> None:

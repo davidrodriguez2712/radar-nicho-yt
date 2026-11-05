@@ -27,13 +27,20 @@ STATE = {"queued": "en_cola", "running": "preparando", "succeeded": "lista", "fa
 KIND_LABEL = {"query": "Consulta", "video": "Video", "channel": "Canal"}
 
 
+NONCE = re.compile(r"[0-9a-f]{32}")
+
+
 def new_nonce() -> str:
     return secrets.token_hex(16)
 
 
+def valid_nonce(nonce: object) -> bool:
+    return isinstance(nonce, str) and NONCE.fullmatch(nonce) is not None
+
+
 def idempotency_key(signer: SessionSigner, session: Session, nonce: str) -> str:
     """Same session and nonce, same key: a double tap or a reload never queues twice."""
-    return "nr-" + signer.derive(f"{signer.csrf(session)}:{nonce}")[:40]
+    return "nr-" + signer.derive("idem", f"{signer.csrf(session)}:{nonce}")[:40]
 
 
 def _clean(value: str) -> bool:
@@ -96,7 +103,7 @@ def _hypothesis(value: object) -> dict[str, Any] | None:
     }
 
 
-def proposal_view(item: object, tz: str, now: datetime | None = None) -> dict[str, Any]:
+def proposal_view(item: object, now: datetime | None = None) -> dict[str, Any]:
     """One queue entry for the screen; a malformed item degrades to `fallida` and «—»."""
     data = item if isinstance(item, dict) else {}
     status = data.get("status")

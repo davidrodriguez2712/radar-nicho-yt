@@ -58,6 +58,11 @@ CODE_MESSAGES: dict[str, str] = {
 CODE_MAX = 80
 
 
+class RootDetail(dict[str, Any]):
+    """A `{code, message}` found at the root of the body, not under `detail`: its `message`
+    is never shown."""
+
+
 def code_of(detail: object) -> str | None:
     """The domain `code` of an error detail, or None when absent, not text or absurdly long."""
     code = detail.get("code") if isinstance(detail, dict) else None
@@ -84,7 +89,11 @@ class ApiError(Exception):
             known = CODE_MESSAGES.get("duplicate" if code.startswith("duplicate") else code)
             if known is not None:
                 return known
-        if self.kind == "conflict" and isinstance(self.detail, dict):
+        if (
+            self.kind == "conflict"
+            and isinstance(self.detail, dict)
+            and not isinstance(self.detail, RootDetail)
+        ):
             text = self.detail.get("message")
             if isinstance(text, str) and text:
                 return text
@@ -101,7 +110,7 @@ def _error_detail(raw: bytes) -> object:
     if detail is None and isinstance(body_json, dict) and "problems" in body_json:
         detail = body_json  # the API's `{accepted: false, problems: [...]}` 422
     if detail is None and isinstance(body_json, dict) and "code" in body_json:
-        detail = body_json  # a domain rejection: `{code, message}` at the root of the body
+        detail = RootDetail(body_json)  # a domain rejection: `{code, message}` at the root
     return detail
 
 
@@ -134,7 +143,14 @@ class ApiClient:
                 base_url=self._config.api_url,
                 timeout=timeout,
                 transport=self._transport,
-                headers={**(headers or {}), "Authorization": f"Bearer {token.get_secret_value()}"},
+                headers={
+                    **{
+                        k: v
+                        for k, v in (headers or {}).items()
+                        if k.strip().lower() != "authorization"
+                    },
+                    "Authorization": f"Bearer {token.get_secret_value()}",
+                },
             ) as client:
                 response = client.request(method, "/api/v1" + path, params=params, json=body)
         except (httpx.HTTPError, httpx.InvalidURL) as error:
