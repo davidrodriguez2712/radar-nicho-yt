@@ -4,6 +4,7 @@ Anti-SSRF: solo dos hosts fijos, rutas construidas por código, sin seguir redir
 variables de entorno de proxy y con cuerpos acotados. Todo lo que devuelve es de terceros.
 """
 
+import asyncio
 import json
 import re
 from dataclasses import dataclass
@@ -19,6 +20,9 @@ MAX_IMAGE_BYTES = 5_242_880
 MAX_PHOTOS = 4
 MAX_TEXT = 1000
 TIMEOUT_SECONDS = 10
+TOTAL_JSON_TIMEOUT_SECONDS = 20
+TOTAL_PHOTO_TIMEOUT_SECONDS = 30
+MIN_JPEG_BYTES = 100
 IMAGE_TYPES = ("image/png", "image/jpeg", "image/webp")
 X_HOSTS = frozenset(
     {"x.com", "www.x.com", "mobile.x.com", "twitter.com", "www.twitter.com", "mobile.twitter.com"}
@@ -102,7 +106,9 @@ def parse_tweet_url(raw: str) -> TweetRef | None:
 def sniff_image_type(data: bytes) -> str | None:
     if data.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png"
-    if data.startswith(b"\xff\xd8\xff"):
+    # JPEG: marcador SOI+0xFF, un byte de marcador real (>= 0xC0) y al menos MIN_JPEG_BYTES;
+    # descarta políglotas como `\xff\xd8\xff<script>`. Es una regla mínima, no un decodificador.
+    if data.startswith(b"\xff\xd8\xff") and len(data) >= MIN_JPEG_BYTES and data[3] >= 0xC0:
         return "image/jpeg"
     if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
@@ -111,15 +117,18 @@ def sniff_image_type(data: bytes) -> str | None:
 
 def _photo_urls(media: object) -> tuple[str, ...]:
     photos = media.get("photos") if isinstance(media, dict) else None
-    urls: list[str] = []
+    urls: dict[str, None] = {}
     for item in photos if isinstance(photos, list) else []:
         url = item.get("url") if isinstance(item, dict) else None
         match = _MEDIA.fullmatch(url) if isinstance(url, str) else None
         if match is not None:
-            urls.append(f"https://{MEDIA_HOST}/media/{match.group(1)}.{match.group(2)}?name=large")
-        if len(urls) == MAX_PHOTOS:
-            break
-    return tuple(dict.fromkeys(urls))
+            urls[f"https://{MEDIA_HOST}/media/{match.group(1)}.{match.group(2)}?name=large"] = None
+    return tuple(urls)[:MAX_PHOTOS]
+
+
+def _clean_text(text: str) -> str:
+    """Sin NUL (Postgres lo rechaza) ni surrogates sueltos (psycopg no los codifica)."""
+    return text.replace("\x00", "").encode("utf-8", "replace").decode("utf-8")
 
 
 class FxTwitterReader:
@@ -135,20 +144,28 @@ class FxTwitterReader:
         )
 
     async def _bounded(
-        self, url: httpx.URL, limit: int, error: str, too_large: str
+        self, url: httpx.URL, limit: int, error: str, too_large: str, total: float
     ) -> tuple[int, str, bytes]:
         try:
-            async with self._client() as client, client.stream("GET", url) as response:
-                declared = response.headers.get("content-length", "")
-                if declared.isascii() and declared.isdigit() and int(declared) > limit:
-                    raise TweetReadError(too_large)
-                raw = bytearray()
-                async for chunk in response.aiter_bytes():
-                    raw.extend(chunk)
-                    if len(raw) > limit:
+            async with asyncio.timeout(total):
+                async with (
+                    self._client() as client,
+                    client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response,
+                ):
+                    encoding = response.headers.get("content-encoding", "identity")
+                    if encoding.strip().lower() not in ("", "identity"):
+                        raise TweetReadError(error)
+                    declared = response.headers.get("content-length", "")
+                    if declared.isascii() and declared.isdigit() and int(declared) > limit:
                         raise TweetReadError(too_large)
-                return response.status_code, response.headers.get("content-type", ""), bytes(raw)
-        except httpx.HTTPError:
+                    raw = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        raw.extend(chunk)
+                        if len(raw) > limit:
+                            raise TweetReadError(too_large)
+                    content_type = response.headers.get("content-type", "")
+                    return response.status_code, content_type, bytes(raw)
+        except (httpx.HTTPError, TimeoutError):
             raise TweetReadError(error) from None
 
     async def read(self, ref: TweetRef) -> Tweet:
@@ -158,11 +175,11 @@ class FxTwitterReader:
             raise TweetReadError("reader_failed")
         url = httpx.URL(scheme="https", host=FX_HOST, path=ref.api_path)
         status, content_type, raw = await self._bounded(
-            url, MAX_JSON_BYTES, "reader_failed", "reader_failed"
+            url, MAX_JSON_BYTES, "reader_failed", "reader_failed", TOTAL_JSON_TIMEOUT_SECONDS
         )
         if status in (401, 403, 404):
             raise TweetReadError("tweet_unavailable")
-        if status != 200 or not content_type.startswith("application/json"):
+        if status != 200 or content_type.split(";")[0].strip().lower() != "application/json":
             raise TweetReadError("reader_failed")
         try:
             payload: Any = json.loads(raw)
@@ -179,13 +196,19 @@ class FxTwitterReader:
                 raise ValueError("unexpected tweet")
         except (ValueError, TypeError, KeyError, AttributeError, RecursionError):
             raise TweetReadError("reader_failed") from None
-        return Tweet(author, ref.tweet_id, text[:MAX_TEXT], _photo_urls(tweet.get("media")))
+        return Tweet(
+            author, ref.tweet_id, _clean_text(text)[:MAX_TEXT], _photo_urls(tweet.get("media"))
+        )
 
     async def photo(self, url: str) -> ImageData:
         if not _CANONICAL_MEDIA.fullmatch(url):
             raise TweetReadError("photo_failed")
         status, _, raw = await self._bounded(
-            httpx.URL(url), MAX_IMAGE_BYTES, "photo_failed", "photo_too_large"
+            httpx.URL(url),
+            MAX_IMAGE_BYTES,
+            "photo_failed",
+            "photo_too_large",
+            TOTAL_PHOTO_TIMEOUT_SECONDS,
         )
         if status != 200:
             raise TweetReadError("photo_failed")

@@ -399,6 +399,10 @@ def test_json_with_charset_and_numeric_id_is_accepted() -> None:
         "https://pbs.twimg.com/media/BhxWutnCEAAtEQ6.svg",
         "https://pbs.twimg.com/media/BhxWutnCEAAtEQ6.jpg.html",
         "https://pbs.twimg.com/media/../x/BhxWutnCEAAtEQ6.jpg",
+        "https://abs.twimg.com/media/a1234.png?name=large",
+        "https://evil.pbs.twimg.com/media/a1234.png?name=large",
+        "https://pbs.twimg.com.evil.com/media/a1234.png?name=large",
+        "https://twimg.com/media/a1234.png?name=large",
         "https://pbs.twimg.com/media/BhxWutnCEAAtEQ6.jpg#frag",
         "https://pbs.twimg.com/media/BhxWutnCEAAtEQ6.jpg?name=orig",
         "https://pbs.twimg.com/media/BhxWutnCEAAtEQ6.jpg?name=large&x=1",
@@ -555,6 +559,133 @@ def test_error_messages_never_leak_provider_text() -> None:
 
 
 def test_the_client_never_trusts_the_environment_nor_follows_redirects() -> None:
-    client = FxTwitterReader()._client()
-    assert client.follow_redirects is False and client.trust_env is False
-    assert client.timeout.read == 10
+    async def check() -> None:
+        async with FxTwitterReader()._client() as client:
+            assert client.follow_redirects is False and client.trust_env is False
+            assert client.timeout.read == 10
+
+    asyncio.run(check())
+
+
+# --- Ronda de correcciones --------------------------------------------------------------------
+
+
+def _dripping(chunks: int = 1000) -> httpx.AsyncBaseTransport:
+    async def drip() -> AsyncIterator[bytes]:
+        for _ in range(chunks):
+            await asyncio.sleep(0.05)
+            yield b" "
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=drip(), headers={"content-type": "application/json"})
+
+    return httpx.MockTransport(handler)
+
+
+def test_read_has_a_total_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
+    from nicheradar.integrations import tweets
+
+    monkeypatch.setattr(tweets, "TOTAL_JSON_TIMEOUT_SECONDS", 0.2)
+    started = time.monotonic()
+    with pytest.raises(TweetReadError) as caught:
+        asyncio.run(FxTwitterReader(transport=_dripping()).read(TweetRef("autor_x", TWEET_ID)))
+    assert caught.value.code == "reader_failed" and time.monotonic() - started < 3
+
+
+def test_photo_has_a_total_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
+    from nicheradar.integrations import tweets
+
+    monkeypatch.setattr(tweets, "TOTAL_PHOTO_TIMEOUT_SECONDS", 0.2)
+    started = time.monotonic()
+    url = "https://pbs.twimg.com/media/a1234.png?name=large"
+    with pytest.raises(TweetReadError) as caught:
+        asyncio.run(FxTwitterReader(transport=_dripping()).photo(url))
+    assert caught.value.code == "photo_failed" and time.monotonic() - started < 3
+
+
+def test_read_strips_nul_and_lone_surrogates() -> None:
+    body = fx_payload(text="a\x00b\ud800c\udfffd")
+    tweet = asyncio.run(
+        reader(
+            lambda r: httpx.Response(
+                200, content=json.dumps(body).encode(), headers={"content-type": "application/json"}
+            )
+        ).read(TweetRef("autor_x", TWEET_ID))
+    )
+    assert "\x00" not in tweet.text and tweet.text.startswith("ab")
+    tweet.text.encode("utf-8")
+    assert all(not 0xD800 <= ord(c) <= 0xDFFF for c in tweet.text)
+
+
+def test_requests_ask_for_identity_and_gzip_replies_are_refused() -> None:
+    import gzip
+
+    seen: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("accept-encoding"))
+        return httpx.Response(
+            200,
+            content=gzip.compress(json.dumps(fx_payload()).encode()),
+            headers={"content-type": "application/json", "content-encoding": "gzip"},
+        )
+
+    with pytest.raises(TweetReadError) as caught:
+        asyncio.run(reader(handler).read(TweetRef("autor_x", TWEET_ID)))
+    assert caught.value.code == "reader_failed" and seen == ["identity"]
+    with pytest.raises(TweetReadError) as caught:
+        asyncio.run(reader(handler).photo("https://pbs.twimg.com/media/a1234.png?name=large"))
+    assert caught.value.code == "photo_failed"
+
+
+def test_explicit_identity_encoding_is_accepted() -> None:
+    response = httpx.Response(
+        200,
+        content=json.dumps(fx_payload()).encode(),
+        headers={"content-type": "application/json", "content-encoding": "identity"},
+    )
+    assert asyncio.run(reader(lambda r: response).read(TweetRef("autor_x", TWEET_ID)))
+
+
+def test_duplicates_are_removed_before_the_cap_of_four() -> None:
+    dup = "https://pbs.twimg.com/media/dup12345.png"
+    others = tuple(f"https://pbs.twimg.com/media/foto{n}.png" for n in range(3))
+    photos = (dup, dup, dup, dup, *others)
+    tweet = asyncio.run(
+        reader(lambda r: json_response(fx_payload(photos=photos))).read(
+            TweetRef("autor_x", TWEET_ID)
+        )
+    )
+    assert len(tweet.photo_urls) == 4
+
+
+@pytest.mark.parametrize(
+    "content_type", ["application/jsonp", "application/json-seq", "text/application/json", ""]
+)
+def test_content_type_must_be_exactly_json(content_type: str) -> None:
+    response = httpx.Response(
+        200, content=json.dumps(fx_payload()).encode(), headers={"content-type": content_type}
+    )
+    with pytest.raises(TweetReadError) as caught:
+        asyncio.run(reader(lambda r: response).read(TweetRef("autor_x", TWEET_ID)))
+    assert caught.value.code == "reader_failed"
+
+
+@pytest.mark.parametrize("content_type", ["Application/JSON", "application/json ; charset=utf-8"])
+def test_content_type_is_case_insensitive_and_ignores_parameters(content_type: str) -> None:
+    response = httpx.Response(
+        200, content=json.dumps(fx_payload()).encode(), headers={"content-type": content_type}
+    )
+    assert asyncio.run(reader(lambda r: response).read(TweetRef("autor_x", TWEET_ID)))
+
+
+@pytest.mark.parametrize(
+    "data",
+    [b"\xff\xd8\xff<script>alert(1)</script>", b"\xff\xd8\xff\xe0" + b"\x00" * 10],
+)
+def test_sniff_requires_a_minimal_structure(data: bytes) -> None:
+    assert sniff_image_type(data) is None

@@ -5,7 +5,7 @@ from typing import Any
 from nicheradar.integrations.tweets import ImageData, Tweet, TweetReadError, TweetRef
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
-JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 32
+JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 128
 WEBP = b"RIFF\x24\x00\x00\x00WEBPVP8 " + b"\x00" * 24
 GIF = b"GIF89a" + b"\x00" * 32
 TWEET_ID = "1850000000000000000"
