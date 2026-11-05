@@ -123,3 +123,14 @@ a.list__item{min-height:44px;justify-content:center;color:inherit;text-decoratio
 
 .runline{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .runline__when{font-size:14px;font-weight:600}
+
+.journey{gap:12px}
+.journey__title{margin:0;font-size:15px;font-weight:600}
+.journey__row{display:flex;align-items:flex-start;gap:10px}
+.journey__mark{flex:none;width:20px;text-align:center;font-size:15px;line-height:20px}
+.journey__mark--done{color:var(--green-ink)}
+.journey__mark--now{color:var(--primary)}
+.journey__mark--pending{color:var(--faint)}
+.journey__text{display:flex;flex-direction:column;min-width:0}
+.journey__name{font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.journey__detail{font-size:12px;color:var(--muted);overflow-wrap:anywhere}

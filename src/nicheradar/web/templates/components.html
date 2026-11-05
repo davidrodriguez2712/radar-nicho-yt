@@ -33,3 +33,15 @@
   {% endfor %}
 </div>
 {%- endmacro %}
+
+{% macro journey(steps) -%}
+<section class="card journey" aria-label="Recorrido hasta el piloto">
+  <h2 class="journey__title">Recorrido hasta el piloto</h2>
+  {% for step in steps %}
+  <div class="journey__row">
+    <span class="journey__mark journey__mark--{{ step.state }}" aria-hidden="true">{% if step.state == "done" %}✓{% elif step.state == "now" %}●{% else %}○{% endif %}</span>
+    <div class="journey__text"><span class="journey__name">{{ step.name }}</span><span class="journey__detail">{{ step.detail }}</span></div>
+  </div>
+  {% endfor %}
+</section>
+{%- endmacro %}

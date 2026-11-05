@@ -133,6 +133,7 @@ DYNAMIC_CLASSES = {
     "chip--": ("neutral", "amber", "green", "rose", "blue", "gray"),
     "note--": ("green", "amber", "rose"),
     "mark--": ("ok", "todo"),
+    "journey__mark--": ("done", "now", "pending"),
 }
 
 
@@ -144,6 +145,7 @@ def test_every_class_the_pilot_templates_use_has_a_rule_in_the_stylesheet() -> N
         *(ROOT / "templates" / "operacion").glob("*.html"),
         ROOT / "templates" / "hoy.html",
         ROOT / "templates" / "mas.html",
+        ROOT / "templates" / "components.html",
     ]:
         text = template.read_text()
         for attribute in re.findall(r'class="([^"]*)"', text):
