@@ -40,7 +40,7 @@ def cards_of(text: str) -> dict[str, str]:
     blocks = re.findall(r'<article class="card">.*?</article>', text, re.S)
     named = {}
     for block in blocks:
-        found = re.search(r'<span class="card__name">([^<]*)</span>', block)
+        found = re.search(r'<(?:span|a) class="card__name"[^>]*>([^<]*)</(?:span|a)>', block)
         assert found, block
         named[html.unescape(found.group(1))] = block
     return named
@@ -72,9 +72,12 @@ def test_the_page_shows_the_title_the_count_and_one_card_per_niche() -> None:
     assert "<strong>2</strong> nichos" in text
     assert (
         '<a class="segmented__item segmented__item--on" href="/nichos" '
-        'aria-current="page">Nichos</a>' in text
+        'aria-current="page">Nichos <span class="segmented__count">2</span></a>' in text
     )
-    assert '<a class="segmented__item" href="/subnichos">Subnichos</a>' in text
+    assert (
+        '<a class="segmented__item" href="/subnichos">Subnichos '
+        '<span class="segmented__count">—</span></a>' in text
+    )
 
 
 def test_a_card_shows_the_real_scores_and_never_the_missing_ones() -> None:
@@ -242,14 +245,11 @@ def test_hostile_labels_are_escaped_and_the_link_is_encoded() -> None:
     )
     text = make_client(api).get("/nichos").text
     assert "<script>alert(1)</script>" not in text
-    assert f'<span class="card__name">{escape(label)}</span>' in text
+    assert 'class="card__name" href="/nichos/ver?etiqueta=a%2Fb%3Ac%26d%20' in text
+    assert f">{escape(label)}</a>" in text
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in text
     assert 'href="/nichos/investigar?etiqueta=a%2Fb%3Ac%26d%20' in text
     assert f'<input type="hidden" name="etiqueta" value="{escape(label + " dos")}">' in text
-    assert (
-        "<a href="
-        not in cards_of(text)[label].split('<span class="card__name">')[1].split("</span>")[0]
-    )
     assert "[x](https://evil.test)" in cards_of(text)[label]  # shown as inert escaped text
     assert 'href="https://evil.test' not in text
 
@@ -560,3 +560,13 @@ def test_only_tentative_gets_the_marked_notice_other_decisions_a_neutral_one() -
     page = web.get("/nichos", params={"aviso": "guardada"}).text
     assert '<div class="note note--green" role="status">Decisión guardada.</div>' in page
     assert "Marcado como tentativo" not in page
+
+
+def test_a_niche_whose_label_is_not_text_only_loses_its_own_link() -> None:
+    good = niche_item("historia militar explicada")
+    for bad_label in (7, None, ["x"], {"a": 1}):
+        bad = niche_item("x") | {"niche_label": bad_label}
+        response = make_client(api_with(bad, good)).get("/nichos")
+        assert response.status_code == 200, bad_label
+        assert "historia militar explicada" in response.text
+        assert response.text.count("/nichos/ver?etiqueta=historia") == 1

@@ -19,6 +19,7 @@
 <section class="card" id="firme">
   <h2 class="h2">Qué tan firme es</h2>
   <div class="rows">{% for label, value in v.firm.rows %}<div class="row"><span class="row__label">{{ label }}</span><span class="row__value">{{ value }}</span></div>{% endfor %}</div>
+  {% if v.firm.count_line %}<p class="caption" id="medidos">{{ v.firm.count_line }}</p>{% endif %}
   {% if v.firm.subniche %}<p class="caption">El ingreso es una estimación por canal típico. Los competidores vienen de listados de terceros, sin confirmar en YouTube.</p>{% endif %}
 </section>
 {% endif %}

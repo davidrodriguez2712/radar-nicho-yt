@@ -1,8 +1,27 @@
 {% from "components.html" import chip %}
+{% macro barra(group) -%}
+<div class="bar" role="img" aria-label="{{ group.aria }}">{% for seg in group.segments %}<div class="bar__seg bar__seg--{{ seg.colour }} bar--p{{ seg.width }}"></div>{% endfor %}</div>
+{%- endmacro %}
 {% macro tiempo(v) -%}
 <section class="card" id="tiempo">
   <h2 class="h2">Cuánto tarda cada video</h2>
+  {% if v.time %}
+  {% for group in [v.time.calibration, v.time.regime] %}
+  <p class="bar-title">{{ group.title }}</p>
+  {{ barra(group) }}
+  <div class="rows">{% for label, value in group.rows %}<div class="row"><span class="row__label">{{ label }}</span><span class="row__value">{{ value }}</span></div>{% endfor %}</div>
+  {% endfor %}
+  <p class="legend">{% for item in v.time.legend %}<span class="legend__item"><i class="legend__dot legend__dot--{{ item.colour }}"></i>{{ item.number }}. {{ item.name }}</span>{% endfor %} <span class="caption">({{ v.time.scale_note }})</span></p>
+  {% if v.time.cut_notice %}<p class="caption">{{ v.time.cut_notice }}</p>{% endif %}
+  {% else %}
   <div class="rows">{% for label, value in v.time_rows %}<div class="row"><span class="row__label">{{ label }}</span><span class="row__value">{{ value }}</span></div>{% endfor %}</div>
+  {% endif %}
+</section>
+{%- endmacro %}
+{% macro tu_tiempo(v) -%}
+<section class="card" id="tiempo">
+  <h2 class="h2">Tu tiempo</h2>
+  <div class="rows">{% for label, value in (v.time_lines or v.time_rows) %}<div class="row"><span class="row__label">{{ label }}</span><span class="row__value">{{ value }}</span></div>{% endfor %}</div>
 </section>
 {%- endmacro %}
 {% macro compuertas(v) -%}

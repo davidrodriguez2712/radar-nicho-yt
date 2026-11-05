@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
 
+from nicheradar.web.niche_decision import detail_url, valid_label
 from nicheradar.web.research import valid_id
 
 DECISION_CHIP = {
@@ -55,11 +56,17 @@ def investigate_href(label: str, fmt: str) -> str:
     return f"/nichos/investigar?etiqueta={quote(label, safe='')}&formato={quote(fmt, safe='')}"
 
 
+def _key(item: dict[str, Any]) -> tuple[str, str]:
+    """(label, format) as text; anything else keys to «», so one odd row cannot sink the list."""
+    label, fmt = item["niche_label"], item["format"]
+    return (label if isinstance(label, str) else "", fmt if isinstance(fmt, str) else "")
+
+
 def research_index(items: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
     """Newest research per (label, format): the API lists newest first, so the first one wins."""
     index: dict[tuple[str, str], dict[str, Any]] = {}
     for item in items:
-        index.setdefault((item["niche_label"], item["format"]), item)
+        index.setdefault(_key(item), item)
     return index
 
 
@@ -79,7 +86,11 @@ def card(item: dict[str, Any], research: dict[str, Any] | None, rank: int) -> di
     r_text, r_kind = RESEARCH_CHIP.get(state, (None, None)) if state else (None, None)
     label, fmt = item["niche_label"], item["format"]
     action: dict[str, Any]
-    if opportunity is None:
+    named = isinstance(label, str) and isinstance(fmt, str)
+    if not named:
+        label, fmt = "Nicho sin nombre", "long"
+        action = {"kind": "disabled", "label": "Sin nombre"}
+    elif opportunity is None:
         # Deliberate: without a score there is nothing to decide or research, even if an
         # older dossier exists; the dossier chip still shows its state.
         action = {"kind": "disabled", "label": "Falta puntaje"}
@@ -112,6 +123,7 @@ def card(item: dict[str, Any], research: dict[str, Any] | None, rank: int) -> di
     return {
         "rank": rank if opportunity is not None else "—",
         "label": label,
+        "href": detail_url(label, fmt) if named and valid_label(label) and fmt in FORMATS else None,
         "format": fmt,
         "format_text": "Shorts" if fmt == "shorts" else "Largo",
         "decision_text": d_text,
@@ -146,10 +158,7 @@ def list_view(
     ]
     counts = {fmt: sum(1 for item in items if item["format"] == fmt) for fmt in FORMATS}
     return {
-        "cards": [
-            card(item, index.get((item["niche_label"], item["format"])), rank)
-            for rank, item in enumerate(shown, 1)
-        ],
+        "cards": [card(item, index.get(_key(item)), rank) for rank, item in enumerate(shown, 1)],
         "total": len(items),
         "api_total": max(api_total or 0, len(items)),
         "truncated": (api_total or 0) > len(items),

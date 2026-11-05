@@ -13,6 +13,7 @@ from tests.web_helpers import (
     hypothesis_of,
     make_client,
     measurement,
+    pilot_item,
     research,
     subniche_card,
     subniche_item,
@@ -36,6 +37,24 @@ def api_with(card: dict[str, object], **extra: object) -> Api:
 
 def page(card: dict[str, object], **params: str) -> str:
     return str(make_client(api_with(card)).get(f"/subnichos/{SLUG}", params=params).text)
+
+
+PILOTS = ("GET", "/api/v1/pilots")
+REPORT_ID = "f0c90924-295a-4136-a0fb-d3fb2c3eacc6"
+
+
+def journey_of(text: str) -> list[tuple[str, str, str]]:
+    return re.findall(
+        r'journey__mark journey__mark--(\w+)".*?journey__name">([^<]*)</span>'
+        r'<span class="journey__detail">([^<]*)<',
+        text,
+        re.S,
+    )
+
+
+def with_pilots(card: dict[str, object], pilots: Route) -> str:
+    api = Api({CARD: (200, card), PILOTS: pilots, STATUS: (200, {"radar_paused": True})})
+    return str(make_client(api).get(f"/subnichos/{SLUG}").text)
 
 
 def start_form(text: str) -> re.Match[str] | None:
@@ -270,3 +289,155 @@ def test_posting_to_a_weird_slug_never_500s() -> None:
     for path in ("mi%20slug", "x" * 200):
         response = web.post(f"/subnichos/{path}/investigar", data={"csrf": token})
         assert response.status_code == 303 and response.headers["location"].endswith("?aviso=error")
+
+
+def test_the_card_shows_the_journey_after_the_header_chips() -> None:
+    text = with_pilots(subniche_card(), (200, {"items": []}))
+    steps = journey_of(text)
+    assert [s[:2] for s in steps] == [
+        ("done", "Candidato"),
+        ("done", "Decisión"),
+        ("done", "Listo para investigar"),
+        ("now", "Investigación de flujo"),
+        ("pending", "Informe"),
+        ("pending", "Piloto"),
+    ]
+    assert steps[1][2] == "Aprobada: activa" and steps[2][2] == "Medido el 31/10/2026"
+    assert steps[3][2] == "Falta iniciarla (abajo)" and steps[5][2] == "Autorizas y se produce"
+    assert text.index('class="tags"') < text.index("Recorrido hasta el piloto")
+    assert text.index("Recorrido hasta el piloto") < text.index("Medimos 29 canales")
+
+
+def test_an_open_pilot_of_the_subniche_changes_the_last_step() -> None:
+    mine = pilot_item(niche_label=f"subniche:{SLUG}", format="long", status="en_ejecucion")
+    other = pilot_item("pil_x", niche_label="subniche:otro", format="long")
+    wrong_format = pilot_item("pil_y", niche_label=f"subniche:{SLUG}", format="shorts")
+    items = {"items": [other, wrong_format, mine]}
+    text = with_pilots(subniche_card(research=research("listo")), (200, items))
+    assert journey_of(text)[-1] == ("now", "Piloto", "Piloto en ejecución")
+    closed = pilot_item(niche_label=f"subniche:{SLUG}", status="cerrado")
+    text = with_pilots(subniche_card(research=research("listo")), (200, {"items": [closed]}))
+    assert journey_of(text)[-1] == ("now", "Piloto", "Decide si lo lanzas")
+
+
+def test_the_pilots_are_read_with_a_limit() -> None:
+    api = Api({CARD: (200, subniche_card()), PILOTS: (200, {"items": []}), STATUS: (200, {})})
+    make_client(api).get(f"/subnichos/{SLUG}")
+    calls = [c for c in api.calls if c.url.path == "/api/v1/pilots"]
+    assert [c.url.params["limit"] for c in calls] == ["100"]
+
+
+def test_a_failing_pilot_read_still_paints_the_card_with_a_notice() -> None:
+    for pilots in ((500, {"detail": "x"}), (200, {"items": "roto"}), (200, [1]), (200, {})):
+        text = with_pilots(subniche_card(), pilots)
+        assert "No se pudo leer el estado del piloto" in text, pilots
+        assert "Medimos 29 canales" in text and "Qué encontramos" in text
+
+
+def test_the_decision_card_is_read_only_with_the_current_state_marked() -> None:
+    expected = {
+        "active": "Activa",
+        "proposed": "Propuesta",
+        "paused": "Pausada",
+        "archived": "Archivada",
+    }
+    for status, name in expected.items():
+        item = subniche_item(SLUG, status=status)
+        text = page(subniche_card(hypothesis=hypothesis_of(item)))
+        block = text.split("Decisión de la hipótesis")[1].split("</section>")[0]
+        assert re.findall(r"<span[^>]*pill[^>]*>([^<]+)</span>", block) == [
+            "Propuesta",
+            "Activa",
+            "Pausada",
+            "Archivada",
+        ]
+        assert re.findall(r'<span class="pill pill--on"[^>]*>([^<]+)</span>', block) == [name]
+        assert "<button" not in block and "<form" not in block and "<input" not in block
+        assert (
+            "Activa: se mide sola y se puede investigar. Pausada: deja de medirse. "
+            "Archivada: se descarta. Solo una hipótesis activa y con al menos una medición "
+            "se puede investigar." in block
+        )
+        assert "Aprobar, pausar o archivar se hará desde aquí cuando esté disponible." in block
+
+
+def test_a_paused_or_archived_subniche_follows_the_journey_rulings() -> None:
+    paused = subniche_item(SLUG, status="paused")
+    steps = journey_of(page(subniche_card(hypothesis=hypothesis_of(paused))))
+    assert steps[1] == ("done", "Decisión", "Pausada")
+    assert steps[2] == ("now", "Listo para investigar", "Reanúdala para medirla")
+    archived = subniche_item(SLUG, status="archived")
+    steps = journey_of(page(subniche_card(hypothesis=hypothesis_of(archived))))
+    assert steps[1] == ("now", "Decisión", "Archivada: se descarta")
+
+
+def test_a_ready_dossier_links_to_the_report_and_drops_the_obsolete_note() -> None:
+    text = page(subniche_card(research=research("listo")))
+    assert f'<a class="btn btn--secondary" href="/informes/{REPORT_ID}">Ver dossier</a>' in text
+    assert "siguiente corte" not in text
+    assert "<button" not in text.split("Investigación de flujo")[-1]
+
+
+def test_a_ready_dossier_with_a_bad_id_has_no_link() -> None:
+    for bad in ("../x", "javascript:1", REPORT_ID + "\n", None):
+        text = page(subniche_card(research=research("listo", id=bad)))
+        assert "Ver dossier" not in text and "siguiente corte" not in text, bad
+        assert '<p class="caption">El informe no está disponible.</p>' in text, bad
+        assert "javascript:" not in text
+
+
+def test_the_footer_back_link_is_gone() -> None:
+    assert "Volver a Subnichos" not in page(subniche_card())
+
+
+def test_broken_shapes_never_cause_a_500() -> None:
+    for over in (
+        {"research": "roto"},
+        {"research": {"status": ["x"], "id": 3}},
+        {"measurement": {"measured_at": "no-fecha"}},
+    ):
+        api = Api(
+            {
+                CARD: (200, subniche_card(**over)),
+                PILOTS: (200, {"items": [None, 3]}),
+                STATUS: (200, {}),
+            }
+        )
+        response = make_client(api).get(f"/subnichos/{SLUG}")
+        assert response.status_code in (200, 503), over
+
+
+def test_a_non_string_hypothesis_status_is_a_shape_error() -> None:
+    broken = {**hypothesis_of(subniche_item(SLUG)), "status": ["x"]}
+    api = Api(
+        {
+            CARD: (200, subniche_card(hypothesis=broken)),
+            PILOTS: (200, {"items": []}),
+            STATUS: (200, {}),
+        }
+    )
+    assert make_client(api).get(f"/subnichos/{SLUG}").status_code == 503
+
+
+def test_a_shorts_subniche_crosses_only_shorts_pilots() -> None:
+    item = subniche_item(SLUG, format="shorts")
+    card = subniche_card(hypothesis=hypothesis_of(item), research=research("listo"))
+    short = pilot_item(
+        "pil_s", niche_label=f"subniche:{SLUG}", format="shorts", status="en_ejecucion"
+    )
+    long = pilot_item("pil_l", niche_label=f"subniche:{SLUG}", format="long", status="entregado")
+    text = with_pilots(card, (200, {"items": [long, short]}))
+    assert journey_of(text)[-1] == ("now", "Piloto", "Piloto en ejecución")
+    text = with_pilots(card, (200, {"items": [long]}))
+    assert journey_of(text)[-1] == ("now", "Piloto", "Decide si lo lanzas")
+
+
+def test_hostile_pilot_text_is_escaped_in_the_journey() -> None:
+    mine = pilot_item(niche_label=f"subniche:{SLUG}", format="long", status=HOSTILE)
+    text = with_pilots(subniche_card(), (200, {"items": [mine]}))
+    assert "<script>alert(1)</script>" not in text
+
+
+def test_the_card_has_a_back_link_to_the_subniche_list() -> None:
+    text = page(subniche_card())
+    assert re.search(r'<a class="backlink" href="/subnichos">‹ Subnichos</a>', text)

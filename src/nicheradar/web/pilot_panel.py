@@ -32,8 +32,8 @@ from nicheradar.web.pilots_view import (
 from nicheradar.web.research import LANGUAGE_NAMES
 
 TABS = ("resumen", "preparacion", "videos", "reglas", "historial")
-# Calibración sits after Videos and only appears for a pilot whose dossier is a v3.
-TAB_ORDER = ("resumen", "preparacion", "videos", "calibracion", "reglas", "historial")
+# Calibración sits after Preparación (as in the design); only a pilot with a dossier v3 has it.
+TAB_ORDER = ("resumen", "preparacion", "calibracion", "videos", "reglas", "historial")
 TAB_LABELS = {
     "resumen": "Resumen",
     "preparacion": "Preparación",
@@ -52,6 +52,29 @@ STATES_LINE = (
     "Decisión pendiente",
     "Cerrado",
 )
+# The line of a pilot whose calibration can be read: only derived from the API status and from
+# whether the streak passes (``passes``); a status the API does not have is never invented.
+CAL_STATES = (
+    "autorizado",
+    "entregado",
+    "preparado",
+    "en calibración",
+    "pasa a régimen",
+    "decisión pendiente",
+)
+CAL_CURRENT = {"autorizado": 0, "entregado": 2, "en_ejecucion": 3, "decision_pendiente": 5}
+CAL_PASSES_STEP = 4
+DELIVERED_TITLE = "Entregado: el canal se está preparando"
+CALIBRATION_CHIP = "En calibración"
+RULE_PROGRESS_TEXT = {
+    "cumple": "cumple",
+    "no_cumple": "no cumple",
+    "pendiente": "aún no aplica",
+    "sin_datos_suficientes": "sin datos",
+    "revision_manual": "la juzgas tú",
+    "no_evaluable": "la juzgas tú",
+}
+MEASURED_RULE = ("cumple", "no_cumple")
 # The API status that marks each step; "Entregado" is a milestone passed on the way to
 # "Preparando" (status ``entregado``), so it is never the current step by itself.
 CURRENT_STEP = {
@@ -183,6 +206,26 @@ def _states(status: str) -> list[dict[str, str]]:
     return rows
 
 
+def _calibration_states(
+    status: str, passes: bool, lower_bound: bool = False
+) -> list[dict[str, str]] | None:
+    current = CAL_CURRENT.get(status)
+    if current is None:
+        return None
+    if status == "en_ejecucion" and passes:
+        current = CAL_PASSES_STEP
+    rows = []
+    for index, label in enumerate(CAL_STATES):
+        state = "current" if index == current else "done" if index < current else "todo"
+        if index == CAL_PASSES_STEP and lower_bound:
+            label = f"{label} (posible)"
+        row = {"label": label, "state": state}
+        if status == "entregado" and index == current:
+            row["title"] = DELIVERED_TITLE
+        rows.append(row)
+    return rows
+
+
 def _rules_source(detail: dict[str, Any]) -> list[dict[str, Any]]:
     """Evaluated rules; before the first evaluation, the package's own rules (status unknown)."""
     evaluated = [
@@ -234,7 +277,18 @@ def _rules_summary(detail: dict[str, Any]) -> dict[str, Any]:
             counts[status] = counts.get(status, 0) + 1
     parts = [f"{n} {RULE_COUNT_TEXT[k]}" for k, n in counts.items()]
     close_after = _int(_dict(detail.get("evaluation")).get("close_after"), 1, 100)
+    evaluated = [r for r in source if isinstance(r.get("status"), str)][:LIST_CAP]
+    progress = [
+        {
+            "text": _str(r.get("text")) or "Regla sin texto",
+            "progress": RULE_PROGRESS_TEXT.get(str(r.get("status")), "sin evaluar"),
+        }
+        for r in evaluated
+    ]
+    measured = sum(1 for r in evaluated if r.get("status") in MEASURED_RULE)
     return {
+        "progress": progress,
+        "measured_text": f"{measured} de {len(evaluated)} medidos" if evaluated else None,
         "total": _plural(len(source), "regla", "reglas"),
         "counts": " · ".join(parts),
         "close_after": close_after,
@@ -360,8 +414,23 @@ def _cancel_reason(detail: dict[str, Any]) -> str:
     return ""
 
 
+def _calibration_state_text(cal: dict[str, Any], now: datetime) -> str:
+    published = cal.get("published")
+    count = published if isinstance(published, int) else 0
+    progress = f"{count} de {cal.get('planned')} videos de calibración publicados"
+    first = cal.get("first_published")
+    if isinstance(first, datetime):
+        day = max(int((now - first).total_seconds() // 86400), 0) + 1
+        return f"Día {day} desde el primer video · {progress}"
+    return progress
+
+
 def _summary(
-    detail: dict[str, Any], now: datetime, timezone: str, pid: str | None
+    detail: dict[str, Any],
+    now: datetime,
+    timezone: str,
+    pid: str | None,
+    cal: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     status = _status(detail)
     package = _dict(detail.get("package"))
@@ -375,6 +444,9 @@ def _summary(
         state_text = f"Día {day} · {progress}"
     else:
         state_text = "Todavía sin reportes del canal"
+    ready = cal is not None and not cal.get("failed") and status in CAL_CURRENT
+    if cal is not None and ready:
+        state_text = _calibration_state_text(cal, now)
     found = [{**b, "owner": OWNER.get(b["kind"], "Tú")} for b in blockers(detail, now, timezone)]
     proposal = _dict(detail.get("proposal"))
     action = proposal.get("action")
@@ -409,6 +481,8 @@ def _summary(
     closed_at = _moment(detail.get("closed_at"))
     cancel_reason = _cancel_reason(detail) if status == "cancelado" else ""
     return {
+        "calibration": cal if ready else None,
+        "calibration_failed": cal.get("failed") if cal is not None else None,
         "state_text": state_text,
         "closed_text": _day(closed_at, timezone),
         "close_reason": _str(detail.get("close_reason")),
@@ -451,6 +525,14 @@ def panel_view(
         tab = "resumen"
     status = _status(detail)
     chip_text, chip_kind = STATUS_CHIP.get(status, (status or "Estado desconocido", "neutral"))
+    cal = _calibration_view(dossier, videos, now, timezone, status) if has_calibration else None
+    cal_states = (
+        _calibration_states(status, bool(cal.get("passes")), bool(cal.get("lower_bound")))
+        if cal and not cal["failed"]
+        else None
+    )
+    if cal_states and status == "en_ejecucion":
+        chip_text = CALIBRATION_CHIP
     raw_id = detail.get("pilot_id")
     pid = raw_id if isinstance(raw_id, str) and PILOT_RE.fullmatch(raw_id) else None
     language = _str(detail.get("language"))
@@ -464,7 +546,7 @@ def panel_view(
         "format_text": FORMATS.get(_str(detail.get("format")), "—"),
         "language_text": LANGUAGE_NAMES.get(language, language) if language else None,
         "channel_name": _str(detail.get("target_channel")) or None,
-        "states": _states(status),
+        "states": cal_states or _states(status),
         "tabs": [
             {
                 "key": key,
@@ -477,7 +559,7 @@ def panel_view(
         ],
     }
     if tab == "resumen":
-        view["summary"] = _summary(detail, now, timezone, pid)
+        view["summary"] = _summary(detail, now, timezone, pid, cal)
     elif tab == "preparacion":
         view["prep"] = prep_steps(detail, now, timezone)
     elif tab == "videos":
@@ -488,7 +570,7 @@ def panel_view(
             "capped": videos is not None and len(videos) > LIST_CAP,
         }
     elif tab == "calibracion":
-        view["calibration"] = _calibration_view(dossier, videos, now, timezone, status)
+        view["calibration"] = cal
     elif tab == "reglas":
         view["rules"] = {"rows": rule_rows(detail), "capped": len(_rules_source(detail)) > LIST_CAP}
     else:

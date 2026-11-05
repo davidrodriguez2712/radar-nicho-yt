@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% from "nichos/_decision.html" import decision_card %}
+{% block title %}{{ title }} · NicheRadar{% endblock %}
+{% block content %}
+<p class="caption"><a class="backlink" href="/nichos">‹ Nichos</a></p>
+<h1 class="h1 h1--md">{{ title }}</h1>
+{{ decision_card(v.form, etiqueta, formato, volver, csrf_token) }}
+{% endblock %}

@@ -16,7 +16,7 @@ from nicheradar.flow_research.gates import (
     calibration_reasons,
     minutes_reasons,
 )
-from nicheradar.web.format import compact, local_datetime, money_amount
+from nicheradar.web.format import compact, local_datetime, money_amount, parse_utc, zone
 from nicheradar.web.niches import CONFIDENCE, FORMATS
 from nicheradar.web.research import LANGUAGE_NAMES
 
@@ -53,6 +53,19 @@ STATUS_PAGES = {
     ),
 }
 OLD_NOTICE = "Dossier anterior: no separa calibración de régimen."
+INCOMPLETE_NOTICE = (
+    "Este informe no trae la calibración completa: solo se muestran los minutos de cuando "
+    "ya está en marcha."
+)
+NO_DATA = "sin dato"
+MAX_STEP_MINUTES = 10_000  # the contract limit of one step
+MAX_STEPS = 15  # the contract limit of calibration steps
+MAX_VIDEOS = 12
+MAX_SETUP_HOURS = 1000
+STEPS_CUT_NOTICE = f"Se muestran los primeros {MAX_STEPS} pasos."
+BAR_COLOURS = 5  # classes bar__seg--c0..c4, in the order of the legend
+BAR_UNITS = 20  # a bar is cut in steps of 5 % (classes bar--p0..bar--p100)
+SCALE_NOTE = "mismos colores en las dos barras, a la misma escala"
 
 
 def safe_url(url: object) -> str | None:
@@ -71,6 +84,14 @@ def subject_label(niche_label: str) -> tuple[str, bool]:
     if niche_label.startswith(prefix):
         return niche_label[len(prefix) :].replace("_", " ").title(), True
     return niche_label, False
+
+
+def is_subniche_origin(niche_label: str, evidence: object) -> bool:
+    """One origin for the whole page: `evidence.source`, else the label prefix."""
+    source = evidence.get("source") if isinstance(evidence, dict) else None
+    if isinstance(source, str) and source in ("niche", "subniche"):
+        return source == "subniche"
+    return niche_label.startswith("subniche:")
 
 
 def notice(aviso: str, pilot: str) -> tuple[str, str] | None:
@@ -100,9 +121,13 @@ def _texts(value: object) -> list[str]:
 
 
 def _number(value: object) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, int | float):
         return None
-    return float(value)
+    try:
+        number = float(value)
+    except OverflowError:  # an int beyond the float range
+        return None
+    return number if math.isfinite(number) else None
 
 
 def _hours(value: float) -> str:
@@ -113,8 +138,94 @@ def _money(value: object) -> str:
     return money_amount(value)
 
 
+def _step_minutes(value: object) -> float | None:
+    """Minutes of one step; null, non-numeric, non-finite or negative values are no data."""
+    number = _number(value)
+    return number if number is not None and 0 <= number <= MAX_STEP_MINUTES else None
+
+
 def _minutes(items: list[dict[str, Any]], key: str) -> int:
-    return round(sum(n for item in items if (n := _number(item.get(key))) is not None))
+    return round(sum(n for item in items if (n := _step_minutes(item.get(key))) is not None))
+
+
+def _by_step(items: list[dict[str, Any]], name_key: str, key: str) -> dict[str, float | None]:
+    """Minutes per step name; a repeated name adds up and a step without data stays None."""
+    result: dict[str, float | None] = {}
+    for index, item in enumerate(items):
+        name = item.get(name_key)
+        name = name.strip() if isinstance(name, str) and name.strip() else f"Paso {index + 1}"
+        minutes = _step_minutes(item.get(key))
+        previous = result.get(name)
+        result[name] = minutes if previous is None else previous + (minutes or 0)
+    return result
+
+
+def _total(minutes: dict[str, float | None]) -> float | None:
+    known = [m for m in minutes.values() if m is not None]
+    return sum(known) if known else None
+
+
+def _units(minutes: dict[str, float | None], scale: float) -> dict[str, int]:
+    """Width of each step in 5 % units, on a scale shared by both bars (largest remainder).
+
+    A step with minutes always shows at least one unit; a bar without data stays empty.
+    """
+    total = _total(minutes)
+    if not total or scale <= 0:
+        return {name: 0 for name in minutes}
+    exact = {name: (m or 0) / scale * BAR_UNITS for name, m in minutes.items()}
+    units = {name: int(value) for name, value in exact.items()}
+    target = round(sum(exact.values()))
+    for name in sorted(exact, key=lambda n: exact[n] - units[n], reverse=True):
+        if sum(units.values()) >= target:
+            break
+        units[name] += 1
+    positive = [name for name, m in minutes.items() if m]
+    for name in positive:
+        if units[name] == 0:
+            units[name] = 1
+    while sum(units.values()) > BAR_UNITS:
+        widest = max(units, key=lambda n: units[n])
+        if units[widest] <= 1:
+            break
+        units[widest] -= 1
+    return units
+
+
+def _bar(names: list[str], minutes: dict[str, float | None], scale: float) -> list[dict[str, Any]]:
+    units = _units(minutes, scale)
+    return [
+        {
+            "name": name,
+            "colour": f"c{index % BAR_COLOURS}",
+            "width": units.get(name, 0) * 5,
+            "minutes": minutes.get(name),
+        }
+        for index, name in enumerate(names)
+    ]
+
+
+def _bar_text(segments: list[dict[str, Any]]) -> str:
+    parts = [
+        f"{seg['name']} {round(seg['minutes'])} min"
+        for seg in segments
+        if seg["minutes"] is not None
+    ]
+    return ", ".join(parts) if parts else NO_DATA
+
+
+def _local_date(value: object, timezone: str) -> str | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return parse_utc(value).astimezone(zone(timezone)).strftime("%d/%m/%Y")
+    except (ValueError, OverflowError):
+        return None
+
+
+def _hypothesis_name(evidence: dict[str, Any]) -> str | None:
+    name = _dict(evidence.get("subniche")).get("label")
+    return name.strip() if isinstance(name, str) and name.strip() else None
 
 
 def _gates(evidence: dict[str, Any]) -> Gates:
@@ -131,7 +242,17 @@ def _gates(evidence: dict[str, Any]) -> Gates:
 def _calibration(dossier: dict[str, Any]) -> dict[str, Any] | None:
     """Calibration numbers of a dossier-v3, or None for older (or incomplete) dossiers."""
     block = _dict(dossier.get("calibration"))
-    videos, setup = _number(block.get("videos")), _number(block.get("setup_hours"))
+    raw_videos = block.get("videos")
+    videos = (
+        raw_videos
+        if isinstance(raw_videos, int)
+        and not isinstance(raw_videos, bool)
+        and 1 <= raw_videos <= MAX_VIDEOS
+        else None
+    )
+    setup = _number(block.get("setup_hours"))
+    if setup is not None and not 0 <= setup <= MAX_SETUP_HOURS:
+        setup = None
     steps = _items(block.get("minutes_by_step"))
     if (
         dossier.get("schema_version") != "dossier-v3"
@@ -140,29 +261,105 @@ def _calibration(dossier: dict[str, Any]) -> dict[str, Any] | None:
         or not steps
     ):
         return None
-    per_video = _minutes(steps, "minutes_per_video")
+    by_step = _by_step(steps, "step", "minutes_per_video")
+    per_video = _total(by_step)
+    count = videos
     return {
-        "videos": round(videos),
-        "per_video": per_video,
+        "videos": count,
+        "by_step": by_step,
+        "per_video": None if per_video is None else round(per_video),
         "setup": setup,
-        "total": calibration_total_hours(setup, round(videos), per_video),
+        "total": None
+        if per_video is None
+        else calibration_total_hours(setup, count, round(per_video)),
         "statement": _dict(block.get("exit_criterion")).get("statement"),
     }
 
 
-def _firm(evidence: dict[str, Any], timezone: str) -> dict[str, Any] | None:
+def _time_card(calibration: dict[str, Any], flow: list[dict[str, Any]]) -> dict[str, Any]:
+    """Both bars of the time card: same steps, same colours, one scale."""
+    regime = _by_step(flow, "name", "human_minutes_per_video")
+    all_names = list(regime) + [name for name in calibration["by_step"] if name not in regime]
+    names = all_names[:MAX_STEPS]
+    scale = max(_total(regime) or 0, _total(calibration["by_step"]) or 0)
+    per_video, videos = calibration["per_video"], calibration["videos"]
+    regime_total = _total(regime)
+    cal_bar = _bar(names, calibration["by_step"], scale)
+    regime_bar = _bar(names, regime, scale)
+    return {
+        "legend": [
+            {"name": seg["name"], "colour": seg["colour"], "number": number}
+            for number, seg in enumerate(cal_bar, start=1)
+        ],
+        "cut_notice": STEPS_CUT_NOTICE if len(all_names) > MAX_STEPS else None,
+        "scale_note": SCALE_NOTE,
+        "calibration": {
+            "title": f"Primeros {videos} videos (calibración)",
+            "segments": cal_bar,
+            "aria": _bar_text(cal_bar),
+            "rows": [
+                ("Tu tiempo por video", NO_DATA if per_video is None else f"{per_video} min"),
+                (
+                    f"Total de los {videos} videos",
+                    NO_DATA
+                    if per_video is None
+                    else f"{_hours(round(per_video * videos / 60, 2))} h",
+                ),
+                ("Preparación del canal (una vez)", f"{_hours(calibration['setup'])} h"),
+                (
+                    "Horas de calibración",
+                    NO_DATA
+                    if calibration["total"] is None
+                    else f"{_hours(calibration['total'])} h",
+                ),
+            ],
+        },
+        "regime": {
+            "title": "Cuando ya está en marcha (régimen)",
+            "segments": regime_bar,
+            "aria": _bar_text(regime_bar),
+            "rows": [
+                (
+                    "Tu tiempo por video",
+                    NO_DATA if regime_total is None else f"{round(regime_total)} min",
+                )
+            ],
+        },
+    }
+
+
+def _time_lines(time: dict[str, Any]) -> list[tuple[str, str]]:
+    """The short list of M12 «Tu tiempo»: same labels and numbers as the bars, without them."""
+    calibration, regime = time["calibration"], time["regime"]
+    per_video = calibration["rows"][0][1]
+    setup = calibration["rows"][2][1]
+    steady = regime["rows"][0][1]
+    return [
+        (calibration["title"], per_video if per_video == NO_DATA else f"{per_video} por video"),
+        ("Preparación del canal (una vez)", setup),
+        (regime["title"], steady if steady == NO_DATA else f"{steady} por video"),
+    ]
+
+
+def _firm(evidence: dict[str, Any], timezone: str, *, subniche: bool) -> dict[str, Any] | None:
     confidence = CONFIDENCE.get(str(evidence.get("confidence")))
     rows: list[tuple[str, str]] = []
     if confidence:
         rows.append(("Confianza de la medición", confidence))
-    subniche = evidence.get("source") == "subniche"
+    count_line: str | None = None
     if subniche:
-        measured = _dict(evidence.get("measurement")).get("measured_at")
-        try:
-            if isinstance(measured, str):
+        measurement = _dict(evidence.get("measurement"))
+        measured = measurement.get("measured_at")
+        included = measurement.get("included")
+        day = _local_date(measured, timezone)
+        if isinstance(included, int) and not isinstance(included, bool) and included >= 0:
+            noun = "canal medido" if included == 1 else "canales medidos"
+            count_line = f"{included} {noun}" + (f" el {day}" if day else "")
+        elif isinstance(measured, str):
+            try:
                 rows.append(("Medido el", local_datetime(measured, timezone)))
-        except ValueError:
-            pass
+            except (ValueError, OverflowError):
+                pass
     else:
         mix = [
             f"{LANGUAGE_NAMES.get(code, code) if code != 'unknown' else 'Sin dato'} {round(share)}%"
@@ -172,7 +369,9 @@ def _firm(evidence: dict[str, Any], timezone: str) -> dict[str, Any] | None:
         ]
         if mix:
             rows.append(("Idioma del mercado", " · ".join(mix)))
-    return {"rows": rows, "subniche": subniche} if rows else None
+    if not rows and count_line is None:
+        return None
+    return {"rows": rows, "subniche": subniche, "count_line": count_line}
 
 
 def _warnings(dossier: dict[str, Any]) -> list[tuple[str, list[str]]]:
@@ -193,7 +392,9 @@ def report_view(detail: dict[str, Any], timezone: str) -> dict[str, Any]:
         return {"missing": True}
     evidence = _dict(detail.get("evidence"))
     label = str(detail.get("niche_label") or "")
-    subject, is_subniche = subject_label(label)
+    subject = subject_label(label)[0]
+    is_subniche = is_subniche_origin(label, evidence)
+    subject = (_hypothesis_name(evidence) if is_subniche else None) or subject
     verdict = _dict(dossier.get("verdict"))
     headline, kind = RECOMMENDATION.get(
         str(verdict.get("recommendation")), ("sin veredicto", "neutral")
@@ -209,21 +410,16 @@ def report_view(detail: dict[str, Any], timezone: str) -> dict[str, Any]:
     def gate(text: str, ok: bool) -> None:
         gate_rows.append((text, "pasa" if ok else "no pasa", "green" if ok else "rose"))
 
-    if calibration:
-        time_rows += [
-            (
-                f"Primeros {calibration['videos']} videos (calibración)",
-                f"{calibration['per_video']} min por video",
-            ),
-            ("Preparación inicial", f"{_hours(calibration['setup'])} h"),
-            ("Horas de calibración en total", f"{_hours(calibration['total'])} h"),
-        ]
-    time_rows.append(("Cuando ya está en marcha (régimen)", f"{regime} min por video"))
+    time = _time_card(calibration, flow) if calibration else None
+    if not calibration:
+        time_rows.append(("Cuando ya está en marcha (régimen)", f"{regime} min por video"))
     gate(
         f"Minutos por video, ya en marcha: {regime} de {gates.max_human_minutes:g} permitidos",
         not minutes_reasons(regime, gates),
     )
-    if calibration:
+    if calibration and calibration["total"] is None:
+        gate_rows.append(("Horas de calibración: sin dato", NO_DATA, "neutral"))
+    elif calibration:
         gate(
             f"Horas de calibración: {_hours(calibration['total'])} de "
             f"{_hours(gates.max_calibration_hours)} permitidas",
@@ -256,8 +452,15 @@ def report_view(detail: dict[str, Any], timezone: str) -> dict[str, Any]:
         "headline": headline,
         "thesis": verdict.get("thesis") if isinstance(verdict.get("thesis"), str) else "",
         "confidence": CONFIDENCE_DOSSIER.get(str(verdict.get("confidence"))),
-        "old_notice": None if calibration else OLD_NOTICE,
-        "firm": _firm(evidence, timezone),
+        "old_notice": None
+        if calibration
+        else INCOMPLETE_NOTICE
+        if dossier.get("schema_version") == "dossier-v3"
+        else OLD_NOTICE,
+        "firm": _firm(evidence, timezone, subniche=is_subniche),
+        "time": time,
+        "time_lines": _time_lines(time) if time else None,
+        "subject": subject,
         "time_rows": time_rows,
         "exit": None
         if not calibration
@@ -333,11 +536,16 @@ def status_view(detail: dict[str, Any]) -> dict[str, Any]:
             if isinstance(message, str) and message:
                 problems.append(f"{path}: {message}" if isinstance(path, str) and path else message)
     label = str(detail.get("niche_label") or "")
+    subject = subject_label(label)[0]
+    is_subniche = is_subniche_origin(label, detail.get("evidence"))
     return {
         "chip": chip,
         "kind": kind,
         "text": text,
         "problems": problems,
-        "title": subject_label(label)[0],
+        "title": (_hypothesis_name(_dict(detail.get("evidence"))) if is_subniche else None)
+        or subject,
+        "back_href": "/subnichos" if is_subniche else "/nichos",
+        "back_text": "← Volver a Subnichos" if is_subniche else "← Volver a Nichos",
         "format_text": FORMATS.get(str(detail.get("format")), ""),
     }

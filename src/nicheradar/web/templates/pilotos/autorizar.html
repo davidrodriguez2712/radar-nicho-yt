@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "informes/_resumen.html" import tiempo, compuertas %}
+{% from "informes/_resumen.html" import tu_tiempo, compuertas %}
 {% block title %}Autorizar piloto · NicheRadar{% endblock %}
 {% macro field_error(name) -%}
 {%- if errors.get(name) %}<span class="caption" id="error-{{ name }}" role="alert">{{ errors[name] }}</span>{% endif -%}
@@ -12,21 +12,25 @@
 {% if busy_warning %}<div class="note note--amber" role="status">{{ busy_warning }}</div>{% endif %}
 <section class="card" id="nicho">
   <h2 class="h2">Nicho</h2>
-  <p>{{ title_label }} · {{ format_text }}</p>
+  <p>{{ title_label }} · {{ "Subnicho" if is_subniche else "Nicho" }} · {{ format_text }}</p>
   <p class="caption">Se toma del informe listo.</p>
 </section>
-{% if subniche %}
-<section class="card" id="evidencia-subnicho">
-  <h2 class="h2">Evidencia de un subnicho</h2>
-  <p>Viene de la medición de YouTube{% if subniche.date %} del {{ subniche.date }}{% if subniche.ago is not none %} (hace {{ subniche.ago }} días){% endif %}{% endif %}{% if subniche.confidence %}, con confianza {{ subniche.confidence }}{% endif %}.
-  No hay puntajes de Opportunity ni de automatización, así que esa compuerta no aplica. Las de tiempo y derechos sí.</p>
+{% if evidence %}
+<section class="card" id="evidencia">
+  <h2 class="h2">Evidencia</h2>
+  {% if evidence.source == "niche" %}
+  <p>Nicho de mercado: vienen las fichas verificadas, y se aplican las compuertas de Opportunity y de automatización, además de las de tiempo y derechos.</p>
+  {% else %}
+  <p>Subnicho: viene de la medición de YouTube{% if evidence.date %} del {{ evidence.date }}{% if evidence.ago is not none %} (hace {{ evidence.ago }} días){% endif %}{% endif %}{% if evidence.confidence %}, con confianza {{ evidence.confidence }}{% endif %}; no hay puntajes, así que esa compuerta no aplica (sí las de tiempo y derechos).</p>
+  {% endif %}
 </section>
 {% endif %}
 <section class="card" id="idioma">
   <h2 class="h2">Idioma (fijado en la investigación)</h2>
   <p>{{ language }}</p>
+  <p class="caption">{% if is_subniche %}Es el idioma de la hipótesis. {% endif %}Para otro idioma, una investigación nueva.</p>
 </section>
-{{ tiempo(v) }}
+{{ tu_tiempo(v) }}
 {{ compuertas(v) }}
 <form class="stack" method="post" action="/pilotos/autorizar" id="autorizar">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
@@ -68,12 +72,14 @@
     <p class="caption">Cifras del informe; no incluyen tu tiempo y no cambian con el tope de videos.</p>
   </section>
   <section class="card" id="reglas">
-    <h2 class="h2">Reglas de parada</h2>
-    <p class="muted">Se usan las reglas por defecto del formato: retención, exploración e ingresos. Las que se pueden medir se comparan solas.</p>
-  </section>
-  {% if needs_no_go %}<label class="note note--amber"><input type="checkbox" name="accept_no_go" value="1"{% if accepted[0] %} checked{% endif %}> Acepto lanzarlo aunque el informe recomienda no avanzar.</label>{% endif %}
+  <h2 class="h2">Reglas de parada</h2>
+  <p class="muted">Se usan las reglas por defecto del formato. Aquí solo se leen: no se editan. Las que se pueden medir se comparan solas.</p>
+  <ul class="rules">{% for text, who in stop_rules %}<li class="rule"><span class="rule__text">{{ text }}</span> <span class="chip chip--neutral">{{ who }}</span></li>{% endfor %}</ul>
+</section>
+{% if needs_no_go %}<label class="note note--amber"><input type="checkbox" name="accept_no_go" value="1"{% if accepted[0] %} checked{% endif %}> Acepto lanzarlo aunque el informe recomienda no avanzar.</label>{% endif %}
   {% if needs_gate %}<label class="note note--amber"><input type="checkbox" name="accept_gate_failure" value="1"{% if accepted[1] %} checked{% endif %}> Acepto lanzarlo aunque no pasa una compuerta de selección.</label>{% endif %}
   <button class="btn btn--primary" type="submit">Autorizar piloto</button>
+  <p class="caption">Si una compuerta no se cumpliera, se pide aceptarlo de forma explícita y queda registrado en el piloto.</p>
   <a class="btn btn--secondary" href="/informes/{{ report_id }}">Cancelar</a>
 </form>
 {% endblock %}

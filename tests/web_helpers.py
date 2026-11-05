@@ -209,6 +209,80 @@ def niche_detail(
     }
 
 
+def market_listing(title: str = "Canal «Guerras al detalle»", **over: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "title": title,
+        "url": "https://marketplace.test/anuncio/1",
+        "channel_url": None,
+        "status": "active",
+        "category": "history",
+        "language": "en",
+        "price_usd": 18000.0,
+        "subscribers": 120000,
+        "income_monthly_usd": 1900.0,
+        "expense_monthly_usd": 300.0,
+        "first_seen_at": "2026-10-01T00:00:00Z",
+        "last_seen_at": "2026-11-03T00:00:00Z",
+        "verification": "verified",
+        "real_subscribers": 118000,
+        "seller_declared": True,
+    }
+    return base | over
+
+
+def niche_page(
+    label: str = "historia militar explicada", fmt: str = "long", **over: object
+) -> dict[str, object]:
+    """Full `GET /market/niches/{label}` payload as the detail page reads it."""
+    niche = niche_item(
+        label,
+        fmt,
+        opportunity={"version": "v1", "value": 72.0, "state": "scored", "components": {}},
+        automation={
+            "version": "v1",
+            "value": 64.0,
+            "components": {},
+            "policy_risk": {"mean": 0.1, "level": "bajo"},
+        },
+        confidence="alta",
+        metrics={
+            "n_listings": 24,
+            "n_active": 20,
+            "n_income": 18,
+            "income_median": 1350.0,
+            "multiple_median": 2.4,
+        },
+        rpm_mid=3.1,
+        rpm_state="calibrated",
+        decision={"decision": "tentativo", "note": None, "decided_at": "2026-11-02T00:00:00Z"},
+        trend=5.0,
+    )
+    base: dict[str, object] = {
+        "niche": niche,
+        "listings": [
+            market_listing(),
+            market_listing(
+                "Canal «Batallas olvidadas»",
+                status="disappeared",
+                price_usd=9500.0,
+                subscribers=60000,
+                income_monthly_usd=None,
+                expense_monthly_usd=None,
+                verification="mismatch",
+                real_subscribers=None,
+                url="https://marketplace.test/anuncio/2",
+            ),
+        ],
+        "language_mix": [
+            {"language": "en", "share_pct": 80.0},
+            {"language": "es", "share_pct": 15.0},
+            {"language": "unknown", "share_pct": 5.0},
+        ],
+        "history": [],
+    }
+    return base | over
+
+
 REPORT_ID = "f0c90924-295a-4136-a0fb-d3fb2c3eacc6"
 
 
@@ -235,7 +309,6 @@ def report_detail(
     """A flow-research order as the API returns it, with the frozen evidence and the dossier."""
     base: dict[str, Any] = flow_item(status) | {
         "evidence": {
-            "source": "niche",
             "confidence": "media",
             "language_mix": [
                 {"language": "en", "share_pct": 80.0},

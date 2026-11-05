@@ -253,7 +253,11 @@ def view(
     over = any(m is not None and m > limit for m in measures)
     passes = run >= calibration.consecutive
     regime = calibration.regime_minutes
+    stamps = [m for m in (_moment(v.get("published_at")) for v in items) if m is not None]
     return {
+        "published": len(items),
+        "planned": calibration.videos_planned,
+        "first_published": min(stamps) if stamps else None,
         "rows": rows,
         "capped": count > ROW_CAP,
         "streak": run,

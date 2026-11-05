@@ -12,6 +12,8 @@ from tests.web_helpers import (
     HOSTILE,
     Api,
     csrf_of,
+    dossier_v1,
+    dossier_v2,
     dossier_v3,
     make_client,
     pilot_item,
@@ -171,13 +173,13 @@ def test_the_form_shows_what_is_fixed_the_budget_and_the_time_summary() -> None:
     assert f'name="informe" value="{ID}"' in form
     assert "Idioma (fijado en la investigación)" in text and "Inglés" in block(text, "idioma")
     assert "Presupuesto del informe (tope: 10 videos)" in block(text, "presupuesto")
-    assert "Cuánto tarda cada video" in block(text, "tiempo")
+    assert "Tu tiempo" in block(text, "tiempo")
     assert "Minutos por video" in block(text, "compuertas")
     assert "Reglas de parada" in text
-    assert "Se usan las reglas por defecto del formato" in text
+    assert "Se usan las reglas por defecto del formato" in block(text, "reglas")
     assert "Cadencia" not in text and "Preparación (días)" not in text
     assert "Receta del método" not in text
-    assert "historia militar explicada" in block(text, "nicho") and "Largos" in block(text, "nicho")
+    assert "historia militar explicada · Nicho · Largo" in " ".join(block(text, "nicho").split())
     assert 'href="/informes/' + ID + '"' in text and ">Cancelar<" in text
     assert text.count(">Autorizar piloto<") == 1
 
@@ -204,7 +206,7 @@ def test_a_full_pilot_list_warns_that_older_pilots_may_be_hidden() -> None:
     assert "Puede haber pilotos más antiguos" not in few
 
 
-def test_a_subniche_report_shows_the_m12_evidence_block() -> None:
+def subniche_detail(**evidence: Any) -> dict[str, Any]:
     detail = report_detail(
         dossier=dossier_v3(niche_label="subniche:prehistoric_creatures"),
         niche_label="subniche:prehistoric_creatures",
@@ -212,19 +214,109 @@ def test_a_subniche_report_shows_the_m12_evidence_block() -> None:
     detail["evidence"]["source"] = "subniche"
     detail["evidence"]["measurement"] = {"measured_at": "2026-10-31T12:00:00Z"}
     detail["evidence"]["gate"] = {"max_human_minutes": 60, "max_calibration_hours": 40}
+    detail["evidence"].update(evidence)
+    return detail
+
+
+def test_a_subniche_report_shows_the_single_evidence_card_and_the_subniche_mark() -> None:
+    detail = subniche_detail(subniche={"label": "Prehistoric Creatures Real"})
     text = make_client(api_with(detail)).get(URL).text
-    assert "Prehistoric Creatures" in block(text, "nicho")
-    evidence = " ".join(block(text, "evidencia-subnicho").split())
-    assert "Evidencia de un subnicho" in evidence
-    assert "Viene de la medición de YouTube del 31/10/2026" in evidence
+    card = " ".join(block(text, "nicho").split())
+    assert "Prehistoric Creatures Real · Subnicho · Largo" in card
+    evidence = " ".join(block(text, "evidencia").split())
+    assert "Evidencia" in text and "Subnicho:" in evidence
+    assert "viene de la medición de YouTube del 31/10/2026" in evidence
     assert "con confianza Media" in evidence
     assert (
-        "No hay puntajes de Opportunity ni de automatización, así que esa compuerta no aplica."
-        in evidence
+        "no hay puntajes, así que esa compuerta no aplica (sí las de tiempo y derechos)" in evidence
     )
-    assert "Las de tiempo y derechos sí." in evidence
-    plain = make_client(api_with()).get(URL).text
-    assert "evidencia-subnicho" not in plain
+    assert "Opportunity" not in evidence
+    assert text.count('id="evidencia"') == 1 and "evidencia-subnicho" not in text
+
+
+def test_a_niche_report_shows_the_niche_branch_without_the_subniche_mark() -> None:
+    text = make_client(api_with()).get(URL).text
+    evidence = " ".join(block(text, "evidencia").split())
+    assert (
+        "vienen las fichas verificadas, y se aplican las compuertas de Opportunity y de "
+        "automatización, además de las de tiempo y derechos" in evidence
+    )
+    assert "medición de YouTube" not in evidence
+    assert "Subnicho" not in block(text, "nicho")
+
+
+def test_the_title_uses_the_real_subniche_name_and_falls_back_to_the_slug() -> None:
+    named = make_client(api_with(subniche_detail(subniche={"label": "Criaturas del Jurásico"})))
+    assert "Criaturas del Jurásico" in block(named.get(URL).text, "nicho")
+    slug = make_client(api_with(subniche_detail())).get(URL).text
+    assert "Prehistoric Creatures · Subnicho · Largo" in " ".join(block(slug, "nicho").split())
+
+
+def test_hostile_names_are_escaped_in_the_nicho_card() -> None:
+    text = make_client(api_with(subniche_detail(subniche={"label": HOSTILE}))).get(URL).text
+    assert HOSTILE not in text and ESCAPED in block(text, "nicho")
+
+
+def test_your_time_card_matches_the_report_labels_without_bars() -> None:
+    text = make_client(api_with()).get(URL).text
+    card = " ".join(block(text, "tiempo").split())
+    assert "Tu tiempo" in card and "(calibración)" in card
+    assert "Preparación del canal (una vez)" in card
+    assert "Cuando ya está en marcha (régimen)" in card
+    assert "min por video" in card and " h<" in block(text, "tiempo") + "<"
+    assert 'class="bar' not in block(text, "tiempo") and "legend" not in block(text, "tiempo")
+    assert "Cuánto tarda cada video" not in text
+
+
+@pytest.mark.parametrize("old", [dossier_v2, lambda: dossier_v1()])
+def test_old_dossiers_show_no_calibration_time_and_do_not_crash(old: Any) -> None:
+    web = make_client(api_with(report_detail(dossier=old())))
+    page = web.get(URL)
+    assert page.status_code == 200
+    assert "(calibración)" not in block(page.text, "tiempo")
+    assert "Cuando ya está en marcha (régimen)" in block(page.text, "tiempo")
+
+
+def test_the_default_stop_rules_are_shown_as_read_only_text_for_long() -> None:
+    text = make_client(api_with()).get(URL).text
+    rules = " ".join(block(text, "reglas").split())
+    assert "Retención ≥ 18 % en 3 de los primeros 10 videos" in rules
+    assert "Exploración ≥ 30 % al video 20" in rules
+    assert "Ingresos ≥ costos al mes 6" in rules
+    assert rules.count("se compara sola") == 3 and "la juzgas tú" in rules
+    assert "<input" not in block(text, "reglas")
+    assert "Receta" not in text and "faceless-storytelling" not in text
+
+
+def test_shorts_show_only_the_shorts_default_rules() -> None:
+    text = make_client(api_with(report_detail(dossier=dossier_v3(), format="shorts"))).get(URL).text
+    rules = " ".join(block(text, "reglas").split())
+    assert "Ingresos ≥ costos al mes 6" in rules
+    assert "Retención" not in rules and "Exploración" not in rules
+
+
+def test_the_post_body_is_unchanged_and_carries_neither_rules_nor_recipe() -> None:
+    bodies: list[dict[str, Any]] = []
+    api = api_with(extra={AUTH: recorder(bodies)})
+    web = make_client(api)
+    token = csrf_of(web.get(URL).text)
+    assert post(web, token, stop_rules="x", recipe="y", cadencia="3").status_code == 303
+    (body,) = bodies
+    assert "stop_rules" not in body and "recipe" not in body and "cadence" not in body
+    form = block(web.get(URL).text, "autorizar")
+    assert 'name="stop_rules"' not in form and 'name="recipe"' not in form
+
+
+def test_the_gate_acceptance_note_explains_the_explicit_acceptance() -> None:
+    text = make_client(api_with()).get(URL).text
+    assert "se pide aceptarlo de forma explícita y queda registrado en el piloto" in text
+
+
+def test_the_language_caption_explains_how_to_change_it() -> None:
+    text = make_client(api_with()).get(URL).text
+    assert "Para otro idioma, una investigación nueva." in block(text, "idioma")
+    sub = make_client(api_with(subniche_detail())).get(URL).text
+    assert "Es el idioma de la hipótesis." in block(sub, "idioma")
 
 
 def test_only_finished_reports_can_be_authorized_and_ids_are_validated() -> None:
@@ -496,3 +588,83 @@ def test_when_only_the_pilot_list_fails_the_form_still_opens_with_a_warning() ->
     page = make_client(api).get(URL)
     assert page.status_code == 200
     assert "No se pudo comprobar qué canales están ocupados" in page.text
+
+
+def test_a_real_niche_evidence_without_source_still_shows_the_niche_branch() -> None:
+    detail = report_detail(dossier=dossier_v3())
+    assert "source" not in detail["evidence"]
+    text = make_client(api_with(detail)).get(URL).text
+    assert text.count('id="evidencia"') == 1
+    assert "vienen las fichas verificadas" in " ".join(block(text, "evidencia").split())
+
+
+def test_the_origin_is_the_same_everywhere_even_with_incoherent_data() -> None:
+    # niche label + source=subniche: the mark, the evidence card and the report agree
+    detail = report_detail(dossier=dossier_v3())
+    detail["evidence"]["source"] = "subniche"
+    text = make_client(api_with(detail)).get(URL).text
+    card = " ".join(block(text, "nicho").split())
+    evidence = " ".join(block(text, "evidencia").split())
+    assert "Subnicho" in card and "Subnicho:" in evidence
+    # subniche label + source=niche: both say niche
+    other = report_detail(
+        dossier=dossier_v3(niche_label="subniche:prehistoric_creatures"),
+        niche_label="subniche:prehistoric_creatures",
+    )
+    other["evidence"]["source"] = "niche"
+    text = make_client(api_with(other)).get(URL).text
+    assert "Subnicho" not in block(text, "nicho")
+    assert "vienen las fichas verificadas" in " ".join(block(text, "evidencia").split())
+    # no source, subniche label: the prefix decides
+    bare = subniche_detail()
+    del bare["evidence"]["source"]
+    text = make_client(api_with(bare)).get(URL).text
+    assert "Subnicho" in block(text, "nicho") and "Subnicho:" in block(text, "evidencia")
+
+
+def test_the_gate_warning_covers_every_gate() -> None:
+    text = make_client(api_with()).get(URL).text
+    assert "Si una compuerta no se cumpliera" in text
+    assert "Si una compuerta de tiempo o derechos" not in text
+
+
+EXPECTED_RULE_TEXT = {
+    "pipeline_e2e": ("Un video publicado de punta a punta a la semana", "se compara sola"),
+    "avd_pct": ("Retención ≥", "se compara sola"),
+    "browse_share_pct": ("Exploración ≥", "se compara sola"),
+    "revenue_vs_cost": ("Ingresos ≥ costos al mes", "la juzgas tú"),
+}
+
+
+@pytest.mark.parametrize("fmt", ["long", "shorts"])
+def test_every_default_stop_rule_has_its_expected_text_and_judge(fmt: str) -> None:
+    from nicheradar.pilots.service import default_stop_rules
+    from nicheradar.web.pilots_form import stop_rule_lines
+
+    rules = default_stop_rules(fmt)
+    lines = stop_rule_lines(fmt)
+    assert len(rules) == len(lines) > 0
+    for rule, (text, judge) in zip(rules, lines, strict=True):
+        start, who = EXPECTED_RULE_TEXT[rule["metric"]]
+        assert text.startswith(start) and judge == who, (rule["metric"], text, judge)
+
+
+def test_an_unknown_or_manual_metric_is_judged_by_the_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from nicheradar.web import pilots_form
+
+    rule = {"milestone": {"value": 3}, "threshold": 1, "min_cases": 1, "text": "Mira el tono"}
+    monkeypatch.setattr(
+        pilots_form,
+        "default_stop_rules",
+        lambda _f: [rule | {"metric": "manual"}, rule | {"metric": "otra_metrica"}],
+    )
+    assert pilots_form.stop_rule_lines("long") == [("Mira el tono", "la juzgas tú")] * 2
+
+
+def test_a_measurement_date_in_year_one_never_gives_a_503() -> None:
+    for page in (URL, f"/informes/{ID}"):
+        detail = subniche_detail(measurement={"measured_at": "0001-01-01T00:00:00Z"})
+        response = make_client(api_with(detail)).get(page)
+        assert response.status_code == 200, (page, response.status_code)

@@ -24,8 +24,9 @@ from nicheradar.web.pilots_form import (
     budget_body,
     busy_channels,
     parse_form,
+    stop_rule_lines,
 )
-from nicheradar.web.report import report_view, subject_label
+from nicheradar.web.report import is_subniche_origin, report_view
 from nicheradar.web.research import LANGUAGE_NAMES, UUID_RE
 from nicheradar.web.security import Session
 
@@ -42,6 +43,7 @@ BUSY_TRUNCATED = (
     "muestran: si un canal ya está en uso, la API lo rechazará al autorizar."
 )
 AUTHOR = "propietario (web)"
+FORMAT_ONE = {"long": "Largo", "shorts": "Short"}
 
 
 def _error_page(request: Request, session: Session, message: str, status: int) -> Response:
@@ -84,10 +86,13 @@ def _busy(request: Request) -> tuple[set[str], str | None]:
     return busy_channels(pilots), BUSY_TRUNCATED if len(pilots) >= LIST_LIMIT else None
 
 
-def _subniche_block(request: Request, detail: dict[str, Any]) -> dict[str, Any] | None:
+def _evidence_block(request: Request, detail: dict[str, Any]) -> dict[str, Any] | None:
+    """The single «Evidencia» card: one branch per origin; none if the origin is unknown."""
     evidence = detail.get("evidence")
-    if not isinstance(evidence, dict) or evidence.get("source") != "subniche":
+    if not isinstance(evidence, dict):
         return None
+    if not is_subniche_origin(str(detail.get("niche_label") or ""), evidence):
+        return {"source": "niche"}
     measurement = evidence.get("measurement")
     measured = measurement.get("measured_at") if isinstance(measurement, dict) else None
     when: str | None = None
@@ -100,7 +105,12 @@ def _subniche_block(request: Request, detail: dict[str, Any]) -> dict[str, Any] 
             ago = max((now - moment).days, 0)
         except (ValueError, TypeError, OverflowError, OSError):
             when = ago = None
-    return {"date": when, "ago": ago, "confidence": CONFIDENCE.get(str(evidence.get("confidence")))}
+    return {
+        "source": "subniche",
+        "date": when,
+        "ago": ago,
+        "confidence": CONFIDENCE.get(str(evidence.get("confidence"))),
+    }
 
 
 def _needs(detail: dict[str, Any], view: dict[str, Any]) -> tuple[bool, bool]:
@@ -147,10 +157,12 @@ def _page(
             "active_tab": "nichos",
             "v": view,
             "report_id": detail.get("id"),
-            "title_label": subject_label(str(detail["niche_label"]))[0],
-            "format_text": FORMATS[detail["format"]],
+            "title_label": view["subject"],
+            "is_subniche": is_subniche_origin(str(detail["niche_label"]), detail.get("evidence")),
+            "format_text": FORMAT_ONE[detail["format"]],
+            "stop_rules": stop_rule_lines(detail["format"]),
             "language": LANGUAGE_NAMES.get(str(language), str(language) if language else "—"),
-            "subniche": _subniche_block(request, detail),
+            "evidence": _evidence_block(request, detail),
             "values": values,
             "errors": errors or {},
             "error": error,

@@ -1,0 +1,24 @@
+{% macro decision_card(form, etiqueta, formato, volver, csrf_token) -%}
+<section class="card" id="decision">
+  <h2 class="h2">Decisión del nicho</h2>
+  {% if form.error %}<div class="note note--rose" role="alert">{{ form.error }}</div>{% endif %}
+  <form method="post" action="/nichos/decidir">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="hidden" name="etiqueta" value="{{ etiqueta }}">
+    <input type="hidden" name="formato" value="{{ formato }}">
+    <input type="hidden" name="volver" value="{{ volver }}">
+    <fieldset class="pills" role="radiogroup" aria-label="Decisión del nicho">
+      {% for value, text in (("nuevo", "Sin decidir"), ("tentativo", "Tentativo"), ("descartado", "Descartado")) %}
+      <label class="pill"><input type="radio" name="decision" value="{{ value }}"{% if form.decision == value %} checked{% endif %}>{{ text }}</label>
+      {% endfor %}
+    </fieldset>
+    <p class="caption">Tentativo: lo quieres investigar. Descartado: se oculta de la lista. Solo un nicho tentativo y con puntajes se puede investigar.</p>
+    <div class="field">
+      <label for="nota">Nota (opcional)</label>
+      <textarea id="nota" name="nota" rows="4" maxlength="1000">{{ form.note }}</textarea>
+      <span class="caption">Hasta 1000 caracteres.</span>
+    </div>
+    <button class="btn btn--primary" type="submit">Guardar decisión</button>
+  </form>
+</section>
+{%- endmacro %}

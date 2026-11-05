@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "components.html" import chip, journey %}
+{% from "nichos/_decision.html" import decision_card %}
+{% block title %}{{ v.title }} · NicheRadar{% endblock %}
+{% block content %}
+<p class="caption"><a class="backlink" href="/nichos">‹ Nichos</a></p>
+<h1 class="h1 h1--md">{{ v.title }}</h1>
+<div class="tags">{% for text, kind in v.chips %}{{ chip(text, kind) }}{% endfor %}</div>
+<p class="lead">{{ v.notice }}</p>
+{% if notice %}<div class="note note--{{ notice[1] }}" role="status">{{ notice[0] }}</div>{% endif %}
+{% for w in v.warnings %}<div class="note note--amber" role="status">{{ w }}</div>{% endfor %}
+{{ journey(v.journey) }}
+{{ decision_card(v.form, etiqueta, formato, volver, csrf_token) }}
+<section class="card">
+  <h2 class="h2">Puntajes</h2>
+  <div class="rows">{% for label, value in v.scores %}<div class="row"><span class="row__label">{{ label }}</span><span class="row__value">{{ value }}</span></div>{% endfor %}</div>
+</section>
+<section class="card">
+  <h2 class="h2">Investigación de flujo</h2>
+  <div class="row"><span class="row__label">Última investigación</span><span class="row__value">{{ v.research.status }}</span></div>
+  {% if v.research.action and v.research.action.disabled %}<span class="btn btn--{{ v.research.action.style }}" aria-disabled="true">{{ v.research.action.label }}</span><p class="caption">{{ v.research.action.disabled }}</p>
+  {% elif v.research.action %}<a class="btn btn--{{ v.research.action.style }}" href="{{ v.research.action.href }}">{{ v.research.action.label }}</a>{% endif %}
+</section>
+<section class="card">
+  <h2 class="h2">Mercado</h2>
+  <div class="rows">{% for label, value in v.market %}<div class="row"><span class="row__label">{{ label }}</span><span class="row__value">{{ value }}</span></div>{% endfor %}
+  <div class="row"><span class="row__label">Idioma de las fichas</span><span class="row__value row__value--text">{{ v.language }}</span></div></div>
+</section>
+<section class="card">
+  <h2 class="h2">Cómo se calculó</h2>
+  {% for line in v.how %}<p>{{ line }}</p>{% endfor %}
+  <p class="caption">{{ v.how_note }}</p>
+</section>
+{% macro listing(item) -%}
+<article class="listing">
+  <div class="listing__head"><span class="listing__title">{{ item.title }}</span>{{ chip(item.chip_text, item.chip_kind) }}</div>
+  <span class="caption">{{ item.line1 }}</span>
+  {% if item.line2 %}<span class="caption">{{ item.line2 }}</span>{% endif %}
+  {% if item.url %}<a class="listing__link" href="{{ item.url }}" rel="noopener noreferrer" target="_blank">Ver anuncio</a>{% endif %}
+</article>
+{%- endmacro %}
+{% macro rest(pages, index) -%}
+{% if index < pages|length %}
+<details class="more"><summary class="btn btn--secondary">Ver más fichas</summary>
+  {% for item in pages[index] %}{{ listing(item) }}{% endfor %}
+  {{ rest(pages, index + 1) }}
+</details>
+{% endif %}
+{%- endmacro %}
+<section class="card">
+  <h2 class="h2">Fichas del nicho ({{ v.listings_total }})</h2>
+  {% for item in v.first_page %}{{ listing(item) }}{% else %}<p class="muted">Este nicho no tiene fichas.</p>{% endfor %}
+  {{ rest(v.pages, 0) }}
+</section>
+{% endblock %}

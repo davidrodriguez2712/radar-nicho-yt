@@ -12,11 +12,18 @@ from nicheradar.web import calibration
 from nicheradar.web.client import ApiClient, ApiError
 from nicheradar.web.deps import current_session, render, shape_guard
 from nicheradar.web.format import spanish_date
+from nicheradar.web.niches import AVISOS_NICHOS
 from nicheradar.web.security import Session
 from nicheradar.web.today import PAGE, calibration_candidates, today_view
 
 router = APIRouter()
+HOME_NOTICES = ("marcado", "guardada", "invalida", "error")
 NICHE_POOL = "10"  # some niches have no score: ask for more than the three that are shown
+
+
+def _notice(key: str) -> tuple[str, str] | None:
+    """Only the notices that make sense on Hoy; any other key is dropped silently."""
+    return AVISOS_NICHOS.get(key) if key in HOME_NOTICES else None
 
 
 def _items(api: ApiClient, path: str, params: dict[str, str] | None = None) -> list[Any] | None:
@@ -71,6 +78,7 @@ def today(request: Request, session: Annotated[Session, Depends(current_session)
         {
             "active_tab": "hoy",
             "today": spanish_date(now, config.timezone),
+            "notice": _notice(request.query_params.get("aviso", "")),
             "v": today_view(
                 sources,
                 now,

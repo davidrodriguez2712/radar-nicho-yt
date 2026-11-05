@@ -114,6 +114,7 @@ def render_pages(out: Path) -> dict[str, Path]:
         "ficha": f"/subnichos/{slug}",
         "hoy": "/",
         "nichos": "/nichos",
+        "nicho_detalle": f"/nichos/ver?etiqueta={label}&formato=long",
         "investigar": f"/nichos/investigar?etiqueta={label}&formato=long",
         "informe": f"/informes/{REPORT['id']}",
         "autorizar": f"/pilotos/autorizar?informe={REPORT['id']}",

@@ -1,8 +1,7 @@
 {% extends "base.html" %}
-{% from "components.html" import segmented %}
 {% block title %}Nichos · NicheRadar{% endblock %}
 {% block content %}
-{{ segmented([("Nichos", "/nichos", True, None), ("Subnichos", "/subnichos", False, None)]) }}
+{% set active_tab_segment = "nichos" %}{% include "_segmento.html" %}
 <h1 class="h1">Nichos</h1>
 <p class="caption">De mayor a menor por Opportunity (0 a 100).</p>
 <form class="filters" method="get" action="/nichos"

@@ -202,7 +202,7 @@ def test_summary_shows_blockers_next_action_dates_proposal_rules_and_costs() -> 
     rules = flat(block(text, "res-reglas"))
     assert "Reglas de parada" in rules and "2 reglas" in rules and "1 cumple" in rules
     assert "Costos y tiempos" in flat(block(text, "res-costos"))
-    assert resumen.count('id="res-') == 8
+    assert resumen.count('id="res-') == 9  # eight cards and the rules list
 
 
 def test_summary_without_blockers_says_so_and_closed_pilots_have_none() -> None:
@@ -345,8 +345,8 @@ def test_videos_tab_lists_each_video_with_stage_visibility_cost_and_machine_minu
     assert "Todavía no hay videos reportados." in flat(block(empty, "tab-videos"))
 
 
-def test_videos_are_only_requested_for_the_videos_tab() -> None:
-    api = api_with(videos=[pilot_video()])
+def test_videos_are_only_requested_for_the_videos_tab_without_a_calibration() -> None:
+    api = api_with(detail_with(package=v2_package()), videos=[pilot_video()])
     for tab in (None, "resumen", "preparacion", "reglas", "historial"):
         page(api, tab)
     assert api.count("GET", f"/api/v1/pilots/{PID}/videos") == 0
@@ -753,7 +753,7 @@ def measured(*minutes: int | None, method: str | None = "gate_waits") -> list[di
 def test_the_calibration_tab_exists_only_with_a_v3_dossier() -> None:
     with_tab = page(api_with(detail_with()))
     labels = re.findall(r"<a\b[^>]*>([^<]*)</a>", block(with_tab, "pestanas"))
-    assert labels == ["Resumen", "Preparación", "Videos", "Calibración", "Reglas", "Historial"]
+    assert labels == ["Resumen", "Preparación", "Calibración", "Videos", "Reglas", "Historial"]
     assert f'href="/pilotos/{PID}?pestana=calibracion"' in block(with_tab, "pestanas")
     without = page(api_with(detail_with(package=v2_package())))
     assert "Calibración" not in block(without, "pestanas")
@@ -834,14 +834,15 @@ def test_calibration_tab_escapes_a_hostile_method_name() -> None:
     assert "&lt;img" in tab
 
 
-def test_calibration_requests_are_made_only_for_that_tab() -> None:
-    api = calib_api(measured(50))
-    for tab in (None, "resumen", "preparacion", "videos", "reglas", "historial"):
+def test_calibration_requests_are_made_once_per_page_and_only_with_a_v3_dossier() -> None:
+    api = calib_api(measured(50), detail=detail_with(package=v2_package()))
+    for tab in (None, "resumen", "preparacion", "videos", "reglas", "historial", "calibracion"):
         page(api, tab)
     assert api.count(*REPORT) == 0
-    page(api, "calibracion")
-    assert api.count(*REPORT) == 1
-    assert api.count("GET", f"/api/v1/pilots/{PID}/videos") == 2  # the Videos tab and this one
+    v3 = calib_api(measured(50))
+    page(v3, "calibracion")
+    assert v3.count(*REPORT) == 1
+    assert v3.count("GET", f"/api/v1/pilots/{PID}/videos") == 1
 
 
 def test_calibration_tab_when_the_dossier_cannot_be_read_says_so_and_the_panel_lives() -> None:
@@ -938,3 +939,289 @@ def test_calibration_tab_ignores_an_unpublished_draft_at_the_end() -> None:
     assert "Pasa a régimen" in flat(block(text, "calib-propuesta"))
     rows = [flat(r) for r in items(block(text, "calib-filas"))]
     assert rows[:4] == ["Video 1 40 min", "Video 2 40 min", "Video 3 40 min", "Video 4 pendiente"]
+
+
+# ---- Panel alineado: línea de calibración, Resumen en calibración y reglas con avance ----------
+
+CAL_LINE = [
+    "autorizado",
+    "entregado",
+    "preparado",
+    "en calibración",
+    "pasa a régimen",
+    "decisión pendiente",
+]
+
+
+def dated(*minutes: int | None, first: str = "2026-10-26T12:00:00Z") -> list[dict[str, object]]:
+    videos = measured(*minutes)
+    for video in videos:
+        video["published_at"] = first
+    return videos
+
+
+def cal_labels(text: str) -> list[str]:
+    return [visible(s) for s in items(block(text, "linea-estados"))]
+
+
+def cal_marked(text: str, kind: str) -> list[str]:
+    found = re.findall(
+        rf'<li class="step step--{kind}"[^>]*>(.*?)</li>', block(text, "linea-estados"), re.S
+    )
+    return [visible(m) for m in found]
+
+
+@pytest.mark.parametrize(
+    ("status", "current", "done"),
+    [
+        ("autorizado", "autorizado", []),
+        ("entregado", "preparado", ["autorizado", "entregado"]),
+        ("en_ejecucion", "en calibración", ["autorizado", "entregado", "preparado"]),
+        ("decision_pendiente", "decisión pendiente", CAL_LINE[:5]),
+    ],
+)
+def test_the_calibration_state_line_follows_the_api_status(
+    status: str, current: str, done: list[str]
+) -> None:
+    text = page(calib_api(measured(90), detail=detail_with(status=status)))
+    assert cal_labels(text) == CAL_LINE
+    assert cal_marked(text, "current") == [current]
+    assert cal_marked(text, "done") == done
+
+
+def test_the_calibration_line_marks_passing_to_regime_only_when_the_streak_passes() -> None:
+    running = detail_with(status="en_ejecucion")
+    text = page(calib_api(dated(40, 40, 40), detail=running))
+    assert cal_marked(text, "current") == ["pasa a régimen"]
+    assert cal_marked(text, "done") == CAL_LINE[:3] + ["en calibración"]
+    short = page(calib_api(dated(40, 70, 40), detail=running))
+    assert cal_marked(short, "current") == ["en calibración"]
+
+
+def test_the_calibration_line_is_the_usual_one_when_the_calibration_cannot_be_read() -> None:
+    for api in (
+        api_with(detail_with(status="en_ejecucion")),
+        calib_api(report=(500, {"detail": "x"}), detail=detail_with(status="en_ejecucion")),
+        calib_api(
+            dossier=dossier_v3() | {"calibration": "x"}, detail=detail_with(status="en_ejecucion")
+        ),
+    ):
+        text = page(api)
+        assert "en calibración" not in flat(block(text, "linea-estados"))
+        assert [visible(s) for s in items(block(text, "linea-estados"))][:3] == [
+            "Autorizado",
+            "Entregado",
+            "Preparando",
+        ]
+    old = page(api_with(detail_with(status="en_ejecucion", package=v2_package())))
+    assert "en calibración" not in flat(block(old, "linea-estados"))
+    for status in ("cerrado", "cancelado"):
+        closed = page(calib_api(measured(90), detail=detail_with(status=status)))
+        assert "en calibración" not in flat(block(closed, "linea-estados"))
+
+
+def test_the_calibration_line_shows_on_every_tab() -> None:
+    api = calib_api(measured(90), detail=detail_with(status="en_ejecucion"))
+    for tab in ("resumen", "preparacion", "videos", "reglas", "historial", "calibracion"):
+        assert cal_labels(page(api, tab)) == CAL_LINE
+
+
+def test_the_summary_in_calibration_shows_the_day_and_published_videos() -> None:
+    api = calib_api(dated(92, 71, 58), detail=detail_with(status="en_ejecucion"))
+    text = page(api)
+    estado = flat(block(text, "res-estado"))
+    assert "Día 9 desde el primer video · 3 de 6 videos de calibración publicados" in estado
+    card = flat(block(text, "res-calibracion"))
+    assert "Calibración: tu tiempo por video" in card
+    assert "Video 1 92 min" in card and "Video 4 pendiente" in card
+    assert "Racha de hasta 60 minutos: 1 de 3" in card
+    assert f'href="/pilotos/{PID}?pestana=calibracion"' in block(text, "res-calibracion")
+
+
+def test_the_summary_in_calibration_keeps_the_lower_bound_and_possible_wording() -> None:
+    videos = [
+        pilot_video(
+            f"v{i}",
+            human_minutes=40,
+            human_minutes_method="claude_sessions_plus_assumed",
+            published_at="2026-11-01T12:00:00Z",
+        )
+        for i in (1, 2, 3)
+    ]
+    text = page(calib_api(videos, detail=detail_with(status="en_ejecucion")))
+    card = flat(block(text, "res-calibracion"))
+    assert "≥ 40 min" in card
+    assert "(posible: las cifras son un mínimo)" in card
+    assert "Día 3 desde el primer video" in flat(block(text, "res-estado"))
+
+
+def test_the_summary_without_published_videos_says_so() -> None:
+    text = page(calib_api([], detail=detail_with(status="entregado")))
+    estado = flat(block(text, "res-estado"))
+    assert "0 de 6 videos de calibración publicados" in estado
+    assert "Día" not in estado
+
+
+def test_the_summary_says_the_calibration_could_not_be_read_and_lives_on() -> None:
+    cases: list[Api] = [
+        api_with(detail_with(status="en_ejecucion")),
+        calib_api(report=(500, {"detail": "x"}), detail=detail_with(status="en_ejecucion")),
+        calib_api(report=(200, ["no"]), detail=detail_with(status="en_ejecucion")),
+        calib_api(
+            dossier=dossier_v3() | {"calibration": "x"}, detail=detail_with(status="en_ejecucion")
+        ),
+    ]
+    for api in cases:
+        text = page(api)
+        assert "No se pudo leer el informe de calibración" in flat(block(text, "res-estado"))
+        assert "res-calibracion" not in text
+        assert "res-costos" in text and "res-reglas" in text
+
+
+def test_the_summary_says_the_videos_could_not_be_read() -> None:
+    api = calib_api(detail=detail_with(status="en_ejecucion"))
+    api.routes[VIDEOS] = (500, {"detail": "x"})
+    text = page(api)
+    assert "No se pudieron cargar los videos de calibración" in flat(block(text, "res-estado"))
+    assert "res-costos" in text
+
+
+def test_no_calibration_block_without_a_v3_dossier() -> None:
+    api = api_with(detail_with(status="en_ejecucion", package=v2_package()))
+    text = page(api)
+    assert "res-calibracion" not in text
+    assert "calibración" not in flat(block(text, "res-estado"))
+    assert api.count(*REPORT) == 0 and api.count(*VIDEOS) == 0
+
+
+def test_the_extra_reads_happen_only_for_a_pilot_with_a_possible_calibration() -> None:
+    api = calib_api(measured(50))
+    page(api)
+    assert api.count(*REPORT) == 1 and api.count(*VIDEOS) == 1
+    page(api, "videos")
+    assert api.count(*REPORT) == 2 and api.count(*VIDEOS) == 2  # one read each, never twice
+    bad = pilot_detail()["package"]
+    assert isinstance(bad, dict)
+    no_id = bad | {"dossier": bad["dossier"] | {"request_id": "../x"}}
+    api = calib_api(detail=detail_with(package=no_id))
+    page(api)
+    assert api.count(*REPORT) == 0
+    assert "No se pudo leer el informe de calibración" in flat(block(page(api), "res-estado"))
+
+
+def test_a_failed_dossier_does_not_stop_the_videos_tab() -> None:
+    api = calib_api(measured(50), report=(500, {"detail": "x"}))
+    text = page(api, "videos")
+    assert "v1" in flat(block(text, "tab-videos"))
+    assert cal_labels(text)[:3] == ["Autorizado", "Entregado", "Preparando"]
+
+
+def test_the_calibration_summary_escapes_hostile_text() -> None:
+    dossier = dossier_v3()
+    dossier["calibration"]["exit_criterion"]["statement"] = HOSTILE
+    videos = dated(50, 50)
+    videos[0]["video_id"] = HOSTILE
+    text = page(calib_api(videos, dossier=dossier, detail=detail_with(status="en_ejecucion")))
+    assert "<script>" not in text
+
+
+def test_the_stop_rules_show_each_one_with_its_progress() -> None:
+    evaluation = {
+        "rules": [
+            rule("Retención ≥ 18% en 3 de 10", "cumple", milestone="video:10"),
+            rule("Exploración ≥ 30% al video 20", "pendiente", milestone="video:20"),
+            rule("Ingresos ≥ costos al mes 6", "no_evaluable", milestone="month:6"),
+        ],
+        "milestones": [],
+        "totals": {},
+        "warnings": [],
+        "close_after": 2,
+    }
+    text = page(api_with(detail_with(evaluation=evaluation)))
+    box = block(text, "res-reglas")
+    rows = [flat(r) for r in items(block(text, "res-reglas-lista"))]
+    assert rows == [
+        "Retención ≥ 18% en 3 de 10 cumple",
+        "Exploración ≥ 30% al video 20 aún no aplica",
+        "Ingresos ≥ costos al mes 6 la juzgas tú",
+    ]
+    assert "1 de 3 medidos" in flat(box)
+
+
+def test_the_stop_rules_with_hostile_text_and_without_evaluation() -> None:
+    evaluation = {"rules": [rule(HOSTILE, "no_cumple")], "close_after": 2}
+    text = page(api_with(detail_with(evaluation=evaluation)))
+    assert "<script>" not in text
+    assert ESCAPED in block(text, "res-reglas-lista")
+    assert "1 de 1 medidos" in flat(block(text, "res-reglas"))
+    none = page(api_with(detail_with(evaluation={"rules": []})))
+    assert "res-reglas-lista" not in none and "medidos" not in none
+
+
+def lower_bound_videos(count: int = 3) -> list[dict[str, object]]:
+    return [
+        pilot_video(
+            f"v{i}",
+            human_minutes=40,
+            human_minutes_method="claude_sessions_plus_assumed",
+            published_at="2026-11-01T12:00:00Z",
+        )
+        for i in range(1, count + 1)
+    ]
+
+
+def test_the_line_says_possible_when_the_figures_are_a_lower_bound() -> None:
+    running = detail_with(status="en_ejecucion")
+    text = page(calib_api(lower_bound_videos(), detail=running))
+    assert cal_labels(text)[4] == "pasa a régimen (posible)"
+    assert cal_marked(text, "current") == ["pasa a régimen (posible)"]
+    exact = page(calib_api(dated(40, 40, 40), detail=running))
+    assert cal_labels(exact)[4] == "pasa a régimen"
+    assert "posible" not in flat(block(exact, "linea-estados"))
+
+
+def chip_of(text: str) -> str:
+    return flat(block(text, "cabecera")).split(" Largo")[0]
+
+
+@pytest.mark.parametrize(
+    ("status", "api_chip"),
+    [
+        ("autorizado", "Autorizado"),
+        ("entregado", "Preparando"),
+        ("decision_pendiente", "Decisión pendiente"),
+        ("cerrado", "Cerrado"),
+        ("cancelado", "Cancelado"),
+    ],
+)
+def test_the_chip_is_the_api_one_outside_running_calibration(status: str, api_chip: str) -> None:
+    text = page(calib_api(measured(90), detail=detail_with(status=status)))
+    assert chip_of(text) == api_chip
+
+
+def test_the_chip_says_in_calibration_only_when_running_and_readable() -> None:
+    running = detail_with(status="en_ejecucion")
+    assert chip_of(page(calib_api(measured(90), detail=running))) == "En calibración"
+    assert chip_of(page(calib_api(dated(40, 40, 40), detail=running))) == "En calibración"
+    unreadable = page(calib_api(report=(500, {"detail": "x"}), detail=running))
+    assert chip_of(unreadable) == "En ejecución"
+    old = page(api_with(detail_with(status="en_ejecucion", package=v2_package())))
+    assert chip_of(old) == "En ejecución"
+
+
+def test_the_day_and_the_calibration_text_only_in_open_states() -> None:
+    for status in ("cerrado", "cancelado"):
+        text = page(calib_api(dated(92, 71, 58), detail=detail_with(status=status)))
+        estado = flat(block(text, "res-estado"))
+        assert "desde el primer video" not in estado
+        assert "Todavía sin reportes del canal" in estado or "publicados" in estado
+    for status in ("autorizado", "entregado", "en_ejecucion", "decision_pendiente"):
+        text = page(calib_api(dated(92), detail=detail_with(status=status)))
+        assert "Día 9 desde el primer video" in flat(block(text, "res-estado"))
+
+
+def test_the_delivered_step_explains_it_is_still_preparing() -> None:
+    text = page(calib_api(measured(90), detail=detail_with(status="entregado")))
+    assert 'title="Entregado: el canal se está preparando"' in block(text, "linea-estados")
+    other = page(calib_api(measured(90), detail=detail_with(status="en_ejecucion")))
+    assert "title=" not in block(other, "linea-estados")

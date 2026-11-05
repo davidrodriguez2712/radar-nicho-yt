@@ -9,8 +9,10 @@ from starlette.responses import RedirectResponse, Response
 
 from nicheradar.web.client import ApiError
 from nicheradar.web.deps import current_session, is_fragment, render, shape_guard
+from nicheradar.web.niche_detail import UNREADABLE
 from nicheradar.web.security import Session
-from nicheradar.web.subniches import AVISOS, detail_view, list_view, parse_filters
+from nicheradar.web.segment import UNKNOWN, active_subniches, counts, niche_total
+from nicheradar.web.subniches import AVISOS, detail_view, list_view, parse_filters, pilot_for
 
 router = APIRouter()
 
@@ -40,7 +42,14 @@ def subniche_list(
         response = render(
             request,
             template,
-            {"active_tab": "nichos", "error": error.message, "view": None, "filtros": filters},
+            {
+                "active_tab": "nichos",
+                "error": error.message,
+                "view": None,
+                "filtros": filters,
+                "seg_counts": counts(niche_total(request.app.state.api), UNKNOWN),
+                "fragment": htmx,
+            },
             status_code=200 if htmx else 503,
             session=session,
         )
@@ -49,7 +58,16 @@ def subniche_list(
         response = render(
             request,
             template,
-            {"active_tab": "nichos", "error": None, "view": view, "filtros": view["filtros"]},
+            {
+                "active_tab": "nichos",
+                "error": None,
+                "view": view,
+                "filtros": view["filtros"],
+                "seg_counts": counts(
+                    niche_total(request.app.state.api), active_subniches(data["items"])
+                ),
+                "fragment": htmx,
+            },
             session=session,
         )
     response.headers["Vary"] = VARY
@@ -76,12 +94,22 @@ def subniche_card(
             status_code=404 if missing else 503,
             session=session,
         )
+    pilot: object
+    try:
+        hypothesis = card["hypothesis"]
+        pilot = pilot_for(
+            request.app.state.api.request("GET", "/pilots", params={"limit": "100"})["items"],
+            hypothesis["slug"],
+            hypothesis["format"],
+        )
+    except (ApiError, KeyError, TypeError):
+        pilot = UNREADABLE
     return render(
         request,
         "subnichos/ficha.html",
         {
             "active_tab": "nichos",
-            "v": detail_view(card, request.app.state.config.timezone),
+            "v": detail_view(card, request.app.state.config.timezone, pilot),
             "notice": AVISOS.get(aviso),
         },
         session=session,
