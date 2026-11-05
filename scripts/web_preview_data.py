@@ -975,3 +975,88 @@ RUNS: list[dict[str, Any]] = [
     _run("02", "succeeded", "snapshot", "02", 9, None),
     _run("01", "failed", "list", "01", 2, "timeout"),
 ]
+
+
+READ_READY_ID = "2a3b4c5d-6e7f-4809-9a0b-1c2d3e4f5a6b"
+READ_QUEUED_ID = "3b4c5d6e-7f80-4910-8b1c-2d3e4f5a6b7c"
+READ_FAILED_ID = "4c5d6e7f-8091-4a21-9c2d-3e4f5a6b7c8d"
+READ_IMAGE_ID = "5d6e7f80-91a2-4b32-8d3e-4f5a6b7c8d9e"
+_TWEET = {"author": "autor_x", "url": "https://x.com/autor_x/status/1850000000000000000"}
+_UC_A, _UC_B = "UC" + "a" * 22, "UC" + "b" * 22
+
+
+def _lead_candidate(cid: str, value: str, resolution: str, **over: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "id": cid,
+        "kind": "handle",
+        "value": value,
+        "found_in": "image",
+        "resolution": resolution,
+        "channel": None,
+        "proposal": None,
+    }
+    return base | over
+
+
+LEAD_CANDIDATES = [
+    _lead_candidate(
+        "6e7f8091-a2b3-4c43-8e4f-5a6b7c8d9e0f",
+        "@historia_uno",
+        "resolved",
+        channel={"id": _UC_A, "title": "Historia Uno", "subscribers": 38000},
+    ),
+    _lead_candidate(
+        "7f8091a2-b3c4-4d54-9f5a-6b7c8d9e0f1a",
+        "Batallas Olvidadas",
+        "name_only",
+        kind="name",
+        found_in="text",
+    ),
+    _lead_candidate(
+        "8091a2b3-c4d5-4e65-8a6b-7c8d9e0f1a2b",
+        "Imperios en Mapas",
+        "resolved",
+        kind="name",
+        found_in="both",
+        channel={"id": _UC_B, "title": "Imperios en Mapas", "subscribers": 12400},
+        proposal={"id": "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d", "status": "queued"},
+    ),
+]
+
+
+def _lead(read_id: str, status: str, **over: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "id": read_id,
+        "kind": "tweet",
+        "status": status,
+        "stage": None,
+        "closed": False,
+        "created_at": _NOW,
+        "finished_at": None,
+        "tweet": _TWEET,
+        "untrusted_text": "Este canal creció a 40k en tres meses con documentales de historia.",
+        "error": None,
+        "warning": None,
+        "candidates": LEAD_CANDIDATES,
+    }
+    return base | over
+
+
+LEAD_READY = _lead(READ_READY_ID, "ready", finished_at=_NOW)
+LEAD_QUEUED = _lead(READ_QUEUED_ID, "running", stage="images", candidates=[], untrusted_text=None)
+LEAD_FAILED = _lead(
+    READ_FAILED_ID,
+    "failed",
+    candidates=[],
+    untrusted_text=None,
+    error={"code": "tweet_unavailable", "message": "x"},
+)
+LEAD_IMAGE = _lead(
+    READ_IMAGE_ID,
+    "running",
+    kind="image",
+    tweet=None,
+    stage="mentions",
+    candidates=[],
+    untrusted_text=None,
+)

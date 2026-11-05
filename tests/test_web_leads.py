@@ -179,6 +179,23 @@ def test_queued_read_polls_and_shows_the_fallback_help() -> None:
     assert 'href="https://x.com/autor_x/status/1850000000000000000"' in page.text
 
 
+def test_an_image_read_says_image_not_tweet() -> None:
+    queued = lead("queued", kind="image", tweet=None, candidates=[], untrusted_text=None)
+    page = make_client(api_for(queued)).get(f"/lecturas/{READ_ID}")
+    assert "Leyendo la imagen" in page.text and "Leyendo el tweet" not in page.text
+    assert "Abrir el tweet en X" not in page.text
+    failed = lead(
+        "failed",
+        kind="image",
+        tweet=None,
+        candidates=[],
+        untrusted_text=None,
+        error={"code": "abandoned", "message": "x"},
+    )
+    page = make_client(api_for(failed)).get(f"/lecturas/{READ_ID}")
+    assert "No se pudo leer la imagen" in page.text
+
+
 def test_ready_read_lists_channels_escaped_and_without_polling() -> None:
     page = make_client(api_for(lead())).get(f"/lecturas/{READ_ID}")
     assert "Canales encontrados (3)" in page.text and 'hx-trigger="every 5s"' not in page.text

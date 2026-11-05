@@ -198,3 +198,6 @@ a.list__item{min-height:44px;justify-content:center;color:inherit;text-decoratio
 .quote{margin:0;color:var(--muted,inherit);overflow-wrap:anywhere}
 .btn--link{width:auto;justify-content:flex-start;background:none;border:0;color:var(--primary);font-weight:600;min-height:44px;padding:0;cursor:pointer}
 .plain--steps{list-style:none;padding-left:0}
+.preview{margin:0;padding:12px;text-align:center;background:var(--surface-2,#efe8e3);border-radius:16px}
+.preview img{max-width:100%;max-height:60vh;border-radius:var(--radius,12px)}
+.step--now{color:var(--primary);font-weight:600}

@@ -58,7 +58,8 @@ def test_the_service_worker_revalidates_static_files_so_a_redeploy_is_not_stale(
     branch = body.split('startsWith("/static/")', 1)[1].split('request.mode === "navigate"', 1)[0]
     assert "cache.put" in branch and "fetch(request)" in branch
     assert "/api/" not in body
-    assert body.count("cache.put") == 1  # the only write outside install is the /static/ branch
+    # Las únicas escrituras fuera de install: la rama /static/ y la imagen compartida (task 7).
+    assert body.count("cache.put(") == 2
 
 
 def test_the_manifest_icons_are_not_declared_maskable() -> None:

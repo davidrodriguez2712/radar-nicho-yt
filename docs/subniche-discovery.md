@@ -134,6 +134,92 @@ las imágenes. Una base en `0021` con la imagen nueva hace fallar `backup_snapsh
 Los respaldos anteriores a la release solo se restauran con las herramientas viejas. El `downgrade` de `0022` borra la
 cola de solicitudes.
 
+## Lectura de tweets e imágenes
+
+Plan: `docs/superpowers/plans/2026-11-05-lectura-de-tweets-e-imagenes.md`. Desde Android se comparte un tweet de X (o,
+como respaldo, la imagen del tweet); el servidor lee el texto y las fotos, saca los canales de YouTube mencionados con el
+modelo con visión y los resuelve con 1 o 2 unidades de cuota por canal; el propietario marca cuáles proponer y cada uno
+entra a la cola de propuestas con origen `lead` y la línea «Origen: tweet de @usuario». **Nada de esto está desplegado.**
+
+Endpoints bajo `/api/v1/leads` (mismo token de servicio; la API solo valida, encola y lee):
+
+```sh
+# Leer un tweet (202). Idempotency-Key de 8 a 100 caracteres; repetirla no cuenta contra el tope diario.
+curl -X POST "$API/api/v1/leads/tweets" -H "Authorization: Bearer $TOKEN" \
+  -H "Idempotency-Key: lectura-0001" -H "Content-Type: application/json" \
+  -d '{"url": "https://x.com/autor_x/status/1850000000000000000"}'
+# -> {"id": "<uuid>", "status": "queued", "created": true}
+
+# Leer una imagen (202): PNG, JPEG o WEBP en base64, hasta 5 MB.
+curl -X POST "$API/api/v1/leads/images" -H "Authorization: Bearer $TOKEN" \
+  -H "Idempotency-Key: lectura-0002" -H "Content-Type: application/json" \
+  -d "{\"media_type\": \"image/png\", \"data\": \"$(base64 -i captura.png)\"}"
+
+curl "$API/api/v1/leads/<id>" -H "Authorization: Bearer $TOKEN"                     # la lectura
+curl -X POST "$API/api/v1/leads/<id>/names" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d '{"candidate_ids": ["<candidato>"]}'        # buscar un nombre (202)
+curl -X POST "$API/api/v1/leads/<id>/proposals" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d '{"candidate_ids": ["<candidato>"]}'        # proponer N canales
+curl -X POST "$API/api/v1/leads/<id>/close" -H "Authorization: Bearer $TOKEN"        # cancelar / cerrar
+```
+
+- `<lectura>`: `id`, `kind` (`tweet` o `image`), `status` (`queued`, `running`, `ready`, `failed`), `stage`, `closed`,
+  `tweet` (`author`, `url`) o `null`, `untrusted_text` (texto de un tercero: se muestra escapado, nunca como dato),
+  `error` y `warning` (`{"code","message"}` con mensaje fijo en español) y `candidates` (`id`, `kind`
+  `handle|channel_id|video|name`, `value`, `found_in` `text|image|both`, `resolution`
+  `resolved|name_only|name_queued|searching|ambiguous|not_found`, `channel`, `proposal`). Como máximo 10 candidatos.
+- Códigos de rechazo (raíz `{"code","message"}`): 422 `invalid_tweet_url` e `invalid_image`; 413 `image_too_large`;
+  429 `daily_limit`; 409 `not_ready` (proponer antes de que termine) y `read_closed`; 422 `invalid_candidates`;
+  503 `reading_disabled` (sin `NR_SUBNICHE_ENABLED=true` y `NR_MODE=live` no se encola nada). Los 404 de lectura van como
+  `{"detail": {"code","message"}}`. Fallos de una lectura ya encolada (`error.code`): `tweet_unavailable`, `reader_failed`,
+  `abandoned` y los del modelo (`llm_disabled`, `configuration_missing`, `llm_tariff_not_current`, `policy_not_enabled`…).
+- **La lectura es asíncrona:** la hace `tick_leads` del worker, antes de `tick_proposals`, y solo con
+  `NR_SUBNICHE_ENABLED=true` y `NR_MODE=live` (2 lecturas y 2 búsquedas por nombre por vuelta; una lectura `running` de
+  más de 30 minutos pasa a `failed` con `abandoned`).
+- **Límites:** 50 lecturas al día (`NR_LEAD_READS_PER_DAY`, ventana de 24 h, tweets e imágenes juntos), 4 imágenes por
+  tweet, 5 MB por imagen (tipo validado por bytes mágicos: PNG, JPEG, WEBP) y 10 menciones por lectura.
+- **Lector del tweet:** FxTwitter gratuito (`api.fxtwitter.com`, host fijo, sin seguir redirecciones, 10 s, JSON de hasta
+  256 KiB); las fotos solo de `pbs.twimg.com/media`. La API oficial de X (de pago) no se usa.
+- **Costos:** el modelo con visión reserva ≈ US$0,056 por lectura (≈ US$0,05 reales con 4 imágenes). Un `@handle` o enlace de
+  YouTube se resuelve con 1 unidad (un video, 2). Un nombre sin `@handle` **no** se busca solo: «Buscar por nombre»
+  gasta 100 unidades del mismo tope diario que la medición (`NR_SUBNICHE_SEARCH_UNITS_PER_DAY`).
+- **Retención:** la imagen se borra al terminar la lectura; el texto del tweet, al proponer, al cancelar o a las 24 h de
+  terminar. Se conservan autor, `id` del tweet y los canales resueltos. Las tablas `lead_read_requests` y
+  `lead_candidates` van a `PROVIDER_EVIDENCE_TABLES`: el respaldo guarda el esquema, no las filas.
+- **Seguridad:** el texto y las imágenes del tweet son datos no confiables; van al modelo solo bajo `untrusted_*` o como
+  bloques de imagen, nunca en `system`, y la salida del modelo se revalida elemento por elemento.
+
+### `NR_ANTHROPIC_VISION_CONFIGURATION`
+
+Configuración aparte de `NR_ANTHROPIC_CONFIGURATION`: el tope de 16 000 tokens de entrada no cubre 4 imágenes de alta
+resolución (hasta 19 136 tokens). Ejemplo **validado** con `LLMConfiguration.model_validate_json` (reserva ≈ US$0,056 por
+lectura); volver a verificar la tarifa en la página de precios antes de cargarla:
+
+```json
+{"auth_scope": "anthropic-owner", "tariff": {"version": "anthropic-sonnet-5-5-vision-2026-11-05", "model": "claude-sonnet-5-5", "source": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-11-05T00:00:00Z", "valid_until": "2027-02-03T00:00:00Z", "context_window_tokens": 24000, "output_tokens": 800, "input_usd_per_million": "2", "cached_input_usd_per_million": "0.10", "output_usd_per_million": "10"}, "limits": {"operation": "100", "run": "1000", "week": "10000", "period": "100000"}, "timeout_seconds": 30}
+```
+
+### Qué necesita producción (no ejecutado)
+
+1. Release con aprobación del propietario: migración `0023` **primero** (aditiva: `lead_read_requests`, `lead_candidates` y dos
+   columnas nulas de `subniche_proposal_requests`), luego las imágenes de API, worker y web. Una base en `0022` con la imagen
+   nueva hace fallar `backup_snapshot` con `unreviewed_schema_revision`.
+2. `NR_ANTHROPIC_VISION_CONFIGURATION` (arriba). Sin ella la lectura sigue sacando los enlaces de YouTube del texto y avisa
+   «El modelo con visión no está disponible».
+3. `uv run python scripts/seed_subniche_policy.py` (idempotente): siembra también la política `anthropic/lead_mentions`.
+4. **Tope semanal compartido:** `radar_usd_per_week` (US$5 por defecto) lo comparten las lecturas y «Proponer». Al tope de 50
+   lecturas al día el peor caso agotaría la semana en unos 2 días. Recomendación: subirlo a US$15 (decisión del propietario).
+5. `NR_SUBNICHE_ENABLED=true` (con `NR_MODE=live`).
+6. Reinstalar la PWA en el teléfono (ver `docs/web-movil.md`).
+
+### Seguimientos
+
+- Reservar los slugs `proponer` y `propuestas` en la API (hoy `/subnichos/propuestas/aprobar` cae en el detalle de propuesta).
+- Middleware ASGI global que dé 413 antes de `authenticate` (hoy el cuerpo se lee antes de autenticar en `POST /leads/images`).
+- `propose_hypothesis` comparte con las lecturas el hueco de cancelación de reservas de gasto.
+- Decisión del propietario sobre la atestación `EVIDENCE` de la política `lead_mentions`.
+- Elegir entre varios resultados de una búsqueda por nombre (M32 «ambiguo»): hoy se guarda el primero sin marcar.
+
 ## Cadencia del worker
 
 - Un tick cada **3 días** (`CADENCE`), con un cerrojo asesor de Postgres. Mide primero las hipótesis
@@ -282,7 +368,7 @@ errores `quotaExceeded` a mitad de corrida (la corrida queda `partial` y no pier
   **30 días** (`retain_until`; la política de la API no permite más) y **no se respaldan** (esquema sí, filas no).
 - Los agregados `hypothesis_snapshots` son permanentes, y el grupo revisado `DISCOVERY_TABLES`
   (`niche_hypotheses`, `hypothesis_seed_channels`, `discovery_runs`, `hypothesis_snapshots`) **sí se respalda**.
-  Ver `docs/backup-restore.md`. La guarda del respaldo exige la revisión `0022` (ver «API de propuestas»).
+  Ver `docs/backup-restore.md`. La guarda del respaldo exige la revisión `0023` (ver «Lectura de tweets e imágenes»; la `0022` creó la cola de propuestas).
 
 ## Informes (solo lectura)
 
@@ -335,8 +421,8 @@ Sigue el flujo de releases existente (formato en `docs/release-20261030-030.md`)
 
 Pasos del propietario tras el despliegue:
 
-1. `migrate-live` de la 0022 (producción hoy está en una revisión anterior: aplicar también las intermedias
-   que falten). Confirmar `alembic heads` = `0022`.
+1. `migrate-live` hasta la `0023` (producción hoy está en una revisión anterior: aplicar también las intermedias
+   que falten; la 0023 es aditiva). Confirmar `alembic heads` = `0023`.
 2. Variables del worker de la sección anterior (la clave ya está cargada). `NR_SUBNICHE_ENABLED` se queda en `false`
    hasta tener las variables de cuota (ver "Cupo de búsqueda de YouTube": empezar con 5000 unidades por día).
 3. `uv run python scripts/seed_subniche_policy.py` (una vez, idempotente): habilita las políticas de Anthropic

@@ -200,6 +200,7 @@ def read_view(item: dict[str, Any]) -> dict[str, Any]:
     state = STATES.get(status, "fallida")
     return {
         "id": item.get("id"),
+        "is_image": item.get("kind") == "image",
         "state": state,
         "closed": item.get("closed") is True,
         "steps": _steps(status, item.get("stage")),

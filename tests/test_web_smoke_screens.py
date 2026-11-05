@@ -34,6 +34,7 @@ from tests.web_helpers import (
 
 PID = "pil_20261102_historia"
 PROPOSAL = "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d"
+READ = "0b6f3a52-1c1e-4c39-9b0e-2f6a7c1d0001"
 ROUTES = [
     "/",
     "/nichos",
@@ -48,6 +49,9 @@ ROUTES = [
     "/subnichos/uno/archivar",
     "/compartir",
     "/compartir?url=https%3A%2F%2Fwww.youtube.com%2F%40canal",
+    "/compartir/imagen",
+    f"/lecturas/{READ}",
+    f"/lecturas/{READ}/propuestas",
     "/operacion",
     "/operacion/ejecuciones",
     "/mas",
@@ -82,6 +86,7 @@ STATIC_ROUTES = {  # these screens read no API at all
     "/subnichos/proponer?q=%40canal",
     "/compartir",
     "/compartir?url=https%3A%2F%2Fwww.youtube.com%2F%40canal",
+    "/compartir/imagen",
 }
 ECHO_FREE = STATIC_ROUTES | {"/operacion/scraper/pausar", "/operacion/scraper/reanudar"}
 SCRIPT = "<script>alert(1)</script>"
@@ -155,6 +160,33 @@ def fixtures(route: str = "") -> dict[str, Any]:
                 "seed_channels": ["@canal"],
                 "status": "proposed",
             },
+        },
+        "lead": {
+            "id": READ,
+            "kind": "tweet",
+            "status": "ready",
+            "stage": None,
+            "closed": False,
+            "created_at": "2026-11-05T11:00:00Z",
+            "finished_at": "2026-11-05T11:02:00Z",
+            "tweet": {
+                "author": "autor_x",
+                "url": "https://x.com/autor_x/status/1850000000000000000",
+            },
+            "untrusted_text": "texto del tweet",
+            "error": None,
+            "warning": None,
+            "candidates": [
+                {
+                    "id": "7f8091a2-b3c4-4d54-9f5a-6b7c8d9e0f1a",
+                    "kind": "handle",
+                    "value": "@historia_uno",
+                    "found_in": "image",
+                    "resolution": "resolved",
+                    "channel": {"id": "UC" + "a" * 22, "title": "Historia", "subscribers": 5},
+                    "proposal": {"id": "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d", "status": "queued"},
+                }
+            ],
         },
         "approval": {
             "slug": "uno",
@@ -240,6 +272,7 @@ RESOURCES = [
     ("/flow-research", "flows"),
     ("/pilots", "pilots"),
     ("/subniches", "subniches"),
+    ("/leads", "lead"),
     ("/market/schedule", "schedule"),
     ("/market/runs", "runs"),
 ]
@@ -420,7 +453,7 @@ def test_no_screen_loads_third_party_origins_or_inline_code() -> None:
         body = response.text
         assert not INLINE.search(body), (route, INLINE.search(body))
         for found in re.finditer(r"""<a\s[^>]*href\s*=\s*["']https?://[^>]*>""", body, re.I):
-            assert route.startswith("/informes/"), (route, found.group(0))
+            assert route.startswith(("/informes/", "/lecturas/")), (route, found.group(0))
             assert "noopener" in found.group(0) and "noreferrer" in found.group(0), found.group(0)
             assert "nofollow" in found.group(0), found.group(0)
         stripped = re.sub(r"""<a\s[^>]*href\s*=\s*["']https?://[^>]*>""", "", body, flags=re.I)
@@ -454,6 +487,10 @@ POSTS: list[tuple[str, dict[str, str]]] = [
     ("/subnichos/uno/pausar", {}),
     ("/subnichos/uno/reanudar", {}),
     ("/subnichos/uno/archivar", {"confirmar": "1"}),
+    ("/compartir/tweet", {"nonce": "a" * 32, "url": "https://x.com/u/status/1"}),
+    (f"/lecturas/{READ}/proponer", {"candidate": "7f8091a2-b3c4-4d54-9f5a-6b7c8d9e0f1a"}),
+    (f"/lecturas/{READ}/nombre", {"buscar": "7f8091a2-b3c4-4d54-9f5a-6b7c8d9e0f1a"}),
+    (f"/lecturas/{READ}/cancelar", {}),
     ("/salir", {}),
     ("/operacion/scraper/pausar", {}),
     ("/operacion/scraper/reanudar", {}),
@@ -471,6 +508,18 @@ def test_every_post_without_csrf_is_refused_and_touches_no_api(
     assert [c.url.path for c in api.calls if c.url.path != "/api/v1/status"] == [], path
     assert all(c.method == "GET" for c in api.calls), path
     assert web.get("/nichos").status_code == 200  # the session is intact: nothing was applied
+
+
+def test_the_image_upload_without_csrf_is_refused_and_touches_no_api() -> None:
+    web, api = client_for(fixtures())
+    response = web.post(
+        "/compartir/imagen/leer",
+        content=b"\x89PNG\r\n\x1a\n" + b"\x00" * 32,
+        headers={"X-Nonce": "a" * 32, "Content-Type": "image/png"},
+    )
+    assert response.status_code == 403
+    assert [c.url.path for c in api.calls if c.url.path != "/api/v1/status"] == []
+    assert all(c.method == "GET" for c in api.calls)
 
 
 def test_login_is_the_only_post_outside_csrf() -> None:

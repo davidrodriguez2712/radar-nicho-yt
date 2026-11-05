@@ -205,9 +205,9 @@ El enlace se toma de `url`, o de `text` o `title` si ahí viene el enlace; los e
 
 ### Límites
 
-- Los enlaces de X (tweets) todavía no se leen: la pantalla lo avisa y pide copiar el canal o el enlace de YouTube que menciona.
+- Los enlaces de X (tweets) se leen en el servidor: ver «Compartir un tweet o una imagen (M31 a M34)».
 - Solo Android: el `share_target` de las PWA no existe en iOS.
-- Sin imágenes: el destino es `GET` con título, texto y enlace; compartir imágenes exige `POST` con archivos y un service worker, fuera de este plan.
+- Imágenes: el destino ahora es un único `POST` multipart; ver «Compartir un tweet o una imagen (M31 a M34)».
 - Las consultas y los canales semilla de una propuesta se muestran hasta 20 cada lista, con el aviso fijo «Se muestran los primeros 20.».
 
 ### Qué necesita producción
@@ -220,7 +220,30 @@ El enlace se toma de `url`, o de `text` o `title` si ahí viene el enlace; los e
 ### Seguimiento
 
 - Reservar los slugs `proponer` y `propuestas` en la API. Hoy la web solo rechaza `proponer`, y solo en la etiqueta manual; `propuestas` no se rechaza en ningún sitio. Efecto real: `/subnichos/propuestas/aprobar` y `/subnichos/propuestas/archivar` caen en la ruta del detalle de propuesta y dan 404 (la ficha de un subnicho con ese slug no se puede abrir ni aprobar desde la web); la CLI sigue sirviendo.
-- Lectura de tweets y de imágenes (M31 a M34): plan aparte.
+
+## Compartir un tweet o una imagen (M31 a M34)
+
+Plan: `docs/superpowers/plans/2026-11-05-lectura-de-tweets-e-imagenes.md`. Solo Android (iPhone no está soportado: no hay
+`share_target` en iOS). Detalle de la API, límites y costos en `docs/subniche-discovery.md`, «Lectura de tweets e imágenes».
+
+- **Un tweet:** en X, «Compartir» y elegir NicheRadar → «Compartido contigo» (M31) con «Leer tweet» → «Leyendo el tweet»
+  (sondeo acotado) → «Canales encontrados» (M32: marcar, «Buscar por nombre (100 u.)» aparte) → «Proponer los canales
+  marcados» → propuestas (M34). Cada paso es un POST con CSRF; compartir nunca crea nada solo.
+- **Una imagen (respaldo):** si el tweet no se puede leer, mantener pulsada la imagen y compartirla con NicheRadar. El
+  manifiesto declara un único `share_target` `POST` multipart (`/compartir`, campo `imagen`: PNG, JPEG o WEBP). El service worker
+  (`sw.js`) guarda la imagen **solo en la caché del teléfono** `nicheradar-share-v1` bajo `/compartir/imagen/archivo`
+  (tipo declarado PNG/JPEG/WEBP y ≤ 5 MiB; si no, aviso) y abre «Imagen recibida» (M33). Al pulsar «Leer imagen»,
+  `static/js/compartir.js` envía el archivo como cuerpo crudo a `POST /compartir/imagen/leer` con `X-CSRF-Token` y
+  `X-Nonce`; el servidor lo lee con tope de 5 MiB, comprueba los bytes mágicos y lo reenvía en base64 a la API. La imagen se
+  borra de la caché al leerla o al cancelar. El servidor nunca guarda la imagen antes de «Leer imagen»
+  (`GET /compartir/imagen/archivo` siempre da 404). Un compartir sin service worker activo llega al servidor, no guarda nada y
+  redirige con el aviso «abre NicheRadar una vez desde el icono instalado».
+- La CSP no cambia (`script-src 'self'`); el service worker solo cachea `/static`, `/sin-conexión` y esa entrada única.
+- **Reinstalar la PWA:** al pasar del `share_target` `GET` al `POST` multipart hay que desinstalarla y volver a instalarla
+  para que Android registre el nuevo destino.
+- Diferencias deliberadas con el Figma: «Buscar por nombre (100 u.)» es un botón aparte y el contador no incluye nombres sin
+  resolver (Hallazgo 4); en lugar de «Compartir la imagen» hay ayuda más «Abrir el tweet en X» (Hallazgo 5); el rótulo del
+  botón de proponer no cuenta canales.
 
 ## Comprobación visual contra el Figma
 
@@ -228,7 +251,7 @@ El enlace se toma de `url`, o de `text` o `title` si ahí viene el enlace; los e
 uv run python scripts/web_preview.py --out /tmp/web-preview
 ```
 
-Renderiza Subnichos (lista y ficha con Recorrido), Hoy, Nichos, Detalle de nicho (`nicho_detalle`), Investigar, Informe v3, Autorizar y, del corte 2a, Pilotos, Piloto (Resumen), Preparación y Confirmar, del corte 2b, Calibración (piloto en ejecución) y, del corte 3a, Operación, Ejecuciones, Más y Confirmar scraper y, de Proponer y Compartir, las siete pantallas nuevas (`proponer`, `propuesta_cola`, `propuesta_lista`, `aprobar`, `archivar`, `compartir` y `compartir_tweet`), con datos de ejemplo
+Renderiza Subnichos (lista y ficha con Recorrido), Hoy, Nichos, Detalle de nicho (`nicho_detalle`), Investigar, Informe v3, Autorizar y, del corte 2a, Pilotos, Piloto (Resumen), Preparación y Confirmar, del corte 2b, Calibración (piloto en ejecución) y, del corte 3a, Operación, Ejecuciones, Más y Confirmar scraper y, de Proponer y Compartir, las siete pantallas nuevas (`proponer`, `propuesta_cola`, `propuesta_lista`, `aprobar`, `archivar`, `compartir` y `compartir_tweet`) y las de lectura (`lectura_lista`, `lectura_en_curso`, `lectura_fallida`, `lectura_imagen`, `lectura_propuestas`, `compartir_imagen`), con datos de ejemplo
 (`scripts/web_preview_data.py`, sin API real) y guarda `lista`, `ficha`, `hoy`, `nichos`, `nicho_detalle`, `investigar`,
 `informe`, `autorizar`, `pilotos`, `piloto`, `preparacion`, `calibracion`, `confirmar`, `operacion`, `ejecuciones`, `mas`, `confirmar-scraper`, `proponer`, `propuesta_cola`, `propuesta_lista`, `aprobar`, `archivar`, `compartir` y `compartir_tweet` como `.html` y, si hay Chrome (`--chrome RUTA`), como `.png` a 390 px de ancho con
 escala 2. Compárense con el Figma M9 (`29:2`), M10 (`30:2`), M19 (`47:37`), M14 (`36:2`), M11 (`31:2`), M12 (`32:2`), M13 (`35:2`) y los demás marcos del archivo. Los estados de investigación de la lista son
