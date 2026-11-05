@@ -15,10 +15,11 @@ from sqlalchemy import Connection
 from nicheradar.config import Settings
 from nicheradar.repositories.schema import hypothesis_seed_channels as seeds
 from nicheradar.repositories.schema import niche_hypotheses as nh
-from nicheradar.subniche_discovery import proposals
+from nicheradar.subniche_discovery import proposals, store
 from nicheradar.subniche_discovery.catalog import list_subniches, subniche_detail
 from nicheradar.subniche_discovery.intake import ManualFields
 from nicheradar.subniche_discovery.proposals import ProposalRejected
+from nicheradar.subniche_discovery.reader import search_units_needed
 
 LLM_UNAVAILABLE = "El modelo de lenguaje no está disponible: usa la propuesta manual."
 GENERIC = "No se pudo preparar la propuesta."
@@ -121,6 +122,25 @@ def _present(connection: Connection, row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _lifecycle_error(error: Exception) -> JSONResponse:
+    """Mensaje fijo: el texto de la excepción nunca llega al cliente."""
+    if isinstance(error, store.UnknownHypothesis):
+        return JSONResponse(
+            status_code=404,
+            content={"code": "not_found", "message": "Hipótesis no encontrada."},
+        )
+    return JSONResponse(
+        status_code=409,
+        content={
+            "code": "invalid_transition",
+            "message": "Esa hipótesis no puede pasar a ese estado.",
+        },
+    )
+
+
+Slug = Annotated[str, Path(min_length=1, max_length=60)]
+
+
 def subniche_router(
     *,
     authenticate: Callable[..., None],
@@ -182,6 +202,59 @@ def subniche_router(
         include_inactive: Annotated[bool, Query()] = False,
     ) -> dict[str, Any]:
         return {"items": list_subniches(connection, include_inactive=include_inactive)}
+
+    @router.get("/{slug}/approval")
+    def approval_preview(slug: Slug, connection: Annotated[Connection, Depends(db)]) -> Any:
+        try:
+            hypothesis = store.get_hypothesis(connection, slug)
+        except store.UnknownHypothesis as error:
+            return _lifecycle_error(error)
+        queries = list(hypothesis["queries"])
+        needed = search_units_needed(queries, config)
+        cap = min(config.subniche_search_units_per_day, config.subniche_search_quota_per_run)
+        return {
+            "slug": slug,
+            "status": hypothesis["status"],
+            "queries": len(queries),
+            "pages": config.subniche_search_pages,
+            "search_units_needed": needed,
+            "daily_cap": cap,
+            "fits": needed <= cap,
+            "cadence_days": 3,
+        }
+
+    def _transition(
+        connection: Connection, slug: str, change: Callable[[], None], target: str
+    ) -> Any:
+        try:
+            change()
+        except (store.UnknownHypothesis, store.InvalidTransition) as error:
+            return _lifecycle_error(error)
+        return {"slug": slug, "status": target}
+
+    @router.post("/{slug}/approve")
+    def approve(slug: Slug, connection: Annotated[Connection, Depends(db)]) -> Any:
+        return _transition(
+            connection, slug, lambda: store.approve(connection, slug, clock()), "active"
+        )
+
+    @router.post("/{slug}/pause")
+    def pause(slug: Slug, connection: Annotated[Connection, Depends(db)]) -> Any:
+        return _transition(
+            connection, slug, lambda: store.set_status(connection, slug, "paused"), "paused"
+        )
+
+    @router.post("/{slug}/resume")
+    def resume(slug: Slug, connection: Annotated[Connection, Depends(db)]) -> Any:
+        return _transition(
+            connection, slug, lambda: store.set_status(connection, slug, "active"), "active"
+        )
+
+    @router.post("/{slug}/archive")
+    def archive(slug: Slug, connection: Annotated[Connection, Depends(db)]) -> Any:
+        return _transition(
+            connection, slug, lambda: store.set_status(connection, slug, "archived"), "archived"
+        )
 
     @router.get("/{slug}")
     def detail(
