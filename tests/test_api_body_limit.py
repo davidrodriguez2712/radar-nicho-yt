@@ -14,6 +14,7 @@ from pydantic import SecretStr
 from nicheradar.api import create_app
 from nicheradar.api_limits import (
     BODY_LIMITS,
+    BODY_METHODS,
     DEFAULT_BODY_LIMIT,
     LEAD_BODY_LIMIT,
     PAYLOAD_TOO_LARGE,
@@ -56,7 +57,52 @@ def test_the_limit_table_is_named_and_ordered() -> None:
     assert limit_for("/api/v1leads") is None  # fuera de /api/v1
     assert limit_for("/") is None
     assert limit_for("/subnichos/proponer") is None
-    assert all(prefix.startswith("/api/v1/") for prefix, _ in BODY_LIMITS)
+    assert all(rule.path.startswith("/api/v1/") for rule in BODY_LIMITS)
+    # Criterio: la exención es por igualdad exacta; las demás reglas cubren también sus subrutas.
+    assert [rule.path for rule in BODY_LIMITS if rule.limit is None] == ["/api/v1/leads/images"]
+    assert all(rule.exact for rule in BODY_LIMITS if rule.limit is None)
+    assert limit_for("/api/v1/leads/images/names") == LEAD_BODY_LIMIT
+    assert limit_for("/api/v1/leads/images/proposals") == LEAD_BODY_LIMIT
+    assert limit_for("/api/v1/leads/images/x") == LEAD_BODY_LIMIT
+    assert limit_for("/api/v1/leads/images/") == LEAD_BODY_LIMIT
+    assert limit_for("/api/v1/subniches/proposals/x") == LEAD_BODY_LIMIT
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/v1/leads/images/names",
+        "/api/v1/leads/images/proposals",
+        "/api/v1/leads/images%2Fnames",
+        "/api/v1/leads/images/x",
+    ],
+)
+def test_the_images_exemption_does_not_leak_to_sibling_routes(path: str) -> None:
+    response = api().post(
+        path,
+        content=big_json(LEAD_BODY_LIMIT + 1),
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 413 and response.json() == EXPECTED
+
+
+def test_put_and_patch_are_limited_too() -> None:
+    assert {"POST", "PUT", "PATCH"} <= BODY_METHODS
+    client = api()
+    for method, path in (
+        ("PUT", "/api/v1/profile"),
+        ("PUT", "/api/v1/radar"),
+        ("PUT", "/api/v1/market/schedule"),
+        ("PATCH", "/api/v1/profile"),
+    ):
+        response = client.request(
+            method,
+            path,
+            content=big_json(DEFAULT_BODY_LIMIT + 1),
+            headers={"Content-Type": "application/json"},
+        )
+        assert response.status_code == 413, (method, path)
+        assert response.json() == EXPECTED
 
 
 @pytest.mark.parametrize("token", [True, False])
@@ -281,3 +327,35 @@ def test_chunked_body_against_the_real_app_is_413_not_400() -> None:
     assert sent[0]["status"] == 413
     assert json.loads(sent[1]["body"]) == EXPECTED
     assert served <= 5
+
+
+def test_the_cut_inside_a_task_group_is_still_a_413() -> None:
+    """Un `BaseExceptionGroup` (anyio task group en la app) no debe saltarse el corte."""
+    import anyio
+
+    async def grouped(scope: Any, receive: Any, send: Any) -> None:
+        async def read() -> None:
+            while True:
+                if not (await receive()).get("more_body"):
+                    return
+
+        async with anyio.create_task_group() as group:
+            group.start_soon(read)
+
+    app = ApiBodyLimitMiddleware(grouped)
+    sent, served = run_asgi(app, "/api/v1/leads/tweets", [b"a" * 16_384] * 100, [])
+    assert sent[0]["status"] == 413 and json.loads(sent[1]["body"]) == EXPECTED
+    assert served <= 5
+
+
+def test_if_the_response_already_started_the_cut_is_not_answered_twice() -> None:
+    async def late(scope: Any, receive: Any, send: Any) -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        while (await receive()).get("more_body"):
+            pass
+
+    app = ApiBodyLimitMiddleware(late)
+    sent: list[dict[str, Any]] = []
+    with pytest.raises(BaseException):  # noqa: B017, PT011 - la interrupción interna
+        sent, _ = run_asgi(app, "/api/v1/leads/tweets", [b"a" * 40_000] * 5, [])
+    assert sent == []  # no se envió ningún segundo inicio de respuesta

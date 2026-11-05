@@ -8,6 +8,9 @@ con 413 en cuanto el `Content-Length` declarado o los bytes realmente recibidos 
 leer el resto. El 413 sale también sin token: es intencional y el mensaje es fijo, no repite nada
 de la petición.
 
+Las exenciones de la tabla son por igualdad exacta de ruta (una subruta de `leads/images` es
+otra ruta con cuerpo JSON); los topes cubren la ruta y sus subrutas.
+
 Solo toca peticiones HTTP con método con cuerpo (POST, PUT, PATCH) a rutas bajo `/api/v1`;
 `lifespan`, websocket, GET/HEAD/DELETE y el resto de rutas pasan tal cual.
 
@@ -33,7 +36,7 @@ margen) y el de leads/propuestas es 64 KiB.
 
 import json
 from collections.abc import Awaitable, Callable, MutableMapping
-from typing import Any
+from typing import Any, NamedTuple
 
 Scope = MutableMapping[str, Any]
 Message = MutableMapping[str, Any]
@@ -45,12 +48,21 @@ API_PREFIX = "/api/v1"
 BODY_METHODS = frozenset({"POST", "PUT", "PATCH"})
 LEAD_BODY_LIMIT = 64 * 1024
 DEFAULT_BODY_LIMIT = 4 * 1024 * 1024
-# (prefijo de ruta, tope en bytes; None = exento). Gana la primera coincidencia; el prefijo
-# coincide por segmentos completos.
-BODY_LIMITS: tuple[tuple[str, int | None], ...] = (
-    ("/api/v1/leads/images", None),
-    ("/api/v1/leads", LEAD_BODY_LIMIT),
-    ("/api/v1/subniches/proposals", LEAD_BODY_LIMIT),
+
+
+class Rule(NamedTuple):
+    path: str
+    limit: int | None  # None = exenta
+    exact: bool  # True: solo esa ruta; False: la ruta y todas sus subrutas (por segmentos)
+
+
+# Gana la primera coincidencia. Criterio: una EXENCIÓN es siempre exacta (`exact=True`): una
+# subruta como `/api/v1/leads/images/names` cae en otra ruta (`/{read_id}/names`) con cuerpo JSON y
+# no debe heredar la exención. Un TOPE (no exento) cubre también las subrutas: solo las acota más.
+BODY_LIMITS: tuple[Rule, ...] = (
+    Rule("/api/v1/leads/images", None, exact=True),
+    Rule("/api/v1/leads", LEAD_BODY_LIMIT, exact=False),
+    Rule("/api/v1/subniches/proposals", LEAD_BODY_LIMIT, exact=False),
 )
 PAYLOAD_TOO_LARGE = {
     "code": "payload_too_large",
@@ -72,9 +84,9 @@ def limit_for(path: str) -> int | None:
     """Tope en bytes para `path`, o None si el middleware no debe tocarla."""
     if not _under(path, API_PREFIX):
         return None
-    for prefix, limit in BODY_LIMITS:
-        if _under(path, prefix):
-            return limit
+    for rule in BODY_LIMITS:
+        if path == rule.path or (not rule.exact and _under(path, rule.path)):
+            return rule.limit
     return DEFAULT_BODY_LIMIT
 
 
@@ -127,7 +139,10 @@ class ApiBodyLimitMiddleware:
 
         try:
             await self.app(scope, counted_receive, tracked_send)
-        except _BodyTooLarge:
+        except* _BodyTooLarge:
+            # `except*` atrapa también el corte envuelto en un BaseExceptionGroup (task group).
+            # Si la respuesta ya empezó no se envía un segundo inicio: se relanza el corte y el
+            # servidor cierra la conexión.
             if started:
                 raise
             await self._reject(send)
