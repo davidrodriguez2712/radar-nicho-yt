@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     anthropic_enabled: bool = False
     anthropic_api_key: SecretStr | None = None
     anthropic_configuration: LLMConfiguration | None = None
+    lead_reads_per_day: int = Field(default=50, ge=1, le=500)
+    anthropic_vision_configuration: LLMConfiguration | None = None
     api_url: str = "http://127.0.0.1:8000"
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8000, ge=1024, le=65535)

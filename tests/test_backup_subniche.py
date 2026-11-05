@@ -33,6 +33,7 @@ def test_discovery_group_classification() -> None:
     assert not DISCOVERY_TABLES & set(PROVIDER_EVIDENCE_TABLES)
     assert not DISCOVERY_TABLES & RUN_TABLES
     assert set(API_DATA) <= set(PROVIDER_EVIDENCE_TABLES)
+    assert {"lead_read_requests", "lead_candidates"} <= set(PROVIDER_EVIDENCE_TABLES)
 
 
 @pytest.mark.postgres

@@ -46,6 +46,8 @@ def test_the_schema_matches_the_migrated_database(db: Connection) -> None:
         "created_at": (False, None),
         "started_at": (True, None),
         "finished_at": (True, None),
+        "lead_author": (True, 15),
+        "lead_tweet_id": (True, 20),
     }
     assert set(expected) == set(columns)
     for name, (nullable, length) in expected.items():
