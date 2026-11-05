@@ -65,8 +65,8 @@ def main() -> None:
     engine = database_engine(config)
     now = datetime.now(UTC)
     with engine.begin() as connection:
-        seed_policies(connection, now)
-    print(json.dumps({"seeded": True, "operations": 2, "usages": 8}))
+        seeded = seed_policies(connection, now)
+    print(json.dumps({"seeded": True, "operations": len(OPERATIONS), "usages": seeded}))
 
 
 if __name__ == "__main__":

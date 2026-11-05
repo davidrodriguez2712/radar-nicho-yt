@@ -7,20 +7,24 @@ from typing import Any
 import httpx
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, func, select
 
 from nicheradar.config import Settings
 from nicheradar.integrations.anthropic import AnthropicClient
+from nicheradar.integrations.llm import LLMConfiguration
 from nicheradar.integrations.tweets import ImageData
 from nicheradar.repositories import schema_v1 as s
 from nicheradar.subniche_discovery.mentions import (
     MAX_BODY_BYTES,
+    MAX_IMAGES,
+    MAX_TEXT_CHARS,
     MENTIONS_TOOL,
     Mention,
     extract_mentions,
     mention_request_body,
     merge_mentions,
     parse_mention_response,
+    source_digest,
     text_mentions,
 )
 from tests.lead_samples import (
@@ -258,11 +262,14 @@ def test_seed_policies_enables_both_operations(db: Any) -> None:
     rows = db.execute(
         select(s.provider_policies.c.operation, s.provider_policies.c.data_type)
     ).all()
+    assert len(rows) == 8
     assert {tuple(r) for r in rows} == {
         ("hypothesis_proposal", "subniche_hypothesis"),
         ("lead_mentions", "lead_mentions"),
     }
     assert seed_policies(db, datetime(2026, 11, 5, tzinfo=UTC)) == 8  # idempotente
+    count = db.execute(select(func.count()).select_from(s.provider_policies)).scalar_one()
+    assert count == 8
 
 
 @pytest.mark.parametrize(
@@ -319,25 +326,6 @@ def test_request_body_keeps_text_out_of_system_even_when_unicode() -> None:
 
 
 @pytest.mark.postgres
-def test_extract_oversized_body_is_refused_without_http_and_unknown_charge(
-    isolated_engine: Engine,
-) -> None:
-    with isolated_engine.begin() as connection:
-        run = seed_run(connection)
-        seed_lead_policies(connection)
-    huge = [ImageData("image/png", PNG + b"\x00" * 6_000_000)] * 5
-
-    def forbidden(request: httpx.Request) -> httpx.Response:
-        pytest.fail("an oversized body must never be sent")
-
-    client = AnthropicClient(SecretStr("x" * 12), transport=httpx.MockTransport(forbidden))
-    out = asyncio.run(
-        extract_mentions(isolated_engine, run, vision_settings(), "t", huge, LLM_NOW, client=client)
-    )
-    assert out["reason"] == "llm_failed" and out["mentions"] == ()
-
-
-@pytest.mark.postgres
 def test_extract_never_leaks_provider_text(isolated_engine: Engine) -> None:
     with isolated_engine.begin() as connection:
         run = seed_run(connection)
@@ -371,3 +359,163 @@ def test_extract_returns_only_revalidated_mentions_for_injected_text(
         )
     )
     assert out["mentions"] == (Mention("handle", "@canal_real", "text"),)
+
+
+def forbidden_client() -> AnthropicClient:
+    def forbidden(request: httpx.Request) -> httpx.Response:
+        pytest.fail("no LLM request may be placed")
+
+    return AnthropicClient(SecretStr("x" * 12), transport=httpx.MockTransport(forbidden))
+
+
+def prepared(engine: Engine) -> dict[str, Any]:
+    with engine.begin() as connection:
+        run = seed_run(connection)
+        seed_lead_policies(connection)
+    return run
+
+
+@pytest.mark.postgres
+def test_extract_oversized_body_is_refused_before_touching_the_ledger(
+    isolated_engine: Engine,
+) -> None:
+    run = prepared(isolated_engine)
+    huge = [ImageData("image/png", PNG + b"\x00" * 6_000_000)] * MAX_IMAGES
+    out = asyncio.run(
+        extract_mentions(
+            isolated_engine, run, vision_settings(), "t", huge, LLM_NOW, client=forbidden_client()
+        )
+    )
+    assert out == {"mentions": (), "reason": "llm_input_too_large", "actual_usd": None}
+    assert ledger(isolated_engine) == ([], [])
+
+
+@pytest.mark.postgres
+def test_extract_bounds_its_own_input(isolated_engine: Engine) -> None:
+    run = prepared(isolated_engine)
+    image = ImageData("image/png", PNG)
+    cases = [
+        ("t", [image] * (MAX_IMAGES + 1), "too_many_images"),
+        ("t" * (MAX_TEXT_CHARS + 1), [], "text_too_long"),
+    ]
+    for text, images, reason in cases:
+        out = asyncio.run(
+            extract_mentions(
+                isolated_engine,
+                run,
+                vision_settings(),
+                text,
+                images,
+                LLM_NOW,
+                client=forbidden_client(),
+            )
+        )
+        assert out == {"mentions": (), "reason": reason, "actual_usd": None}
+    assert ledger(isolated_engine) == ([], [])
+
+
+@pytest.mark.postgres
+def test_cancellation_settles_the_reservation_and_propagates(isolated_engine: Engine) -> None:
+    run = prepared(isolated_engine)
+
+    async def slow(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(30)
+        return httpx.Response(200, json=mention_payload([]))
+
+    client = AnthropicClient(SecretStr("x" * 12), transport=httpx.MockTransport(slow))
+
+    async def scenario() -> None:
+        await asyncio.wait_for(
+            extract_mentions(
+                isolated_engine, run, vision_settings(), "t", [], LLM_NOW, client=client
+            ),
+            timeout=0.3,
+        )
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(scenario())
+    assert ledger(isolated_engine) == (["unknown_charge"], ["unknown_charge"])
+
+
+@pytest.mark.postgres
+def test_budget_rejection_places_no_request_and_leaves_no_ledger(isolated_engine: Engine) -> None:
+    run = prepared(isolated_engine)
+    data = VISION.model_dump(mode="json")
+    data["limits"] = {**data["limits"], "operation": "0.000001"}
+    tight = vision_settings(anthropic_vision_configuration=LLMConfiguration.model_validate(data))
+    out = asyncio.run(
+        extract_mentions(isolated_engine, run, tight, "t", [], LLM_NOW, client=forbidden_client())
+    )
+    assert out["mentions"] == () and out["actual_usd"] is None
+    assert out["reason"] not in {"response_received", "llm_failed"}
+    assert ledger(isolated_engine) == ([], [])
+
+
+@pytest.mark.postgres
+def test_second_identical_call_is_declined_with_a_single_request(isolated_engine: Engine) -> None:
+    run = prepared(isolated_engine)
+    seen: list[httpx.Request] = []
+    client = mentions_client([], seen)
+    first = asyncio.run(
+        extract_mentions(isolated_engine, run, vision_settings(), "t", [], LLM_NOW, client=client)
+    )
+    second = asyncio.run(
+        extract_mentions(isolated_engine, run, vision_settings(), "t", [], LLM_NOW, client=client)
+    )
+    assert first["reason"] == "response_received"
+    assert second["reason"] == "request_already_reserved" and len(seen) == 1
+
+
+@pytest.mark.postgres
+def test_missing_api_key_declines_without_spending(isolated_engine: Engine) -> None:
+    run = prepared(isolated_engine)
+    config = vision_settings(anthropic_api_key=None)
+    out = asyncio.run(
+        extract_mentions(isolated_engine, run, config, "t", [], LLM_NOW, client=forbidden_client())
+    )
+    assert out == {"mentions": (), "reason": "configuration_missing", "actual_usd": None}
+    assert ledger(isolated_engine) == ([], [])
+
+
+@pytest.mark.parametrize(
+    "item",
+    [
+        {"kind": "url", "value": "https://evil.test/youtube.com/@canal_x", "found_in": "text"},
+        {"kind": "url", "value": "javascript:youtube.com/@canal_x", "found_in": "text"},
+        {"kind": "url", "value": "https://youtube.com.evil.test/@canal_x", "found_in": "text"},
+    ],
+)
+def test_parse_url_requires_a_youtube_host(item: Any) -> None:
+    result = parse_mention_response(mention_payload([item]), TARIFF)
+    assert result.mentions == () and result.dropped == 1
+
+
+def test_text_mentions_trim_punctuation_ignore_case_and_embedded_links() -> None:
+    text = (
+        "Mira https://youtube.com/@historia_uno. y (https://youtube.com/@otro_canal), "
+        "HTTPS://YOUTUBE.COM/@CANAL_X! "
+        "https://evil.test/?u=https://youtube.com/@oculto_uno"
+    )
+    assert text_mentions(text) == (
+        Mention("handle", "@historia_uno", "text"),
+        Mention("handle", "@otro_canal", "text"),
+        Mention("handle", "@CANAL_X", "text"),
+    )
+
+
+def test_source_digest_separates_fields_and_media_types() -> None:
+    png = ImageData("image/png", PNG)
+    assert source_digest("ab", [png]) != source_digest("a", [ImageData("image/png", b"b" + PNG)])
+    assert source_digest("t", [png]) != source_digest("t", [ImageData("image/jpeg", PNG)])
+    assert source_digest("t", [png, png]) != source_digest("t", [png])
+    assert source_digest("t", [png]) == source_digest("t", [png])
+
+
+def test_nothing_in_src_runs_the_policy_seed() -> None:
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "src"
+    offenders = [
+        str(path) for path in root.rglob("*.py") if "seed_subniche_policy" in path.read_text()
+    ]
+    assert offenders == []
