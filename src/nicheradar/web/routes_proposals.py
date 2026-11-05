@@ -20,10 +20,12 @@ from nicheradar.web.deps import (
 from nicheradar.web.proposals import (
     FORM_ERRORS,
     INPUT_MAX,
+    MAX_POLLS,
     error_text,
     idempotency_key,
     new_nonce,
     parse_form,
+    poll_count,
     proposal_view,
     valid_nonce,
     valid_proposal_id,
@@ -44,15 +46,17 @@ def _form(
     session: Session,
     *,
     values: dict[str, str],
+    nonce: str | None = None,
     error: str | None = None,
     status: int = 200,
 ) -> Response:
+    """`nonce` is kept only when the request may still be queued (a transient failure)."""
     response = render(
         request,
         "subnichos/proponer.html",
         {
             "active_tab": "nichos",
-            "nonce": new_nonce(),
+            "nonce": nonce if nonce is not None and valid_nonce(nonce) else new_nonce(),
             "values": values,
             "error": error,
             "input_max": INPUT_MAX,
@@ -113,7 +117,9 @@ def propose(
         )
     body, key = parse_form(input, manual_mode, label, family, parent)
     if key is not None:
-        return _form(request, session, values=values, error=FORM_ERRORS[key], status=422)
+        return _form(
+            request, session, values=values, nonce=nonce, error=FORM_ERRORS[key], status=422
+        )
     try:
         result = request.app.state.api.request(
             "POST",
@@ -126,16 +132,19 @@ def propose(
             raise TypeError("proposal id is not a UUID")
     except ApiError as err:
         domain = err.code is not None and err.status in (422, 429)
+        # A domain rejection is final: the retry is a new request. A transient failure may have
+        # queued it, so the same nonce (the same key) keeps a retry from creating a second one.
         return _form(
             request,
             session,
             values=values,
+            nonce=None if domain else nonce,
             error=error_text(err.code) if domain else err.message,
             status=err.status if domain and err.status else 503,
         )
     except SHAPE_ERRORS:
         _log.exception("unexpected API payload shape on propose")
-        return _form(request, session, values=values, error=SHAPE_MESSAGE, status=503)
+        return _form(request, session, values=values, nonce=nonce, error=SHAPE_MESSAGE, status=503)
     return RedirectResponse(f"/subnichos/propuestas/{proposal_id}", status_code=303)
 
 
@@ -145,6 +154,7 @@ def proposal_detail(
     request: Request,
     proposal_id: str,
     session: Annotated[Session, Depends(current_session)],
+    n: str = "",
 ) -> Response:
     fragment = is_fragment(request)
     if not valid_proposal_id(proposal_id):
@@ -153,15 +163,24 @@ def proposal_detail(
         item = request.app.state.api.request("GET", f"/subniches/proposals/{proposal_id}")
     except ApiError as err:
         if fragment:
-            # Keep the current screen: the next poll tries again (or stops if it is gone).
+            # A transient error keeps the screen (204 swaps nothing) and the next poll retries.
+            # 286 does swap, even with an empty body (it would erase #estado), so it carries
+            # a real fragment.
             if err.kind == "not_found":
-                return Response(status_code=STOP_POLLING)
+                return render(
+                    request,
+                    "_aviso_error.html",
+                    {"message": MISSING},
+                    status_code=STOP_POLLING,
+                    session=session,
+                )
             return Response(status_code=204)
         missing = err.kind in ("not_found", "invalid")
         return _error_page(
             request, session, MISSING if missing else err.message, 404 if missing else 503
         )
     view = proposal_view(item, datetime.now(UTC))
+    count = poll_count(n)
     response = render(
         request,
         "subnichos/_propuesta.html" if fragment else "subnichos/propuesta.html",
@@ -169,7 +188,9 @@ def proposal_detail(
             "active_tab": "nichos",
             "v": view,
             "proposal_id": proposal_id,
-            "polling": view["state"] in POLLING,
+            "polling": view["state"] in POLLING and count < MAX_POLLS,
+            "exhausted": view["state"] in POLLING and count >= MAX_POLLS,
+            "next_poll": count + 1,
         },
         session=session,
     )

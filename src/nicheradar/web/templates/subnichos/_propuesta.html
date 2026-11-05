@@ -1,9 +1,9 @@
 {% from "components.html" import chip, button %}
-<div class="stack" id="estado"{% if polling %} hx-get="/subnichos/propuestas/{{ proposal_id }}" hx-trigger="every 5s" hx-swap="outerHTML"{% endif %}>
+<div class="stack" id="estado"{% if polling %} hx-get="/subnichos/propuestas/{{ proposal_id }}?n={{ next_poll }}" hx-trigger="every 5s" hx-swap="outerHTML"{% endif %}>
 {% if v.state == "lista" and v.hypothesis %}
 {% set h = v.hypothesis %}
 <h1 class="h1 h1--md">{{ h.label }}</h1>
-<div class="tags">{{ chip("Propuesta", "amber") }}</div>
+<div class="tags">{{ chip("Propuesta" if h.proposed else h.status_label, "amber" if h.proposed else "neutral") }}</div>
 <p class="lead">Revísala antes de aprobar.</p>
 <section class="card">
   <h2 class="card__heading">Hipótesis</h2>
@@ -37,6 +37,7 @@
   <div class="rows"><div class="row"><span class="row__label">Entrada</span><span class="row__value row__value--text">{{ v.input }}</span></div></div>
   {% if v.kind_label == "Canal" %}<p>El modelo de lenguaje lee los últimos videos del canal y propone la etiqueta, la familia, el nicho padre y 2 o 3 consultas.</p>{% endif %}
   <p>Se prepara en el servidor, no desde tu teléfono.</p>
+  {% if exhausted %}<p class="muted" id="sondeo-agotado">Sigue en preparación. Ya no se actualiza sola: usa «Actualizar».</p>{% endif %}
   {{ button("Actualizar", "secondary", href="/subnichos/propuestas/" ~ proposal_id) }}
 </section>
 {% endif %}

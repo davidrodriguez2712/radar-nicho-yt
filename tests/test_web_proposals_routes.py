@@ -50,7 +50,7 @@ def ready() -> dict[str, Any]:
             "parent_niche": "Historia militar explicada",
             "queries": ["ancient rome facts", "how rome fell"],
             "seed_channels": ["@nombredelcanal"],
-            "status": "candidate",
+            "status": "proposed",
         },
     )
 
@@ -270,7 +270,7 @@ def test_queued_detail_polls_every_5s() -> None:
         "@nombredelcanal",
         "Actualizar",
         'hx-trigger="every 5s"',
-        f'hx-get="/subnichos/propuestas/{PID}"',
+        f'hx-get="/subnichos/propuestas/{PID}?n=1"',
     ):
         assert text in page.text
     assert "<style" not in page.text and " style=" not in page.text
@@ -399,3 +399,93 @@ def test_proponer_is_not_shadowed_by_the_slug_route() -> None:
     api = Api()
     make_client(api).get(FORM)
     assert api.calls == []
+
+
+def test_nonce_is_reused_after_a_transient_failure_and_the_key_is_the_same() -> None:
+    state = {"down": True}
+
+    def flaky(request: httpx.Request) -> httpx.Response:
+        if state["down"]:
+            return httpx.Response(503, json={"detail": "x"})
+        return accepted(request)
+
+    api = Api({POST: flaky})
+    web = make_client(api)
+    data = form(web)
+    failed = web.post(FORM, data=data)
+    assert failed.status_code == 503 and nonce_of(failed.text) == data["nonce"]
+    state["down"] = False
+    web.post(FORM, data=failed_data(failed, data))
+    first, second = (c.headers["idempotency-key"] for c in posts(api))
+    assert first == second
+
+
+def failed_data(response: httpx.Response, data: dict[str, str]) -> dict[str, str]:
+    return {**data, "nonce": nonce_of(response.text)}
+
+
+def test_nonce_is_reused_after_a_connection_error_and_a_bad_payload() -> None:
+    def down(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("x")
+
+    for route in (down, (202, {"id": "no"})):
+        web = make_client(Api({POST: route}))
+        data = form(web)
+        assert nonce_of(web.post(FORM, data=data).text) == data["nonce"]
+
+
+def test_nonce_changes_after_a_domain_rejection_and_so_does_the_key() -> None:
+    answers = iter([httpx.Response(422, json={"code": "invalid_input", "message": "x"})])
+
+    def route(request: httpx.Request) -> httpx.Response:
+        return next(answers, None) or accepted(request)
+
+    api = Api({POST: route})
+    web = make_client(api)
+    data = form(web)
+    rejected = web.post(FORM, data=data)
+    assert nonce_of(rejected.text) != data["nonce"]
+    web.post(FORM, data=failed_data(rejected, data))
+    first, second = (c.headers["idempotency-key"] for c in posts(api))
+    assert first != second
+
+
+def test_polling_url_carries_a_counter_and_it_is_capped() -> None:
+    web = make_client(Api({GET: (200, item())}))
+    first = web.get(f"/subnichos/propuestas/{PID}").text
+    assert f'hx-get="/subnichos/propuestas/{PID}?n=1"' in first
+    fragment = web.get(f"/subnichos/propuestas/{PID}?n=41", headers={"HX-Request": "true"})
+    assert f'hx-get="/subnichos/propuestas/{PID}?n=42"' in fragment.text
+    last = web.get(f"/subnichos/propuestas/{PID}?n=119", headers={"HX-Request": "true"})
+    assert 'hx-trigger="every 5s"' in last.text
+    over = web.get(f"/subnichos/propuestas/{PID}?n=120", headers={"HX-Request": "true"})
+    assert "hx-trigger" not in over.text
+    assert "Sigue en preparación." in over.text and "Actualizar" in over.text
+
+
+@pytest.mark.parametrize("n", ["-1", "99999999999999999999", "abc", "", "1.5", "١٢", "1" * 50])
+def test_hostile_counter_never_breaks_and_counts_as_zero(n: str) -> None:
+    web = make_client(Api({GET: (200, item())}))
+    page = web.get(f"/subnichos/propuestas/{PID}", params={"n": n}, headers={"HX-Request": "true"})
+    if n in ("99999999999999999999", "1" * 50):
+        assert page.status_code == 200 and "hx-trigger" not in page.text
+    else:
+        assert page.status_code == 200 and f"{PID}?n=1" in page.text
+
+
+def test_not_found_while_polling_is_a_286_with_a_visible_fragment() -> None:
+    api = Api({GET: (404, {"detail": {"code": "not_found", "message": "x"}})})
+    response = make_client(api).get(f"/subnichos/propuestas/{PID}", headers={"HX-Request": "true"})
+    assert response.status_code == 286
+    assert "No se encontró lo que buscabas." in response.text
+    assert "hx-trigger" not in response.text and "<html" not in response.text
+
+
+def test_approve_button_only_for_a_proposed_hypothesis() -> None:
+    data = ready()
+    data["hypothesis"]["status"] = "active"
+    page = make_client(Api({GET: (200, data)})).get(f"/subnichos/propuestas/{PID}")
+    assert "Revisar y aprobar" not in page.text and "Activa" in page.text
+    data["hypothesis"]["status"] = "<script>"
+    page = make_client(Api({GET: (200, data)})).get(f"/subnichos/propuestas/{PID}")
+    assert "Revisar y aprobar" not in page.text and "<script>" not in page.text

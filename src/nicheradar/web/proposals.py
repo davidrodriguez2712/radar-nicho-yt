@@ -30,6 +30,26 @@ KIND_LABEL = {"query": "Consulta", "video": "Video", "channel": "Canal"}
 NONCE = re.compile(r"[0-9a-f]{32}")
 PROPOSAL_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.ASCII)
 SLUG = re.compile(r"[a-z0-9][a-z0-9_-]{0,59}", re.ASCII)
+RESERVED_SLUGS = ("proponer",)  # `/subnichos/proponer` is a screen, not a sub-niche card
+HYPOTHESIS_STATUS = {"active": "Activa", "paused": "Pausada", "archived": "Archivada"}
+MAX_POLLS = 120  # 120 polls of 5 s: about 10 minutes
+COUNT_DIGITS = 6
+
+
+def poll_count(raw: object) -> int:
+    """The `n` of a polling URL: ASCII digits only; anything else is 0, a huge one is spent."""
+    if not isinstance(raw, str) or not raw:
+        return 0
+    if not (raw.isascii() and raw.isdigit()):
+        return 0
+    return int(raw) if len(raw) <= COUNT_DIGITS else MAX_POLLS
+
+
+def reserved_label(label: str) -> bool:
+    """Same normalization as the API's `slugify`: the label becomes the slug of the card."""
+    return re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")[:60] in RESERVED_SLUGS
+
+
 FORM_ERRORS = {
     "input_invalid": "Escribe entre 3 y 500 caracteres.",
     "manual_invalid": (
@@ -78,6 +98,7 @@ def parse_form(
         not LABEL_MIN <= len(label) <= LABEL_MAX
         or FAMILY.fullmatch(family) is None
         or len(parent) > PARENT_MAX
+        or reserved_label(label)
         or not _clean(label)
         or not _clean(parent)
     ):
@@ -110,9 +131,14 @@ def _hypothesis(value: object) -> dict[str, Any] | None:
     parent = value.get("parent_niche")
     raw_slug = value.get("slug")
     slug_ok = isinstance(raw_slug, str) and SLUG.fullmatch(raw_slug) is not None
+    status = value.get("status")
     return {
+        "proposed": status == "proposed",
+        "status_label": HYPOTHESIS_STATUS.get(status, DASH) if isinstance(status, str) else DASH,
         "slug": _text(raw_slug),
-        "approve_href": f"/subnichos/{raw_slug}/aprobar" if slug_ok else None,
+        "approve_href": f"/subnichos/{raw_slug}/aprobar"
+        if slug_ok and status == "proposed"
+        else None,
         "label": _text(value.get("label")),
         "family": _text(value.get("family")),
         "parent_niche": _text(parent) if isinstance(parent, str) and parent else None,

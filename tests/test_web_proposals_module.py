@@ -232,3 +232,10 @@ def test_derive_is_domain_separated() -> None:
     assert signer.derive("idem", "m") != signer._mac("m")
     assert signer.derive("idem", "m") != signer.derive("otro", "m")
     assert signer.derive("idem", "m") == signer.derive("idem", "m")
+
+
+@pytest.mark.parametrize("label", ["proponer", "Proponer", " PROPONER ", "proponer!", "_proponer_"])
+def test_reserved_slug_is_rejected_in_the_manual_label(label: str) -> None:
+    assert parse_form("dinosaurios", True, label, "animales", "") == ({}, "manual_invalid")
+    assert parse_form("dinosaurios", False, label, "animales", "")[1] is None
+    assert parse_form("dinosaurios", True, "Proponer mas", "animales", "")[1] is None
