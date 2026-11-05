@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     # Google resets the YouTube quota at midnight Pacific, not at the local `timezone` midnight.
     subniche_quota_timezone: str = "America/Los_Angeles"
     subniche_search_units_per_day: int = Field(default=100, ge=0, le=100_000)
+    subniche_proposals_per_day: int = Field(default=100, ge=1, le=1000)
     subniche_search_pages: int = Field(default=2, ge=1, le=3)
     subniche_channels_per_hypothesis: int = Field(default=30, ge=1, le=100)
     subniche_search_quota_per_run: int = Field(default=100, ge=0, le=100_000)
