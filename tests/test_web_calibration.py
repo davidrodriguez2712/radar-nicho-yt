@@ -422,3 +422,14 @@ def test_lower_bound_does_not_change_the_numbers() -> None:
     lower = view(calib(), vids(92, 58, 59, method=LOWER), NOW, "UTC")
     for key in ("streak", "passes", "measured", "incomplete", "hours_text", "warning"):
         assert plain[key] == lower[key]
+
+
+def test_view_exposes_the_published_count_the_plan_and_the_first_publication() -> None:
+    items = vids(50, 50)
+    items[0]["published_at"] = "2026-10-26T12:00:00Z"
+    items[1]["published_at"] = "2026-10-30T12:00:00Z"
+    built = view(calib(), items, NOW)
+    assert built["published"] == 2 and built["planned"] == 6
+    assert built["first_published"] == datetime(2026, 10, 26, 12, 0, tzinfo=UTC)
+    empty = view(calib(), [], NOW)
+    assert empty["published"] == 0 and empty["first_published"] is None

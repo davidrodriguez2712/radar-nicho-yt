@@ -68,13 +68,16 @@ def pilot_panel(
         raise TypeError("pilot detail is not an object")
     detail = {**detail, "pilot_id": pilot_id}  # links use the id that was validated
     tab = parse_tab(request.query_params.get("pestana"))
-    videos = _videos(request, pilot_id) if tab == "videos" else None
     dossier: object = None
-    if tab == "calibracion" and calibration.has_calibration_schema(detail):
-        # Only this tab reads the dossier and the videos, and a failure only affects this tab.
+    videos: list[Any] | None = None
+    if calibration.has_calibration_schema(detail):
+        # The calibration line and the summary need the dossier and the videos on every tab, but
+        # only for a pilot whose calibration is possible; each failure leaves the other intact.
         dossier, videos = calibration.load(
             request.app.state.api, pilot_id, calibration.request_id(detail)
         )
+    elif tab == "videos":
+        videos = _videos(request, pilot_id)
     now = datetime.fromtimestamp(request.app.state.clock(), UTC)
     view = panel_view(detail, videos, now, request.app.state.config.timezone, tab, dossier=dossier)
     context = {

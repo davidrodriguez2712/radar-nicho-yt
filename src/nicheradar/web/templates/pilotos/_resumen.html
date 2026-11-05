@@ -3,9 +3,19 @@
   <div class="card" id="res-estado">
     <h2 class="card__heading">Estado actual</h2>
     <p>{{ s.state_text }}</p>
+    {% if s.calibration_failed %}<p class="caption">{{ s.calibration_failed }}</p>{% endif %}
     {% if s.is_cancelled %}<p>Cancelado{% if s.cancel_reason %}. Motivo: {{ s.cancel_reason }}{% endif %}</p>{% endif %}
     {% if s.is_closed %}<p>Cerrado{% if s.closed_text %} el {{ s.closed_text }}{% endif %}{% if s.close_reason %}. Motivo: {{ s.close_reason }}{% endif %}</p>{% endif %}
   </div>
+  {% if s.calibration %}{% set c = s.calibration %}
+  <div class="card" id="res-calibracion">
+    <h2 class="card__heading">Calibración: tu tiempo por video</h2>
+    <ul class="videos" id="res-calib-filas">{% for r in c.rows %}<li class="video"><span class="video__id">{{ r.label }}</span> {{ chip(r.text, r.kind) }}</li>{% endfor %}</ul>
+    {% if c.capped %}<p class="caption">Se muestran los primeros 100 videos.</p>{% endif %}
+    <p><strong>{{ c.streak_text }}</strong></p>
+    {% if v.pilot_id %}<a class="tap" href="/pilotos/{{ v.pilot_id }}?pestana=calibracion">Ver la calibración</a>{% endif %}
+  </div>
+  {% endif %}
   <div class="card" id="res-bloqueos">
     <h2 class="card__heading">Bloqueos y avisos ({{ s.blockers|length }})</h2>
     {% if s.blockers %}<ul class="blockers">{% for b in s.blockers %}<li class="blocker blocker--{{ b.kind }}">{{ b.text }} <span class="blocker__owner">{{ b.owner }}</span></li>{% endfor %}</ul>
@@ -33,6 +43,8 @@
   <div class="card" id="res-reglas">
     <h2 class="card__heading">Reglas de parada</h2>
     <p>{{ s.rules.total }}{% if s.rules.counts %}: {{ s.rules.counts }}{% endif %}</p>
+    {% if s.rules.progress %}<p class="caption">{{ s.rules.measured_text }}</p>
+    <ul class="rules" id="res-reglas-lista">{% for r in s.rules.progress %}<li class="rule"><span class="rule__text">{{ r.text }}</span> <span class="caption">{{ r.progress }}</span></li>{% endfor %}</ul>{% endif %}
     {% if s.rules.close_after %}<p class="caption">Se propone cerrar tras {{ s.rules.close_after }} hitos fallidos seguidos.</p>{% endif %}
     {% if v.pilot_id %}<a class="tap" href="/pilotos/{{ v.pilot_id }}?pestana=reglas">Ver las reglas</a>{% endif %}
   </div>
