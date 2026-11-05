@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from nicheradar.config import Settings
 
 SESSION_COOKIE = "nr_session"
-SESSION_SECONDS = 5 * 24 * 3600
+SESSION_SECONDS = 50 * 24 * 3600
 LOGIN_ATTEMPTS = 5
 LOGIN_WINDOW_SECONDS = 60
 

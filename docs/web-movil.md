@@ -18,11 +18,11 @@ datos propios, así que el retroceso no pierde nada. El cambio en producción re
 
 ## Sesión y seguridad
 
-- Cookie firmada de 5 días, con la clave derivada del token de servicio.
+- Cookie firmada de 50 días, con la clave derivada del token de servicio.
 - CSRF en todos los formularios `POST`; límite de intentos de acceso (una sola clave, la app es de un propietario).
 - CSP sin recursos externos; las páginas con datos llevan `Cache-Control: no-store`.
-- Salir solo borra la cookie: las sesiones no se pueden revocar en el servidor, así que una cookie copiada sigue válida hasta 5 días. Rotar `NR_SERVICE_TOKEN` invalida todas las sesiones.
-- Sin Basic Auth en el proxy, la contraseña de la app debe ser aleatoria y de al menos 32 caracteres: es la única barrera y la sesión dura 5 días.
+- Salir solo borra la cookie: las sesiones no se pueden revocar en el servidor, así que una cookie copiada sigue válida hasta 50 días. Rotar `NR_SERVICE_TOKEN` invalida todas las sesiones.
+- Sin Basic Auth en el proxy, la contraseña de la app debe ser aleatoria y de al menos 32 caracteres: es la única barrera y la sesión dura 50 días.
 - El proxy debe enviar `X-Forwarded-Proto: https` para que la cookie lleve la marca `Secure` (verificarlo al desplegar).
 - htmx no guarda copias de páginas (`historyCacheSize: 0`): no quedan datos ni el token CSRF en el teléfono.
 - `/_stcore/health` se conserva para el `healthcheck` de compose y las sondas.
@@ -129,7 +129,7 @@ sale de la ruta y el actor lo fija el servidor. Tras una acción se vuelve al pa
 - **Avisos de Operación**: scraper pausado, última ejecución parcial, fallida o bloqueada, y modo real sin scraper en vivo habilitado.
 - **Subnichos**: resumen de activas, propuestas, pausadas, sin primera medición y última medición.
 - **Cabecera sin radar**: la cabecera ya no muestra ni consulta el estado del radar; la web no llama a `/status`.
-- **Sesión de 5 días**: la cookie dura 5 días (ver Sesión y seguridad).
+- **Sesión de 50 días**: la cookie dura 50 días (ver Sesión y seguridad).
 - **Calibración como mínimo estimado**: la cifra de minutos de `claude_sessions_plus_assumed` se rotula como mínimo (ver corte 2b).
 - **El radar de oportunidades no está en la web**, ni tampoco «Análisis de canal»: siguen solo en Streamlit hasta su retiro (3f). No se mostrará su estado, no se pausa ni se reanuda desde la web.
 
