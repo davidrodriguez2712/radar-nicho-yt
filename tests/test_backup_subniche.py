@@ -28,6 +28,7 @@ def test_discovery_group_classification() -> None:
         "hypothesis_seed_channels",
         "discovery_runs",
         "hypothesis_snapshots",
+        "subniche_proposal_requests",
     }
     assert not DISCOVERY_TABLES & set(PROVIDER_EVIDENCE_TABLES)
     assert not DISCOVERY_TABLES & RUN_TABLES
