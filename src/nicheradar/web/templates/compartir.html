@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Compartido contigo · NicheRadar{% endblock %}
+{% block content %}
+<h1 class="h1">Compartido contigo</h1>
+<section class="card">
+  <p><span class="chip {{ 'chip--blue' if kind == 'tweet' else ('chip--green' if propose_href else 'chip--neutral') }}">{{ kind_label }}</span></p>
+  {% if link %}<p class="resumen-cierre">{{ link }}</p>{% endif %}
+  {% if kind == "tweet" %}
+  <p class="caption">Los enlaces de X todavía no se leen. Copia el canal o el enlace de YouTube que menciona.</p>
+  {% elif not propose_href %}
+  <p class="caption">No reconocimos ese enlace.</p>
+  {% endif %}
+</section>
+{% if propose_href %}
+<a class="btn btn--primary" href="{{ propose_href }}">Proponer</a>
+{% endif %}
+<a class="btn btn--secondary" href="/">Cancelar</a>
+<section class="card">
+  <h2 class="card__heading">Si compartes otra cosa</h2>
+  <p>Canal de YouTube (@handle o enlace): muestra «Proponer».</p>
+  <p>Video de YouTube: muestra «Proponer».</p>
+  <p>Un enlace no reconocido: dice que no se entiende y no hace nada.</p>
+  <p class="caption">Compartir nunca crea nada solo: siempre pide tu toque.</p>
+</section>
+{% endblock %}
