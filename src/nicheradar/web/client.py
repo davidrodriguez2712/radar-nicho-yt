@@ -40,6 +40,9 @@ CODE_MESSAGES: dict[str, str] = {
     ),
     "youtube_unreachable": "No se pudo consultar YouTube; vuelve a intentarlo.",
     "abandoned": "La preparación se interrumpió; vuelve a intentarlo.",
+    "llm_input_too_large": (
+        "La entrada es demasiado grande para el modelo; usa una consulta más corta."
+    ),
     "invalid_transition": "Esa hipótesis no puede pasar a ese estado.",
     **dict.fromkeys(
         (

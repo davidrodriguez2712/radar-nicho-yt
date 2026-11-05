@@ -50,6 +50,10 @@ LEAD_MESSAGES: dict[str, str] = {
     "expired": "La lectura caducó sin atenderse; vuelve a intentarla.",
     "cancelled": "La lectura se canceló; vuelve a intentarlo.",
     "abandoned": "La lectura se interrumpió; vuelve a intentarlo.",
+    "llm_input_too_large": (
+        "El texto o las imágenes son demasiado grandes para el modelo; "
+        "se usaron solo los enlaces del texto."
+    ),
     "youtube_not_configured": MESSAGES["youtube_not_configured"],
     "youtube_quota_exhausted": MESSAGES["youtube_quota_exhausted"],
     "youtube_unreachable": MESSAGES["youtube_unreachable"],
