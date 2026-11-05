@@ -78,6 +78,62 @@ máximo; las nuevas se miden primero, ordenadas por fecha de aprobación) → `s
 - Si el LLM no está disponible o no valida, `add` falla con una razón estable (`llm_disabled`,
   `configuration_missing`, `llm_tariff_not_current`, `policy_not_enabled`, …) y sugiere `--manual`.
 
+## API de propuestas y ciclo de vida
+
+Mismo token de servicio (`Authorization: Bearer ...`) que el resto de `/api/v1`. La API **solo valida, encola y lee**:
+nunca llama a YouTube ni al modelo de lenguaje desde una petición.
+
+```sh
+# Proponer (202). Exige Idempotency-Key de 8 a 100 caracteres: repetirla devuelve la misma solicitud.
+curl -X POST "$API/api/v1/subniches/proposals" \
+  -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: mi-clave-0001" \
+  -H "Content-Type: application/json" -d '{"input": "faceless history documentary"}'
+# -> {"id": "<uuid>", "status": "queued", "created": true}   (created=false si la clave ya existía)
+
+# Modo manual (sin modelo; solo con una consulta como entrada)
+curl -X POST "$API/api/v1/subniches/proposals" ... \
+  -d '{"input": "ancient rome facts", "manual": {"label": "Ancient Rome", "family": "history", "parent": "historical_stories"}}'
+
+curl "$API/api/v1/subniches/proposals/<id>" -H "Authorization: Bearer $TOKEN"   # estado de una solicitud
+curl "$API/api/v1/subniches/proposals?limit=20" -H "Authorization: Bearer $TOKEN"  # las más recientes
+curl "$API/api/v1/subniches/<slug>/approval" -H "Authorization: Bearer $TOKEN"  # vista previa de cuota (solo lectura)
+curl -X POST "$API/api/v1/subniches/<slug>/approve" -H "Authorization: Bearer $TOKEN"   # o pause / resume / archive
+```
+
+- `input` es una consulta, un video o un canal (3 a 500 caracteres); se guarda y se devuelve como texto.
+  Los enlaces de X se rechazan (`tweet_not_supported_yet`, 422).
+- La respuesta de una solicitud trae `status` (`queued`, `running`, `ready`, `failed`), `error` (`{"code","message"}` con
+  mensaje fijo en español, o `null`) y, si está `ready`, la `hypothesis` (`slug`, `label`, `family`, `parent_niche`,
+  `queries`, `seed_channels`, `status`).
+- **La preparación es asíncrona y la hace el worker** (`tick_proposals`), que solo corre con `NR_SUBNICHE_ENABLED=true`.
+  Procesa hasta 3 solicitudes por vuelta; una `running` de más de 30 minutos pasa a `failed` (`abandoned`).
+  Con el interruptor apagado las solicitudes quedan en `queued`.
+- Tope diario: `subniche_proposals_per_day` (defecto 100) solicitudes nuevas en 24 horas; al superarlo, 429 `daily_limit`.
+- **Aprobar no mide al instante**: pasa la hipótesis a `active` y la mide el worker en su próxima corrida (a más
+  tardar a los 3 días). Nada se aprueba solo.
+- **Regla de cuota en la vista previa** (`/approval`): `search_units_needed = consultas × páginas × 100` contra el
+  menor de `NR_SUBNICHE_SEARCH_UNITS_PER_DAY` y `NR_SUBNICHE_SEARCH_QUOTA_PER_RUN` (`daily_cap`); `fits` dice si cabe.
+  Aprobar sigue siendo posible aunque no quepa (la medición se saltará con `insufficient_search_cap`); nunca da un 500.
+- Códigos de error del POST: 422 `invalid_input`, `tweet_not_supported_yet`, `manual_needs_a_query`; 429 `daily_limit`.
+  Las lecturas dan 404 `not_found`; el ciclo de vida da 404 `not_found` y 409 `invalid_transition`
+  (aprobar una activa, pausar o reanudar una propuesta, salir de `archived`). Formato inválido: 422 de FastAPI.
+  `invalid_proposal` y `unknown_parent_niche` solo aparecen como `error.code` de solicitudes `failed`, no como 422.
+- **Idempotencia:** la misma clave con otro cuerpo devuelve la solicitud original con `created=false` (no la modifica);
+  la validación del cuerpo va antes de buscar la clave. El `input` se guarda recortado con `strip`.
+- El slug `proposals` está reservado (choca con la ruta `/proposals`); una hipótesis con esa etiqueta recibe `proposals_2`.
+- **Forma del error:** los rechazos de dominio de proposals y de ciclo de vida devuelven `{"code","message"}` en la
+  raíz del JSON; los 404 de `GET /subniches/{slug}` y de `GET /proposals/{id}` devuelven
+  `{"detail": {"code","message"}}`.
+- Fallos de una solicitud ya encolada (`failed`): `llm_disabled` y afines (modelo no disponible: usar el modo manual),
+  `not_found`, `duplicate`, `youtube_not_configured` (YouTube desactivado o sin credenciales),
+  `youtube_quota_exhausted`, `youtube_unreachable`, `abandoned`; el detalle del proveedor nunca se expone.
+
+**Despliegue:** la migración `0022` (tabla `subniche_proposal_requests`) y la nueva imagen del worker necesitan una
+release con aprobación del propietario; nada de esto está desplegado. Orden: aplicar primero la migración `0022` y luego
+las imágenes. Una base en `0021` con la imagen nueva hace fallar `backup_snapshot` con `unreviewed_schema_revision`.
+Los respaldos anteriores a la release solo se restauran con las herramientas viejas. El `downgrade` de `0022` borra la
+cola de solicitudes.
+
 ## Cadencia del worker
 
 - Un tick cada **3 días** (`CADENCE`), con un cerrojo asesor de Postgres. Mide primero las hipótesis
@@ -226,7 +282,7 @@ errores `quotaExceeded` a mitad de corrida (la corrida queda `partial` y no pier
   **30 días** (`retain_until`; la política de la API no permite más) y **no se respaldan** (esquema sí, filas no).
 - Los agregados `hypothesis_snapshots` son permanentes, y el grupo revisado `DISCOVERY_TABLES`
   (`niche_hypotheses`, `hypothesis_seed_channels`, `discovery_runs`, `hypothesis_snapshots`) **sí se respalda**.
-  Ver `docs/backup-restore.md`. La guarda del respaldo exige la revisión `0020`.
+  Ver `docs/backup-restore.md`. La guarda del respaldo exige la revisión `0022` (ver «API de propuestas»).
 
 ## Informes (solo lectura)
 
@@ -273,13 +329,13 @@ Sigue el flujo de releases existente (formato en `docs/release-20261030-030.md`)
    `scripts/smoke_compose.py`.
 2. Publicar las imágenes **con aprobación del propietario** y registrar `docs/release-YYYYMMDD-NNN.md`
    (digests, suite, rollback sin `alembic downgrade`).
-3. **Pendiente al hacer la release:** añadir una acción `migrate-live-0020` en `scripts/easypanel_stage.mjs`,
-   siguiendo el patrón de `migrate-live-0019`, más una acción de despliegue. Hoy no existe.
+3. **Pendiente al hacer la release:** añadir una acción `migrate-live-0022` en `scripts/easypanel_stage.mjs`,
+   siguiendo el patrón de `migrate-live-0019` (la 0022 sucede a la 0020 y 0021, que se aplican antes si faltan), más una acción de despliegue. Hoy no existe.
 
 Pasos del propietario tras el despliegue:
 
-1. `migrate-live` de la 0020 (producción hoy está en una revisión anterior: aplicar también las intermedias
-   que falten). Confirmar `alembic heads` = `0020`.
+1. `migrate-live` de la 0022 (producción hoy está en una revisión anterior: aplicar también las intermedias
+   que falten). Confirmar `alembic heads` = `0022`.
 2. Variables del worker de la sección anterior (la clave ya está cargada). `NR_SUBNICHE_ENABLED` se queda en `false`
    hasta tener las variables de cuota (ver "Cupo de búsqueda de YouTube": empezar con 5000 unidades por día).
 3. `uv run python scripts/seed_subniche_policy.py` (una vez, idempotente): habilita las políticas de Anthropic
