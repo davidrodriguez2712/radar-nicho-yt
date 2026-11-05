@@ -183,3 +183,8 @@ a.list__item{min-height:44px;justify-content:center;color:inherit;text-decoratio
 .bar--p90{width:90%}
 .bar--p95{width:95%}
 .bar--p100{width:100%}
+.actions{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.actions form{margin:0}
+.actions .btn{min-height:44px}
+.progress{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.progress__fill{height:100%;border-radius:3px;background:var(--primary)}

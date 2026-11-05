@@ -133,7 +133,7 @@ def test_ready_reports_skip_ids_that_are_not_a_whole_uuid() -> None:
     assert ready_reports(flows, []) == []
 
 
-def test_top_niches_skip_unscored_and_take_three() -> None:
+def test_top_niches_skip_unscored_and_take_two() -> None:
     items = [
         niche_item("a"),
         niche_item("b", opportunity=scored(None)),
@@ -142,8 +142,8 @@ def test_top_niches_skip_unscored_and_take_three() -> None:
         niche_item("e"),
     ]
     cards = top_niches(items, [])
-    assert [c["label"] for c in cards] == ["a", "c", "d"]
-    assert [c["rank"] for c in cards] == [1, 2, 3]
+    assert [c["label"] for c in cards] == ["a", "c"]
+    assert [c["rank"] for c in cards] == [1, 2]
 
 
 def test_top_niches_skip_nan_and_non_numeric_scores() -> None:
@@ -172,7 +172,7 @@ def test_top_subniches_list_finalists_with_a_measurement_first() -> None:
         subniche_item("m2"),
         subniche_item("m3"),
     ]
-    assert [c["label"] for c in top_subniches(items)] == ["M1", "M2", "M3"]
+    assert [c["label"] for c in top_subniches(items)] == ["M1", "M2"]
     assert [c["label"] for c in top_subniches(items[:3])] == ["M1", "Sin-Med"]
 
 
@@ -236,20 +236,23 @@ def test_the_home_no_longer_asks_the_status_and_asks_the_rest_once() -> None:
 
 def test_the_four_cards_and_their_links() -> None:
     text = make_client(full_api()).get("/").text
-    assert "3 nichos que merecen tu atención" in section(text, "nichos")
-    assert "Subnichos medidos" in section(text, "subnichos")
-    assert "Informes listos" in section(text, "informes")
-    assert "pilotos" in section(text, "pilotos").lower()
+    assert "2 nichos que merecen tu atención" in section(text, "nichos")
+    assert "1 subnicho que merece tu atención" in section(text, "subnichos")
+    assert "rep-label" in section(text, "pendientes")
+    assert "cosas necesitan algo de ti" in section(text, "pendientes")
     assert '<a class="btn btn--secondary" href="/nichos">Ver todos los nichos</a>' in section(
         text, "nichos"
     )
     assert '<a class="btn btn--secondary" href="/subnichos">Ver subnichos</a>' in section(
         text, "subnichos"
     )
-    for name in ("n0", "n1", "n2"):
+    for name in ("n0", "n1"):
         assert name in section(text, "nichos")
-    assert "n3" not in section(text, "nichos")
+    assert "n2" not in section(text, "nichos")
     assert ">Uno<" in section(text, "subnichos") and "Dos" not in section(text, "subnichos")
+
+
+NO_FLOW: Route = (200, {"items": []})
 
 
 def attention_items(card: str) -> list[str]:
@@ -273,9 +276,9 @@ def test_a_pilot_needing_something_links_to_its_panel_with_the_derived_reason() 
             delivered_at=None,
         ),
     ]
-    text = make_client(full_api({PILOTS: (200, {"items": pilots})})).get("/").text
-    card = section(text, "pilotos")
-    assert "2 pilotos necesitan algo de ti" in card
+    text = make_client(full_api({PILOTS: (200, {"items": pilots}), FLOW: NO_FLOW})).get("/").text
+    card = section(text, "pendientes")
+    assert "2 cosas necesitan algo de ti" in card
     first, second = attention_items(card)
     assert '<a class="list__name" href="/pilotos/pil_20261102_a">niche-a</a>' in first
     assert "Decide si sigue o cierra" in first and "canal-historias" in first
@@ -301,9 +304,13 @@ def test_a_pilot_with_a_blocker_but_no_decision_is_listed_with_that_blocker() ->
         },
     )
     quiet = pilot_item("pil_20261102_y", niche_label="tranquilo", status="en_ejecucion")
-    text = make_client(full_api({PILOTS: (200, {"items": [blocked, quiet]})})).get("/").text
-    card = section(text, "pilotos")
-    assert "1 piloto necesita algo de ti" in card
+    text = (
+        make_client(full_api({PILOTS: (200, {"items": [blocked, quiet]}), FLOW: NO_FLOW}))
+        .get("/")
+        .text
+    )
+    card = section(text, "pendientes")
+    assert "1 cosa necesita algo de ti" in card
     (entry,) = attention_items(card)
     assert 'href="/pilotos/pil_20261102_x">bloqueado</a>' in entry
     assert "Falta: Autorizar YouTube. Falta el permiso" in entry
@@ -322,15 +329,19 @@ def test_blockers_use_the_configured_timezone() -> None:
     )
     api: dict[tuple[str, str], Route] = {PILOTS: (200, {"items": [late]})}
     moment = datetime(2026, 11, 3, 15, 0, tzinfo=UTC).timestamp()
-    lima = make_client(full_api(api), clock=lambda: moment).get("/").text
-    assert "Clave vence el 4 nov" in section(lima, "pilotos")
-    utc = make_client(full_api(api), clock=lambda: moment, timezone="UTC").get("/").text
-    assert "Clave vence el 5 nov" in section(utc, "pilotos")
+    lima = make_client(full_api(api | {FLOW: NO_FLOW}), clock=lambda: moment).get("/").text
+    assert "Clave vence el 4 nov" in section(lima, "pendientes")
+    utc = (
+        make_client(full_api(api | {FLOW: NO_FLOW}), clock=lambda: moment, timezone="UTC")
+        .get("/")
+        .text
+    )
+    assert "Clave vence el 5 nov" in section(utc, "pendientes")
 
 
 def test_the_pilots_link_is_a_real_link_now() -> None:
-    card = section(make_client(full_api()).get("/").text, "pilotos")
-    assert '<a class="btn btn--secondary" href="/pilotos">Ver pilotos</a>' in card
+    card = section(make_client(full_api({FLOW: NO_FLOW})).get("/").text, "pendientes")
+    assert '<a class="btn btn--secondary" href="/pilotos">Ver pendientes</a>' in card
     assert "Próximamente" not in card
     assert "disabled" not in card
 
@@ -342,13 +353,14 @@ def test_the_pilots_link_is_a_real_link_now() -> None:
 def test_an_invalid_pilot_id_never_becomes_a_link(bad_id: object) -> None:
     pilot = pilot_item(bad_id, niche_label="sin-enlace", needs_decision=True)  # type: ignore[arg-type]
     card = section(
-        make_client(full_api({PILOTS: (200, {"items": [pilot]})})).get("/").text, "pilotos"
+        make_client(full_api({PILOTS: (200, {"items": [pilot]}), FLOW: NO_FLOW})).get("/").text,
+        "pendientes",
     )
     (entry,) = attention_items(card)
     assert '<span class="list__name">sin-enlace</span>' in entry
     assert "<a" not in entry
     assert card.count("/pilotos/") == 0
-    assert "1 piloto necesita algo de ti" in card
+    assert "1 cosa necesita algo de ti" in card
 
 
 def test_closed_and_cancelled_pilots_never_appear_in_the_attention_card() -> None:
@@ -362,17 +374,14 @@ def test_closed_and_cancelled_pilots_never_appear_in_the_attention_card() -> Non
             delivered_at=None,
         ),
     ]
-    card = section(
-        make_client(full_api({PILOTS: (200, {"items": pilots})})).get("/").text, "pilotos"
-    )
-    assert "Ningún piloto necesita algo de ti" in card
-    assert attention_items(card) == []
-    assert "/pilotos/pil_" not in card
+    text = make_client(full_api({PILOTS: (200, {"items": pilots}), FLOW: NO_FLOW})).get("/").text
+    assert 'id="hoy-pendientes"' not in text
+    assert "cer" not in text.split('id="hoy-nichos"')[0].split("<h1")[1]
 
 
 def test_one_pilot_uses_the_singular() -> None:
-    card = section(make_client(full_api()).get("/").text, "pilotos")
-    assert "1 piloto necesita algo de ti" in card and "pilotos necesitan" not in card
+    card = section(make_client(full_api({FLOW: NO_FLOW})).get("/").text, "pendientes")
+    assert "1 cosa necesita algo de ti" in card and "pilotos necesitan" not in card
 
 
 def test_the_counting_text_stays_correct_in_singular_and_plural() -> None:
@@ -381,13 +390,19 @@ def test_the_counting_text_stays_correct_in_singular_and_plural() -> None:
             pilot_item(f"pil_20261102_p{i}", needs_decision=True, niche_label=f"p{i}")
             for i in range(count)
         ]
-        page = make_client(full_api({PILOTS: (200, {"items": pilots})})).get("/").text
-        return section(page, "pilotos")
+        page = (
+            make_client(full_api({PILOTS: (200, {"items": pilots}), FLOW: NO_FLOW})).get("/").text
+        )
+        return section(page, "pendientes")
 
-    assert '<h2 class="h2">Ningún piloto necesita algo de ti</h2>' in card_for(0)
-    assert '<h2 class="h2">1 piloto necesita algo de ti</h2>' in card_for(1)
-    assert '<h2 class="h2">2 pilotos necesitan algo de ti</h2>' in card_for(2)
-    assert '<h2 class="h2">4 pilotos necesitan algo de ti</h2>' in card_for(4)
+    assert (
+        'id="hoy-pendientes"'
+        not in make_client(full_api({PILOTS: (200, {"items": []}), FLOW: NO_FLOW})).get("/").text
+    )
+
+    assert '<h2 class="h2">1 cosa necesita algo de ti</h2>' in card_for(1)
+    assert '<h2 class="h2">2 cosas necesitan algo de ti</h2>' in card_for(2)
+    assert '<h2 class="h2">4 cosas necesitan algo de ti</h2>' in card_for(4)
 
 
 def test_a_malformed_pilot_item_only_degrades_its_own_card() -> None:
@@ -415,15 +430,15 @@ def test_a_malformed_pilot_item_only_degrades_its_own_card() -> None:
     text = page.text
     for name in ("nichos", "subnichos"):
         assert "no disponible" not in section(text, name)
-    assert "Pilotos: no disponible" not in section(text, "pilotos")
+    assert "Pilotos: no disponible" not in section(text, "pendientes")
     assert ">n0<" in section(text, "nichos") and ">Uno<" in section(text, "subnichos")
 
 
 def test_a_pilot_item_that_breaks_the_reports_crossing_does_not_hide_either_card() -> None:
     weird = pilot_item("pil_20261102_w", niche_label=["unhashable"], needs_decision=True)
     text = make_client(full_api({PILOTS: (200, {"items": [weird]})})).get("/").text
-    assert "1 piloto necesita algo de ti" in section(text, "pilotos")
-    reports = section(text, "informes")
+    assert "2 cosas necesitan algo de ti" in section(text, "pendientes")
+    reports = section(text, "pendientes")
     assert "no disponible" not in reports
     assert "No se pudo comprobar si algunos informes ya tienen piloto" in reports
     assert 'class="list__name"' in reports  # the ready report is still listed
@@ -441,7 +456,7 @@ def test_ready_reports_cross_only_well_formed_pilots_and_flag_the_rest(weird: ob
     flows = [flow_item("listo", id=REPORT_ID, niche_label="rep-label")]
     api = full_api({PILOTS: (200, {"items": [weird]})})
     text = make_client(api).get("/").text
-    reports = section(text, "informes")
+    reports = section(text, "pendientes")
     assert "no disponible" not in reports and 'class="list__name"' in reports
     assert "algunos informes ya tienen piloto" in reports
     assert flows  # the flow list itself is the one served by full_api
@@ -456,33 +471,29 @@ def test_open_pilot_keys_skip_what_is_not_a_readable_pilot_and_say_so() -> None:
 
 def test_well_formed_pilots_raise_no_crossing_warning() -> None:
     text = make_client(full_api()).get("/").text
-    assert "algunos informes ya tienen piloto" not in section(text, "informes")
+    assert "algunos informes ya tienen piloto" not in section(text, "pendientes")
 
 
 def test_with_no_pilots_needing_attention_the_card_says_so() -> None:
     quiet = [pilot_item("pil_20261102_z", status="en_ejecucion")]
-    card = section(
-        make_client(full_api({PILOTS: (200, {"items": quiet})})).get("/").text, "pilotos"
-    )
-    assert "Ningún piloto necesita algo de ti" in card
-    assert "Decide si sigue" not in card
+    text = make_client(full_api({PILOTS: (200, {"items": quiet}), FLOW: NO_FLOW})).get("/").text
+    assert 'id="hoy-pendientes"' not in text
+    assert "Decide si sigue" not in text
 
 
 def test_a_ready_report_without_a_pilot_gets_a_link_to_its_report() -> None:
-    card = section(make_client(full_api()).get("/").text, "informes")
+    card = section(make_client(full_api()).get("/").text, "pendientes")
     assert f'href="/informes/{REPORT_ID}"' in card and "rep-label" in card
     blocked = [pilot_item(niche_label="rep-label", status="en_ejecucion")]
-    card = section(
-        make_client(full_api({PILOTS: (200, {"items": blocked})})).get("/").text, "informes"
-    )
-    assert f"/informes/{REPORT_ID}" not in card and "Ningún informe listo" in card
+    text = make_client(full_api({PILOTS: (200, {"items": blocked})})).get("/").text
+    assert f"/informes/{REPORT_ID}" not in text
 
 
-def test_tentative_forms_in_the_niche_card_come_back_to_the_niche_list() -> None:
+def test_tentative_forms_in_the_niche_card_come_back_to_today() -> None:
     card = section(make_client(full_api()).get("/").text, "nichos")
-    assert card.count('action="/nichos/decidir"') == 3
-    assert card.count('name="volver" value="/nichos"') == 3
-    assert card.count('name="decision" value="tentativo"') == 3
+    assert card.count('action="/nichos/decidir"') == 2
+    assert card.count('name="volver" value="/"') == 2
+    assert card.count('name="decision" value="tentativo"') == 2
     assert 'name="csrf" value="' in card
 
 
@@ -496,27 +507,28 @@ FAILURES: list[Route] = [
     (200, {"items": [1, 2]}),
 ]
 CARDS = {
-    "pilotos": (PILOTS, "Pilotos", "Decide si sigue o cierra"),
-    "informes": (FLOW, "Informes listos", f"/informes/{REPORT_ID}"),
-    "nichos": (NICHES, "Nichos", ">n0<"),
-    "subnichos": (SUBS, "Subnichos", ">Uno<"),
+    "pilotos": (PILOTS, "Pilotos", "Decide si sigue o cierra", "pendientes"),
+    "informes": (FLOW, "Informes listos", f"/informes/{REPORT_ID}", "pendientes"),
+    "nichos": (NICHES, "Nichos", ">n0<", "nichos"),
+    "subnichos": (SUBS, "Subnichos", ">Uno<", "subnichos"),
 }
 
 
 @pytest.mark.parametrize("failure", range(len(FAILURES)))
 @pytest.mark.parametrize("name", list(CARDS))
 def test_each_source_failing_degrades_only_its_own_card(name: str, failure: int) -> None:
-    key, title, _ = CARDS[name]
+    key, title, _, own = CARDS[name]
     page = make_client(full_api({key: FAILURES[failure]})).get("/")
     assert page.status_code == 200
     assert page.text.count("no disponible") == 1
-    assert f"{title}: no disponible ahora" in section(page.text, name)
-    for other, (_, _, marker) in CARDS.items():
+    assert f"{title}: no disponible ahora" in section(page.text, own)
+    for other, (_, _, marker, where) in CARDS.items():
         if other == name:
-            assert marker not in section(page.text, other)
+            assert marker not in section(page.text, where)
         else:
-            assert marker in section(page.text, other), other
-            assert "no disponible" not in section(page.text, other)
+            assert marker in section(page.text, where), other
+            if where != own:
+                assert "no disponible" not in section(page.text, where)
 
 
 def test_a_failing_flow_source_warns_in_the_niche_card_instead_of_hiding_it() -> None:
@@ -532,9 +544,9 @@ def test_when_every_source_fails_the_page_is_still_200() -> None:
     page = make_client(api, clock=lambda: moment).get("/")
     assert "Domingo 1 de noviembre" in page.text
     assert page.status_code == 200 and page.text.count("no disponible") == 4
-    assert page.text.count('<section class="card"') == 4
-    for name, (_, title, _) in CARDS.items():
-        assert f"{title}: no disponible ahora" in section(page.text, name)
+    assert page.text.count('<section class="card"') == 3
+    for _name, (_, title, _, where) in CARDS.items():
+        assert f"{title}: no disponible ahora" in section(page.text, where)
 
 
 def test_a_nan_score_never_breaks_the_page() -> None:
@@ -566,7 +578,7 @@ def test_exactly_one_hundred_records_warn_inside_the_affected_cards() -> None:
         .get("/")
         .text
     )
-    assert OLDER in section(text, "pilotos") and OLDER in section(text, "informes")
+    assert OLDER in section(text, "pendientes") and OLDER in section(text, "pendientes")
     assert OLDER not in section(text, "subnichos")
     quiet = (
         make_client(
@@ -612,7 +624,7 @@ def test_hostile_text_in_any_source_is_escaped() -> None:
     )
     text = make_client(api).get("/").text
     assert "<script>alert(1)</script>" not in text
-    for name in ("nichos", "subnichos", "pilotos", "informes"):
+    for name in ("nichos", "subnichos", "pendientes"):
         assert "&lt;script&gt;alert(1)&lt;/script&gt;" in section(text, name), name
     assert "|safe" not in text and "style=" not in text
 
@@ -622,7 +634,7 @@ def test_an_invalid_configured_timezone_never_breaks_the_page() -> None:
     web.app.state.config.timezone = "No/Such_Zone"  # type: ignore[attr-defined]
     response = web.get("/")
     assert response.status_code == 200, response.text
-    assert "de " in response.text and "no disponible" not in section(response.text, "pilotos")
+    assert "de " in response.text and "no disponible" not in section(response.text, "pendientes")
 
 
 def test_hostile_html_in_the_pilot_cards_is_escaped_in_every_field() -> None:
@@ -641,7 +653,7 @@ def test_hostile_html_in_the_pilot_cards_is_escaped_in_every_field() -> None:
         status="decision_pendiente",
     )
     text = make_client(full_api({PILOTS: (200, {"items": [blocked, decide]})})).get("/").text
-    card = section(text, "pilotos")
+    card = section(text, "pendientes")
     assert "<script>alert(1)</script>" not in text
     assert card.count("&lt;script&gt;alert(1)&lt;/script&gt;") >= 4
     assert 'href="/pilotos/pil_20261102_a"' in card and 'href="/pilotos/pil_20261102_b"' in card
@@ -729,7 +741,8 @@ def test_the_calibration_card_lists_each_pilot_with_streak_and_last_video() -> N
     assert "2 pilotos en calibración" in card
     assert "Racha de hasta 60 minutos: 1 de 3" in card
     assert "Racha de hasta 60 minutos: 3 de 3" in card
-    assert "Video 2 · 58 min" in card and "Video 3 · 55 min" in card
+    assert re.search(r"Video 2 de \d+ · último video 58 min", card)
+    assert re.search(r"Video 3 de \d+ · último video 55 min", card)
     assert 'href="/pilotos/pil_20261102_c1"' in card
     assert "Pasa a régimen" in card
     assert "<form" not in card and "<button" not in card
@@ -744,7 +757,7 @@ def test_the_card_says_could_pass_when_the_figures_are_a_lower_bound() -> None:
     assert "Pasa a régimen" not in card
     assert "Las cifras son un mínimo estimado: confírmalo con tu propio criterio." in card
     assert "Racha de hasta 60 minutos: 3 de 3 (posible: las cifras son un mínimo)" in card
-    assert "Video 3 · ≥ 55 min" in card
+    assert re.search(r"Video 3 de \d+ · último video ≥ 55 min", card)
     assert "<form" not in card and "<button" not in card
 
 
@@ -798,7 +811,7 @@ def test_a_failing_source_degrades_only_the_calibration_card() -> None:
         text = client_page(api)
         assert "Pilotos en calibración: no disponible ahora" in section(text, "calibracion")
         assert text.count("no disponible") == 1
-        assert "Informes listos" in text and "Subnichos medidos" in text
+        assert "rep-label" in text and "que merece" in text
 
 
 def test_a_readable_pilot_stays_when_another_one_fails() -> None:
@@ -845,3 +858,196 @@ def test_hostile_text_in_the_calibration_card_is_escaped() -> None:
     text = client_page(api)
     assert "<script>" not in text
     assert "&lt;script&gt;" in section(text, "calibracion")
+
+
+# ---- Task 9: Hoy alineado (M14) --------------------------------------------------------------
+
+
+def niche_api(count: int, extra: dict[tuple[str, str], Route] | None = None) -> Api:
+    items = [niche_item(f"n{i}", opportunity=scored(90.0 - i)) for i in range(count)]
+    return full_api(
+        {NICHES: (200, {"items": items, "total": count, "limit": 10, "offset": 0})} | (extra or {})
+    )
+
+
+def sub_api(finalists: int) -> Api:
+    items = [subniche_item(f"s{i}", label=f"Sub {i}") for i in range(finalists)]
+    return full_api({SUBS: (200, {"items": items})})
+
+
+@pytest.mark.parametrize(
+    ("count", "title"),
+    [
+        (1, "1 nicho que merece tu atención"),
+        (2, "2 nichos que merecen tu atención"),
+        (5, "2 nichos que merecen tu atención"),
+    ],
+)
+def test_the_niche_title_is_dynamic_and_shows_two_cards_at_most(count: int, title: str) -> None:
+    card = section(client_page(niche_api(count)), "nichos")
+    assert f">{title}<" in card
+    assert card.count('class="list__item"') == min(count, 2)
+    assert "n2" not in card
+
+
+def test_the_niche_section_is_hidden_with_zero_scored_niches() -> None:
+    text = client_page(niche_api(0))
+    assert 'id="hoy-nichos"' not in text
+    assert "merecen tu atención" not in text.split('id="hoy-subnichos"')[0]
+
+
+@pytest.mark.parametrize(
+    ("count", "title"),
+    [
+        (1, "1 subnicho que merece tu atención"),
+        (2, "2 subnichos que merecen tu atención"),
+        (4, "2 subnichos que merecen tu atención"),
+    ],
+)
+def test_the_subniche_title_is_dynamic_and_shows_two_cards_at_most(count: int, title: str) -> None:
+    card = section(client_page(sub_api(count)), "subnichos")
+    assert f">{title}<" in card
+    assert card.count('class="list__item"') == min(count, 2)
+
+
+def test_the_subniche_section_is_hidden_without_finalists() -> None:
+    api = full_api({SUBS: (200, {"items": [subniche_item("a", finalist=False)]})})
+    assert 'id="hoy-subnichos"' not in client_page(api)
+
+
+def test_the_niche_card_shows_scores_and_the_two_buttons() -> None:
+    card = section(client_page(niche_api(2)), "nichos")
+    assert re.search(r"Opportunity \d+ · Automatización [\d—]+ · Confianza \w+", card)
+    assert ">Marcar tentativo<" in card
+    assert '<a class="btn btn--secondary" href="/nichos/ver?etiqueta=n0&amp;formato=long">' in card
+    assert ">Ver nicho</a>" in card
+
+
+def test_the_niche_card_encodes_a_hostile_label_in_the_detail_link() -> None:
+    api = niche_api(0, {NICHES: (200, {"items": [niche_item("a/b c?&")], "total": 1})})
+    card = section(client_page(api), "nichos")
+    assert "etiqueta=a%2Fb%20c%3F%26&amp;formato=long" in card
+
+
+def test_tentative_from_today_comes_back_to_today() -> None:
+    card = section(client_page(niche_api(2)), "nichos")
+    assert card.count('name="volver" value="/"') == 2
+    assert 'name="volver" value="/nichos"' not in card
+
+
+def test_the_subniche_card_has_chips_income_stats_and_buttons() -> None:
+    card = section(client_page(sub_api(1)), "subnichos")
+    assert ">Finalista<" in card and ">EN<" in card
+    assert "Ingreso típico por canal al mes" in card
+    for word in ("Despegaron", "Constantes", "Grandes"):
+        assert word in card
+    assert ">Investigar</a>" in card and ">Ver subnicho</a>" in card
+
+
+def pending_card(api: Api) -> str:
+    return section(client_page(api), "pendientes")
+
+
+def test_pending_merges_pilots_and_ready_reports_with_chips_and_the_total() -> None:
+    card = pending_card(full_api())
+    assert ">2 cosas necesitan algo de ti<" in card
+    assert "Decide si sigue o cierra" in card and "pil-label" in card
+    assert "Informe de investigación listo: decide si lanzas el piloto" in card
+    assert "rep-label" in card and "listo para decidir" in card
+    assert f'href="/informes/{REPORT_ID}"' in card
+    assert '<a class="btn btn--secondary" href="/pilotos">Ver pendientes</a>' in card
+    assert 'id="hoy-pilotos"' not in client_page(full_api())
+    assert 'id="hoy-informes"' not in client_page(full_api())
+
+
+def test_pending_uses_the_singular_and_is_hidden_with_nothing_pending() -> None:
+    one = full_api({FLOW: (200, {"items": []})})
+    assert ">1 cosa necesita algo de ti<" in pending_card(one)
+    none = full_api({FLOW: (200, {"items": []}), PILOTS: (200, {"items": []})})
+    assert 'id="hoy-pendientes"' not in client_page(none)
+
+
+def test_pending_counts_every_ready_report_but_lists_three() -> None:
+    flows = [flow_item("listo", id=ids()[i], niche_label=f"r{i}") for i in range(5)]
+    card = pending_card(full_api({FLOW: (200, {"items": flows})}))
+    assert ">6 cosas necesitan algo de ti<" in card
+    assert card.count('class="list__item"') == 4  # one pilot + three reports
+    assert "y 2 más" in card
+
+
+def test_a_failing_pilots_source_degrades_only_its_part_of_pending() -> None:
+    card = pending_card(full_api({PILOTS: boom}))
+    assert "Pilotos: no disponible ahora" in card
+    assert "rep-label" in card and ">1 cosa necesita algo de ti<" in card
+
+
+def test_a_failing_flow_source_degrades_only_its_part_of_pending() -> None:
+    card = pending_card(full_api({FLOW: boom}))
+    assert "Informes listos: no disponible ahora" in card
+    assert "pil-label" in card
+
+
+def test_more_than_a_hundred_records_keep_the_older_records_notice_in_pending() -> None:
+    pilots = [pilot_item(f"pil_20261102_{i:02d}", status="en_ejecucion") for i in range(100)]
+    card = pending_card(full_api({PILOTS: (200, {"items": pilots})}))
+    assert OLDER in card
+
+
+def cal_card(minutes: list[int | None], planned_hint: bool = True) -> str:
+    api = cal_api([cal_pilot(1)], cal_routes(1, minutes))
+    return section(client_page(api), "calibracion")
+
+
+def test_calibration_shows_chip_progress_line_bar_and_the_button() -> None:
+    card = cal_card([58, 59, 55])
+    assert ">En calibración<" in card
+    assert re.search(r"Video 3 de \d+ · último video 55 min", card)
+    assert 'class="progress"' in card and "progress__fill bar--p" in card
+    assert "Racha de hasta 60 minutos: 3 de 3" in card
+    assert '<a class="btn btn--secondary" href="/pilotos/pil_20261102_c1">Ver piloto</a>' in card
+
+
+def test_calibration_says_the_last_video_is_unmeasured_without_inventing_minutes() -> None:
+    card = cal_card([58, None])
+    assert re.search(r"Video 2 de \d+ · último video sin medir", card)
+    assert "· 0 min" not in card and " 0 min" not in card.replace("minutos: 0", "")
+
+
+def test_calibration_with_no_published_video_says_so() -> None:
+    card = cal_card([])
+    assert "Todavía sin videos publicados" in card
+    assert "bar--p0" in card
+
+
+def test_the_calibration_reads_stay_capped_at_five_pilots() -> None:
+    pilots = [cal_pilot(i) for i in range(1, 9)]
+    routes: dict[tuple[str, str], Route] = {}
+    for i in range(1, 9):
+        routes |= cal_routes(i, [58])
+    api = cal_api(pilots, routes)
+    card = section(client_page(api), "calibracion")
+    assert "5 pilotos en calibración" in card and "y 3 más" in card
+    detail_reads = [c for c in api.calls if re.fullmatch(r"/api/v1/pilots/pil_\w+", c.url.path)]
+    assert len(detail_reads) == 5
+
+
+def test_hostile_text_is_escaped_in_the_merged_pending_and_cards() -> None:
+    api = full_api(
+        {
+            NICHES: (200, {"items": [niche_item(HOSTILE)], "total": 1, "limit": 10, "offset": 0}),
+            FLOW: (
+                200,
+                {"items": [flow_item("listo", id=REPORT_ID, niche_label=HOSTILE)]},
+            ),
+        }
+    )
+    text = client_page(api)
+    assert "<script>alert(1)</script>" not in text
+    for name in ("nichos", "pendientes"):
+        assert "&lt;script&gt;alert(1)&lt;/script&gt;" in section(text, name), name
+
+
+def test_the_home_shows_the_notice_after_a_decision() -> None:
+    web = make_client(full_api())
+    assert "Marcado como tentativo." in web.get("/?aviso=marcado").text
+    assert "Marcado como tentativo." not in web.get("/?aviso=<b>").text

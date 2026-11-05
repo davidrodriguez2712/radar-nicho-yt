@@ -212,6 +212,22 @@ def test_safe_target_accepts_only_the_whitelist() -> None:
         [("etiqueta", "a"), ("formato", "long")],
     )
     assert safe_target("/nichos/ver?etiqueta=a&etiqueta=b&formato=long") is None
+    assert safe_target("/") == ("home", [])
+    assert safe_target("/?aviso=marcado") == ("home", [])
+    for bad in (
+        "/?x=1",
+        "/?aviso=a&aviso=b",
+        "//host",
+        "//",
+        "https://evil.example/",
+        "javascript:alert(1)",
+        "/\\host",
+        "/\r\nSet-Cookie: a=b",
+        "/%0d%0a",
+        "/ ",
+        "",
+    ):
+        assert safe_target(bad) is None, bad
     assert safe_target("/nichos/ver?etiqueta=" + "x" * 141 + "&formato=long") is None
 
 
@@ -324,3 +340,20 @@ def test_a_form_that_does_not_match_the_return_is_invalid() -> None:
         assert response.status_code == 303
         assert response.headers["location"] == f"{VIEW}&aviso=invalida"
     assert writes(api) == []
+
+
+def test_a_decision_made_from_today_returns_to_today() -> None:
+    api = api_for()
+    web = make_client(api)
+    response = post(web, volver="/")
+    assert response.headers["location"] == "/?aviso=marcado"
+    assert json.loads(writes(api)[0].content) == {"format": "long", "decision": "tentativo"}
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    ["https://evil.example/", "//evil.example", "javascript:alert(1)", "/\r\nX: y", "/?x=1"],
+)
+def test_a_hostile_return_from_today_falls_back_to_the_list(hostile: str) -> None:
+    response = post(make_client(api_for()), volver=hostile)
+    assert response.headers["location"] == "/nichos?aviso=marcado"

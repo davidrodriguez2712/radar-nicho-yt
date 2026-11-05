@@ -29,11 +29,11 @@ def _plain(text: str) -> bool:
 
 
 def safe_target(volver: str) -> Target | None:
-    """('list'|'detail', query pairs without `aviso`) for a whitelisted `volver`, else None."""
+    """('list'|'detail'|'home', query pairs minus `aviso`) for a whitelisted `volver`, else None."""
     if not _plain(volver):
         return None
     path, _, query = volver.partition("?")
-    if path not in ("/nichos", "/nichos/ver"):
+    if path not in ("/", "/nichos", "/nichos/ver"):
         return None
     try:
         pairs = parse_qsl(query, keep_blank_values=True, strict_parsing=bool(query))
@@ -49,6 +49,10 @@ def safe_target(volver: str) -> Target | None:
         if not valid_label(values.get("etiqueta", "")) or values.get("formato") not in FORMATS:
             return None
         kind = "detail"
+    elif path == "/":
+        if not set(keys) <= {"aviso"}:
+            return None
+        kind = "home"
     else:
         if not set(keys) <= LIST_KEYS:
             return None
@@ -63,7 +67,7 @@ def safe_target(volver: str) -> Target | None:
 
 
 def target_url(kind: str, pairs: list[tuple[str, str]], aviso: str | None = None) -> str:
-    path = "/nichos/ver" if kind == "detail" else "/nichos"
+    path = {"detail": "/nichos/ver", "home": "/"}.get(kind, "/nichos")
     items = [*pairs, *([("aviso", aviso)] if aviso else [])]
     return path + ("?" + urlencode(items, quote_via=quote) if items else "")
 
