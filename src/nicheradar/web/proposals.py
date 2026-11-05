@@ -5,6 +5,8 @@ Every error text comes from a fixed dictionary of the web, chosen by `code`; wha
 the API, YouTube or the model sends is data and is never shown.
 """
 
+import hashlib
+import json
 import re
 import secrets
 from datetime import UTC, datetime
@@ -73,9 +75,14 @@ def valid_nonce(nonce: object) -> bool:
     return isinstance(nonce, str) and NONCE.fullmatch(nonce) is not None
 
 
-def idempotency_key(signer: SessionSigner, session: Session, nonce: str) -> str:
-    """Same session and nonce, same key: a double tap or a reload never queues twice."""
-    return "nr-" + signer.derive("idem", f"{signer.csrf(session)}:{nonce}")[:40]
+def idempotency_key(
+    signer: SessionSigner, session: Session, nonce: str, body: dict[str, Any]
+) -> str:
+    """Same session, nonce and content, same key: a double tap, a reload or a retry after a
+    transient failure never queues twice; corrected content is another request."""
+    canonical = json.dumps(body, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+    digest = hashlib.sha256(canonical.encode()).hexdigest()
+    return "nr-" + signer.derive("idem", f"{signer.csrf(session)}:{nonce}:{digest}")[:40]
 
 
 def _clean(value: str) -> bool:
@@ -119,10 +126,14 @@ def _text(value: object) -> str:
     return DASH
 
 
-def _texts(value: object) -> list[str]:
+def _all_texts(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
-    return [entry[:TEXT_MAX] for entry in value if isinstance(entry, str) and entry][:LIST_MAX]
+    return [entry[:TEXT_MAX] for entry in value if isinstance(entry, str) and entry]
+
+
+def _texts(value: object) -> list[str]:
+    return _all_texts(value)[:LIST_MAX]
 
 
 def _hypothesis(value: object) -> dict[str, Any] | None:
@@ -144,6 +155,8 @@ def _hypothesis(value: object) -> dict[str, Any] | None:
         "parent_niche": _text(parent) if isinstance(parent, str) and parent else None,
         "queries": _texts(value.get("queries")),
         "seed_channels": _texts(value.get("seed_channels")),
+        "clipped": len(_all_texts(value.get("queries"))) > LIST_MAX
+        or len(_all_texts(value.get("seed_channels"))) > LIST_MAX,
     }
 
 

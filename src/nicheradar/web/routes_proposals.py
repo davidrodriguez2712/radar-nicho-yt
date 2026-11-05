@@ -125,7 +125,9 @@ def propose(
             "POST",
             "/subniches/proposals",
             body=body,
-            headers={"Idempotency-Key": idempotency_key(request.app.state.signer, session, nonce)},
+            headers={
+                "Idempotency-Key": idempotency_key(request.app.state.signer, session, nonce, body)
+            },
         )
         proposal_id = result.get("id")
         if not valid_proposal_id(proposal_id):

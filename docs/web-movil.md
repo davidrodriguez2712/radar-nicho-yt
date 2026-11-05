@@ -185,7 +185,7 @@ Plan: `docs/superpowers/plans/2026-11-04-web-proponer-subnicho-y-compartir.md`. 
 3. «Revisar y aprobar» abre M28, que muestra consultas, páginas, unidades de búsqueda por medición y el tope diario. Si no caben en la cuota lo dice con las cifras y deja aprobar. Aprobar no mide al instante: la primera medición ocurre en la próxima ronda con cupo. Nada se aprueba solo: es un `POST` aparte con CSRF.
 4. La ficha vuelve con el aviso `aprobado` y el botón «Pausar» (después «Reanudar»). Archivar pide marcar «Entiendo que no se puede deshacer».
 
-Los textos de error de una propuesta fallida vienen de un diccionario fijo de la web según el `code` (los códigos desconocidos y `duplicate:...` dan un texto genérico); el texto de la API, de YouTube o del modelo nunca se muestra. Los avisos usan claves fijas (`?aviso=`).
+Los textos de error de una propuesta fallida vienen de un diccionario fijo de la web según el `code` (un código desconocido da un texto genérico; `duplicate:...` muestra el texto fijo de duplicado, nunca el detalle); el texto de la API, de YouTube o del modelo nunca se muestra. Los avisos usan claves fijas (`?aviso=`).
 
 ### Sondeo acotado
 
@@ -193,7 +193,7 @@ El detalle de una propuesta en cola o preparándose se vuelve a pedir cada 5 s (
 
 ### Clave de idempotencia
 
-El formulario lleva un nonce de 32 hex. La clave que se envía a la API es `nr-` más 40 hex derivados con el HMAC de la sesión (`signer.derive("idem", f"{csrf}:{nonce}")`), así que el mismo nonce en la misma sesión da la misma clave: un doble toque o recargar tras el `POST` no crea dos propuestas. Un rechazo de dominio (422/429 con código) genera un nonce nuevo; un fallo transitorio conserva el nonce para que el reintento no duplique.
+El formulario lleva un nonce de 32 hex. La clave que se envía a la API es `nr-` más 40 hex derivados con el HMAC de la sesión (`signer.derive("idem", f"{csrf}:{nonce}:{sha256(cuerpo canónico)}")`, con el cuerpo canónico en JSON de claves ordenadas): el mismo nonce y el mismo contenido en la misma sesión dan la misma clave, así que un doble toque, recargar o reenviar tras un fallo transitorio no crea dos propuestas, y un contenido corregido con el mismo nonce es otra solicitud (no devuelve en silencio la anterior). Un rechazo de dominio (422/429 con código) genera un nonce nuevo; un fallo transitorio lo conserva.
 
 ### Compartir desde Android
 
@@ -208,7 +208,7 @@ El enlace se toma de `url`, o de `text` o `title` si ahí viene el enlace; los e
 - Los enlaces de X (tweets) todavía no se leen: la pantalla lo avisa y pide copiar el canal o el enlace de YouTube que menciona.
 - Solo Android: el `share_target` de las PWA no existe en iOS.
 - Sin imágenes: el destino es `GET` con título, texto y enlace; compartir imágenes exige `POST` con archivos y un service worker, fuera de este plan.
-- Las listas de la propuesta (consultas, canales semilla) se muestran hasta un tope fijo, con aviso.
+- Las consultas y los canales semilla de una propuesta se muestran hasta 20 cada lista, con el aviso fijo «Se muestran los primeros 20.».
 
 ### Qué necesita producción
 
@@ -219,7 +219,7 @@ El enlace se toma de `url`, o de `text` o `title` si ahí viene el enlace; los e
 
 ### Seguimiento
 
-- Reservar los slugs `proponer` y `propuestas` en la API: hoy solo la web rechaza `proponer` (etiquetas manuales y rutas) para que `/subnichos/proponer` no sea una ficha; la API aún podría crear un subnicho con ese slug, que la web no podría abrir.
+- Reservar los slugs `proponer` y `propuestas` en la API. Hoy la web solo rechaza `proponer`, y solo en la etiqueta manual; `propuestas` no se rechaza en ningún sitio. Efecto real: `/subnichos/propuestas/aprobar` y `/subnichos/propuestas/archivar` caen en la ruta del detalle de propuesta y dan 404 (la ficha de un subnicho con ese slug no se puede abrir ni aprobar desde la web); la CLI sigue sirviendo.
 - Lectura de tweets y de imágenes (M31 a M34): plan aparte.
 
 ## Comprobación visual contra el Figma
@@ -228,9 +228,9 @@ El enlace se toma de `url`, o de `text` o `title` si ahí viene el enlace; los e
 uv run python scripts/web_preview.py --out /tmp/web-preview
 ```
 
-Renderiza Subnichos (lista y ficha con Recorrido), Hoy, Nichos, Detalle de nicho (`nicho_detalle`), Investigar, Informe v3, Autorizar y, del corte 2a, Pilotos, Piloto (Resumen), Preparación y Confirmar, del corte 2b, Calibración (piloto en ejecución) y, del corte 3a, Operación, Ejecuciones, Más y Confirmar scraper y, de Proponer y Compartir, `proponer`, `propuesta_cola`, `propuesta_lista`, `aprobar`, `archivar`, `compartir` y `compartir_tweet`, con datos de ejemplo
+Renderiza Subnichos (lista y ficha con Recorrido), Hoy, Nichos, Detalle de nicho (`nicho_detalle`), Investigar, Informe v3, Autorizar y, del corte 2a, Pilotos, Piloto (Resumen), Preparación y Confirmar, del corte 2b, Calibración (piloto en ejecución) y, del corte 3a, Operación, Ejecuciones, Más y Confirmar scraper y, de Proponer y Compartir, las siete pantallas nuevas (`proponer`, `propuesta_cola`, `propuesta_lista`, `aprobar`, `archivar`, `compartir` y `compartir_tweet`), con datos de ejemplo
 (`scripts/web_preview_data.py`, sin API real) y guarda `lista`, `ficha`, `hoy`, `nichos`, `nicho_detalle`, `investigar`,
-`informe`, `autorizar`, `pilotos`, `piloto`, `preparacion`, `calibracion`, `confirmar`, `operacion`, `ejecuciones`, `mas` y `confirmar-scraper` como `.html` y, si hay Chrome (`--chrome RUTA`), como `.png` a 390 px de ancho con
+`informe`, `autorizar`, `pilotos`, `piloto`, `preparacion`, `calibracion`, `confirmar`, `operacion`, `ejecuciones`, `mas`, `confirmar-scraper`, `proponer`, `propuesta_cola`, `propuesta_lista`, `aprobar`, `archivar`, `compartir` y `compartir_tweet` como `.html` y, si hay Chrome (`--chrome RUTA`), como `.png` a 390 px de ancho con
 escala 2. Compárense con el Figma M9 (`29:2`), M10 (`30:2`), M19 (`47:37`), M14 (`36:2`), M11 (`31:2`), M12 (`32:2`), M13 (`35:2`) y los demás marcos del archivo. Los estados de investigación de la lista son
 ilustrativos, como en el Figma. Las rutas `file://` solo existen en esta vista previa. Chrome headless no
 baja de 500 px de ventana, por eso la página se mide dentro de un `iframe` de 390 px y se recorta con `sips`

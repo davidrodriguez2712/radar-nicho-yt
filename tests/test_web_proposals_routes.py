@@ -489,3 +489,44 @@ def test_approve_button_only_for_a_proposed_hypothesis() -> None:
     data["hypothesis"]["status"] = "<script>"
     page = make_client(Api({GET: (200, data)})).get(f"/subnichos/propuestas/{PID}")
     assert "Revisar y aprobar" not in page.text and "<script>" not in page.text
+
+
+def test_a_corrected_body_gets_another_key_and_the_same_body_keeps_it_after_a_503() -> None:
+    answers = [httpx.Response(503, json={"detail": "x"}), httpx.Response(503, json={"detail": "x"})]
+
+    def flaky(request: httpx.Request) -> httpx.Response:
+        return answers.pop(0) if answers else accepted(request)
+
+    api = Api({POST: flaky})
+    web = make_client(api)
+    data = form(web, input="dinosaurios")
+    first = web.post(FORM, data=data)
+    assert first.status_code == 503 and nonce_of(first.text) == data["nonce"]
+    web.post(FORM, data=data)  # same content, same nonce: still the same request
+    web.post(FORM, data={**data, "input": "dinosaurios reptiles"})  # corrected content
+    web.post(FORM, data={**data, "input": "dinosaurios reptiles"})
+    keys = [c.headers["idempotency-key"] for c in posts(api)]
+    assert keys[0] == keys[1] != keys[2] and keys[2] == keys[3]
+
+
+def test_manual_fields_also_change_the_key() -> None:
+    api = Api({POST: accepted})
+    web = make_client(api)
+    data = form(web, input="dinosaurios", manual="1", label="Criaturas", family="animales")
+    web.post(FORM, data=data)
+    web.post(FORM, data=data)
+    web.post(FORM, data={**data, "label": "Criaturas antiguas"})
+    a, b, c = (x.headers["idempotency-key"] for x in posts(api))
+    assert a == b != c
+
+
+def test_lists_over_the_cap_show_the_fixed_notice() -> None:
+    data = ready()
+    data["hypothesis"]["queries"] = [f"consulta {n}" for n in range(25)]
+    page = make_client(Api({GET: (200, data)})).get(f"/subnichos/propuestas/{PID}")
+    assert "Se muestran los primeros 20." in page.text and "consulta 19" in page.text
+    assert "consulta 20" not in page.text
+    assert (
+        "Se muestran los primeros 20."
+        not in make_client(Api({GET: (200, ready())})).get(f"/subnichos/propuestas/{PID}").text
+    )

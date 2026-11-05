@@ -20,6 +20,7 @@
   <h2 class="card__heading">Consultas</h2>
   {% if h.queries %}<ol class="plain">{% for query in h.queries %}<li>{{ query }}</li>{% endfor %}</ol>{% else %}<p class="muted">Sin consultas.</p>{% endif %}
 </section>
+{% if h.clipped %}<p class="caption">Se muestran los primeros 20.</p>{% endif %}
 {% if h.approve_href %}{{ button("Revisar y aprobar", "primary", href=h.approve_href) }}{% endif %}
 {% elif v.state == "fallida" or v.state == "lista" %}
 <h1 class="h1 h1--md">No se pudo preparar la propuesta</h1>

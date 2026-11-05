@@ -25,6 +25,9 @@ def signer_and_session(key: bytes = b"k" * 32) -> tuple[SessionSigner, Session]:
     return signer, session
 
 
+B = {"input": "x"}
+
+
 def test_new_nonce_is_16_random_bytes_in_hex() -> None:
     first, second = new_nonce(), new_nonce()
     assert re.fullmatch(r"[0-9a-f]{32}", first) and first != second
@@ -32,8 +35,8 @@ def test_new_nonce_is_16_random_bytes_in_hex() -> None:
 
 def test_idempotency_key_is_stable_and_valid_for_the_api() -> None:
     signer, session = signer_and_session()
-    key = idempotency_key(signer, session, "abc")
-    assert key == idempotency_key(signer, session, "abc")
+    key = idempotency_key(signer, session, "abc", B)
+    assert key == idempotency_key(signer, session, "abc", B)
     assert re.fullmatch(r"nr-[0-9a-f]{40}", key) and 8 <= len(key) <= 100
 
 
@@ -42,8 +45,16 @@ def test_idempotency_key_changes_with_nonce_and_with_session() -> None:
     other_signer = SessionSigner(b"k" * 32)
     other = other_signer.read(other_signer.issue())
     assert other is not None
-    assert idempotency_key(signer, session, "a") != idempotency_key(signer, session, "b")
-    assert idempotency_key(signer, session, "a") != idempotency_key(other_signer, other, "a")
+    assert idempotency_key(signer, session, "a", B) != idempotency_key(signer, session, "b", B)
+    assert idempotency_key(signer, session, "a", B) != idempotency_key(other_signer, other, "a", B)
+
+
+def test_idempotency_key_changes_with_the_body_not_with_its_key_order() -> None:
+    signer, session = signer_and_session()
+    one = idempotency_key(signer, session, "a", {"input": "x", "manual": {"a": 1, "b": 2}})
+    same = idempotency_key(signer, session, "a", {"manual": {"b": 2, "a": 1}, "input": "x"})
+    assert one == same
+    assert one != idempotency_key(signer, session, "a", {"input": "y"})
 
 
 def test_parse_form_trims_and_builds_the_body() -> None:
