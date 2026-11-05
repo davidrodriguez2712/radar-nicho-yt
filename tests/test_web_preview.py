@@ -76,3 +76,20 @@ def test_the_preview_renders_the_niche_detail_and_the_card_journey(tmp_path: Pat
     assert "Decisión" in detalle and "Ver más fichas" in detalle
     assert "historia militar explicada" in detalle
     assert "Recorrido hasta el piloto" in ficha
+
+
+def test_the_preview_renders_the_proponer_and_compartir_screens(tmp_path: Path) -> None:
+    assert web_preview.main(["--out", str(tmp_path), "--no-screenshots"]) == 0
+    expected = {
+        "proponer": "Proponer subnicho",
+        "propuesta_cola": "Preparando la propuesta",
+        "propuesta_lista": "Revisar y aprobar",
+        "aprobar": "Confirmar y aprobar",
+        "archivar": "Entiendo que no se puede deshacer",
+        "compartir": "Compartido contigo",
+        "compartir_tweet": "Los enlaces de X todavía no se leen.",
+    }
+    for name, text in expected.items():
+        html = (tmp_path / f"{name}.html").read_text()
+        assert text in html, name
+        assert "file://" in html and 'href="/static/' not in html, name

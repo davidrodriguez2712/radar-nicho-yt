@@ -33,6 +33,7 @@ from tests.web_helpers import (
 )
 
 PID = "pil_20261102_historia"
+PROPOSAL = "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d"
 ROUTES = [
     "/",
     "/nichos",
@@ -40,6 +41,13 @@ ROUTES = [
     "/nichos/investigar?etiqueta=x&formato=long",
     "/subnichos",
     "/subnichos/uno",
+    "/subnichos/proponer",
+    "/subnichos/proponer?q=%40canal",
+    f"/subnichos/propuestas/{PROPOSAL}",
+    "/subnichos/uno/aprobar",
+    "/subnichos/uno/archivar",
+    "/compartir",
+    "/compartir?url=https%3A%2F%2Fwww.youtube.com%2F%40canal",
     "/operacion",
     "/operacion/ejecuciones",
     "/mas",
@@ -68,7 +76,13 @@ STRUCTURAL = {
     "channel_id", "pilot_id", "report_id", "action", "code",
     "path", "unit", "currency", "kind_of", "classification", "rights", "automation", "mode",
 }  # fmt: skip
-STATIC_ROUTES = {"/mas"}  # the menu reads no API at all
+STATIC_ROUTES = {  # these screens read no API at all
+    "/mas",
+    "/subnichos/proponer",
+    "/subnichos/proponer?q=%40canal",
+    "/compartir",
+    "/compartir?url=https%3A%2F%2Fwww.youtube.com%2F%40canal",
+}
 ECHO_FREE = STATIC_ROUTES | {"/operacion/scraper/pausar", "/operacion/scraper/reanudar"}
 SCRIPT = "<script>alert(1)</script>"
 
@@ -124,6 +138,34 @@ def fixtures(route: str = "") -> dict[str, Any]:
         "subniches": {"items": [subniche_item(research=research())]},
         "card": subniche_card(research=research()),
         "schedule": schedule(),
+        "proposal": {
+            "id": PROPOSAL,
+            "status": "succeeded",
+            "kind": "channel",
+            "input": "@canal",
+            "created_at": "2026-11-05T11:00:00Z",
+            "finished_at": "2026-11-05T11:02:00Z",
+            "error": None,
+            "hypothesis": {
+                "slug": "uno",
+                "label": "Uno",
+                "family": "history",
+                "parent_niche": "Historia",
+                "queries": ["una consulta", "otra consulta"],
+                "seed_channels": ["@canal"],
+                "status": "proposed",
+            },
+        },
+        "approval": {
+            "slug": "uno",
+            "status": "proposed",
+            "queries": 2,
+            "pages": 1,
+            "search_units_needed": 200,
+            "daily_cap": 100,
+            "fits": False,
+            "cadence_days": 3,
+        },
         "runs": {
             "items": [
                 scrape_run("partial", error_code="blocked_by_site"),
@@ -167,6 +209,18 @@ class SmokeApi(Api):
         if path == f"/pilots/{PID}":
             return httpx.Response(
                 200, content=dump(self.data["pilot"]), headers={"content-type": "application/json"}
+            )
+        if path.startswith("/subniches/proposals/"):
+            return httpx.Response(
+                200,
+                content=dump(self.data["proposal"]),
+                headers={"content-type": "application/json"},
+            )
+        if path.endswith("/approval"):
+            return httpx.Response(
+                200,
+                content=dump(self.data["approval"]),
+                headers={"content-type": "application/json"},
             )
         key = next(
             (k for prefix, k in RESOURCES if path == prefix or path.startswith(prefix + "/")), None
@@ -391,6 +445,15 @@ POSTS: list[tuple[str, dict[str, str]]] = [
     (f"/pilotos/{PID}/decidir?accion=cerrar", {"note": "ok"}),
     (f"/pilotos/{PID}/cancelar", {"reason": "ok"}),
     ("/subnichos/uno/investigar", {"idioma": "en"}),
+    ("/subnichos/proponer", {"nonce": "a" * 32, "input": "dinosaurios"}),
+    (
+        "/subnichos/proponer",
+        {"nonce": "a" * 32, "input": "x", "modo": "manual", "label": "Etiqueta", "family": "abc"},
+    ),
+    ("/subnichos/uno/aprobar", {}),
+    ("/subnichos/uno/pausar", {}),
+    ("/subnichos/uno/reanudar", {}),
+    ("/subnichos/uno/archivar", {"confirmar": "1"}),
     ("/salir", {}),
     ("/operacion/scraper/pausar", {}),
     ("/operacion/scraper/reanudar", {}),

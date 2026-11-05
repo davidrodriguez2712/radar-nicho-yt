@@ -161,10 +161,66 @@ Con un dossier v3, el panel del piloto hace 2 lecturas extra por página (`GET /
 - Cadencia y días de preparación al autorizar (M12): no existen en el contrato de pilotos, que es inmutable tras autorizar; es un corte propio.
 - Idioma por nicho en la lista y en Hoy (chip «EN 80 %» y filtro «Idioma»): exige un resumen de `language_mix` en `GET /market/niches`.
 - «Fit» de M2: se quitó del Figma el 2026-11-04 (no existe para nichos de mercado); no se muestra.
-- Decisión del subnicho editable (aprobar, pausar, reanudar, archivar) y «+ Proponer subnicho»: la tarjeta es de solo lectura hasta el plan de API `2026-11-04-api-propuestas-de-subnicho.md`.
+- Decisión del subnicho y «+ Proponer subnicho»: ya existen (ver «Proponer subnicho y Compartir (Android)»).
 - Botones de acción por bloqueo del panel («Renovar paso a paso», «Revisar tabla»): sin destino definido.
 - Botones de nicho apilados en vez de en fila (Hoy y listas): diferencia de maquetación aceptada.
 - Presupuesto «por suscripción / por API» de M12: se conserva bajo, probable y alto del dossier.
+
+## Proponer subnicho y Compartir (Android)
+
+Plan: `docs/superpowers/plans/2026-11-04-web-proponer-subnicho-y-compartir.md`. Solo cambia `src/nicheradar/web/`; la web nunca llama a YouTube ni al modelo: habla con la API privada de propuestas.
+
+| Pantalla | Ruta | API que usa |
+|---|---|---|
+| Proponer (M25) | `GET /subnichos/proponer?q=`, `POST` | `POST /subniches/proposals` con `Idempotency-Key` |
+| En preparación y lista (M26, M27) | `/subnichos/propuestas/{id}` (fragmento HTMX con sondeo) | `GET /subniches/proposals/{id}` |
+| Confirmar aprobación (M28) | `/subnichos/{slug}/aprobar` | `GET /subniches/{slug}/approval`, `POST /subniches/{slug}/approve` |
+| Pausar, reanudar, archivar | `POST /subnichos/{slug}/pausar\|reanudar\|archivar`; `/subnichos/{slug}/archivar` pide confirmación | `POST /subniches/{slug}/pause\|resume\|archive` |
+| Compartir (M29, M30) | `GET /compartir?title=&text=&url=` | ninguna (solo clasifica el enlace) |
+
+### Flujo
+
+1. Se pega una consulta, un video o un canal (o se comparte un enlace desde Android) y se pulsa «Proponer». Una consulta no gasta cuota; un video gasta 1 unidad y un canal 1 o 2. El modo manual («Sin modelo de lenguaje») pide etiqueta, familia y nicho padre opcional, y exige una consulta (un enlace en modo manual lo rechaza la API).
+2. La propuesta queda **en cola**, un worker la **prepara** y queda **lista** (hipótesis con familia, nicho padre, canales semilla y consultas) o **fallida**. La pantalla se actualiza sola con htmx.
+3. «Revisar y aprobar» abre M28, que muestra consultas, páginas, unidades de búsqueda por medición y el tope diario. Si no caben en la cuota lo dice con las cifras y deja aprobar. Aprobar no mide al instante: la primera medición ocurre en la próxima ronda con cupo. Nada se aprueba solo: es un `POST` aparte con CSRF.
+4. La ficha vuelve con el aviso `aprobado` y el botón «Pausar» (después «Reanudar»). Archivar pide marcar «Entiendo que no se puede deshacer».
+
+Los textos de error de una propuesta fallida vienen de un diccionario fijo de la web según el `code` (los códigos desconocidos y `duplicate:...` dan un texto genérico); el texto de la API, de YouTube o del modelo nunca se muestra. Los avisos usan claves fijas (`?aviso=`).
+
+### Sondeo acotado
+
+El detalle de una propuesta en cola o preparándose se vuelve a pedir cada 5 s (`hx-trigger="every 5s"`, contador `?n=`) y se detiene tras 120 vueltas, unos 10 minutos: pasado el tope muestra «Actualizar» a mano. Un fallo transitorio de la API conserva la pantalla (204) y el siguiente sondeo reintenta; un 404 detiene el sondeo con un aviso (estado 286).
+
+### Clave de idempotencia
+
+El formulario lleva un nonce de 32 hex. La clave que se envía a la API es `nr-` más 40 hex derivados con el HMAC de la sesión (`signer.derive("idem", f"{csrf}:{nonce}")`), así que el mismo nonce en la misma sesión da la misma clave: un doble toque o recargar tras el `POST` no crea dos propuestas. Un rechazo de dominio (422/429 con código) genera un nonce nuevo; un fallo transitorio conserva el nonce para que el reintento no duplique.
+
+### Compartir desde Android
+
+1. En Chrome para Android abrir la web y elegir «Instalar app» (o «Agregar a la pantalla principal»). **Si la PWA ya estaba instalada, hay que desinstalarla y reinstalarla**: Android registra el destino de «Compartir» (`share_target` del manifiesto) al instalar.
+2. En YouTube (o en cualquier app) tocar «Compartir» y elegir NicheRadar.
+3. Se abre «Compartido contigo» con el tipo (canal o video de YouTube) y el botón «Proponer», que lleva al formulario ya relleno con la forma canónica del enlace (`https://www.youtube.com/watch?v=…`, `@handle`…). Compartir nunca crea nada solo.
+
+El enlace se toma de `url`, o de `text` o `title` si ahí viene el enlace; los enlaces de otro dominio, `javascript:` o con caracteres de control se descartan. Sin sesión, el login devuelve al mismo enlace (`next` solo acepta rutas internas).
+
+### Límites
+
+- Los enlaces de X (tweets) todavía no se leen: la pantalla lo avisa y pide copiar el canal o el enlace de YouTube que menciona.
+- Solo Android: el `share_target` de las PWA no existe en iOS.
+- Sin imágenes: el destino es `GET` con título, texto y enlace; compartir imágenes exige `POST` con archivos y un service worker, fuera de este plan.
+- Las listas de la propuesta (consultas, canales semilla) se muestran hasta un tope fijo, con aviso.
+
+### Qué necesita producción
+
+- API de propuestas y worker con `NR_SUBNICHE_ENABLED=true`: **ya desplegados en la release 036**.
+- La PWA reinstalada en el teléfono (ver arriba) para que Android registre «Compartir».
+- `NR_DASHBOARD_UI=web`.
+- Contraseña de la app larga y aleatoria y **sin Basic Auth del proxy** (acción del propietario en Easypanel): `/compartir` debe llegar con la cookie de sesión.
+
+### Seguimiento
+
+- Reservar los slugs `proponer` y `propuestas` en la API: hoy solo la web rechaza `proponer` (etiquetas manuales y rutas) para que `/subnichos/proponer` no sea una ficha; la API aún podría crear un subnicho con ese slug, que la web no podría abrir.
+- Lectura de tweets y de imágenes (M31 a M34): plan aparte.
 
 ## Comprobación visual contra el Figma
 
@@ -172,7 +228,7 @@ Con un dossier v3, el panel del piloto hace 2 lecturas extra por página (`GET /
 uv run python scripts/web_preview.py --out /tmp/web-preview
 ```
 
-Renderiza Subnichos (lista y ficha con Recorrido), Hoy, Nichos, Detalle de nicho (`nicho_detalle`), Investigar, Informe v3, Autorizar y, del corte 2a, Pilotos, Piloto (Resumen), Preparación y Confirmar, del corte 2b, Calibración (piloto en ejecución) y, del corte 3a, Operación, Ejecuciones, Más y Confirmar scraper con datos de ejemplo
+Renderiza Subnichos (lista y ficha con Recorrido), Hoy, Nichos, Detalle de nicho (`nicho_detalle`), Investigar, Informe v3, Autorizar y, del corte 2a, Pilotos, Piloto (Resumen), Preparación y Confirmar, del corte 2b, Calibración (piloto en ejecución) y, del corte 3a, Operación, Ejecuciones, Más y Confirmar scraper y, de Proponer y Compartir, `proponer`, `propuesta_cola`, `propuesta_lista`, `aprobar`, `archivar`, `compartir` y `compartir_tweet`, con datos de ejemplo
 (`scripts/web_preview_data.py`, sin API real) y guarda `lista`, `ficha`, `hoy`, `nichos`, `nicho_detalle`, `investigar`,
 `informe`, `autorizar`, `pilotos`, `piloto`, `preparacion`, `calibracion`, `confirmar`, `operacion`, `ejecuciones`, `mas` y `confirmar-scraper` como `.html` y, si hay Chrome (`--chrome RUTA`), como `.png` a 390 px de ancho con
 escala 2. Compárense con el Figma M9 (`29:2`), M10 (`30:2`), M19 (`47:37`), M14 (`36:2`), M11 (`31:2`), M12 (`32:2`), M13 (`35:2`) y los demás marcos del archivo. Los estados de investigación de la lista son

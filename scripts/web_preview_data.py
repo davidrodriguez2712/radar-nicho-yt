@@ -119,6 +119,43 @@ ITEMS: list[dict[str, Any]] = [
 
 _PREHISTORIC = ITEMS[0]
 
+PROPOSAL_ID = "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d"
+PROPOSED_SLUG = "ancient-rome"
+_HYPOTHESIS = {
+    "slug": PROPOSED_SLUG,
+    "label": "Ancient Rome",
+    "family": "history",
+    "parent_niche": "Historia militar explicada",
+    "queries": ["ancient rome facts", "how rome fell", "roman legion daily life"],
+    "seed_channels": ["@nombredelcanal"],
+    "status": "proposed",
+}
+PROPOSAL_READY: dict[str, Any] = {
+    "id": PROPOSAL_ID,
+    "status": "succeeded",
+    "kind": "channel",
+    "input": "https://www.youtube.com/@nombredelcanal",
+    "created_at": "2026-11-03T11:55:00Z",
+    "finished_at": "2026-11-03T11:57:00Z",
+    "error": None,
+    "hypothesis": _HYPOTHESIS,
+}
+PROPOSAL_QUEUED: dict[str, Any] = PROPOSAL_READY | {
+    "status": "queued",
+    "finished_at": None,
+    "hypothesis": None,
+}
+APPROVAL: dict[str, Any] = {
+    "slug": PROPOSED_SLUG,
+    "status": "proposed",
+    "queries": 3,
+    "pages": 1,
+    "search_units_needed": 300,
+    "daily_cap": 100,
+    "fits": False,
+    "cadence_days": 3,
+}
+
 CARD: dict[str, Any] = {
     "hypothesis": {
         key: value for key, value in _PREHISTORIC.items() if key not in ("measurement", "research")
