@@ -6,6 +6,7 @@ from urllib.parse import parse_qsl, quote, urlencode
 
 NOTE_MAX = 1000
 NOTE_ERROR = f"La nota admite hasta {NOTE_MAX} caracteres."
+NOTE_CHARS = "La nota contiene caracteres no válidos."
 LABEL_MAX = 140
 FORMATS = ("long", "shorts")
 LIST_KEYS = {"formato", "alta", "ingresos", "orden", "aviso"}
@@ -71,11 +72,18 @@ def detail_url(label: str, fmt: str) -> str:
     return target_url("detail", [("etiqueta", label), ("formato", fmt)])
 
 
-def validate_note(value: str) -> str | None:
-    """The note as it will be sent ('' when empty), or None when it is not acceptable."""
+def note_problem(value: str) -> str | None:
+    """The fixed message saying why the note is refused, or None when it is acceptable."""
     note = value.replace("\r\n", "\n").replace("\r", "\n").strip()
     if len(note) > NOTE_MAX:
-        return None
+        return NOTE_ERROR
     if any(unicodedata.category(c) == "Cc" and c not in "\n\t" for c in note):
+        return NOTE_CHARS
+    return None
+
+
+def validate_note(value: str) -> str | None:
+    """The note as it will be sent ('' when empty), or None when it is not acceptable."""
+    if note_problem(value):
         return None
-    return note
+    return value.replace("\r\n", "\n").replace("\r", "\n").strip()

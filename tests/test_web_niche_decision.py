@@ -148,7 +148,8 @@ def test_a_note_with_control_characters_is_refused() -> None:
     api = api_for()
     response = post(make_client(api), nota="hola\x00mundo")
     assert response.status_code == 422 and writes(api) == []
-    assert "La nota admite hasta 1000 caracteres." in response.text
+    assert "La nota contiene caracteres no válidos." in response.text
+    assert "La nota admite hasta 1000 caracteres." not in response.text
 
 
 @pytest.mark.parametrize("decision", ["x", "", "TENTATIVO", "borrar"])
@@ -193,12 +194,14 @@ def test_a_hostile_return_goes_to_the_niche_list(volver: str) -> None:
 
 
 def test_a_valid_return_is_kept() -> None:
-    web = make_client(api_for())
+    api = api_for()
+    api.routes[("POST", "/api/v1/market/niches/otro/nicho/decisions")] = (201, {})
+    web = make_client(api)
     assert post(web, volver="/nichos").headers["location"] == "/nichos?aviso=marcado"
     discarded = post(web, volver="/nichos", decision="descartado")
     assert discarded.headers["location"] == "/nichos?aviso=guardada"
     other = "/nichos/ver?etiqueta=otro%2Fnicho&formato=shorts&aviso=error"
-    kept = post(web, volver=other).headers["location"]
+    kept = post(web, volver=other, etiqueta="otro/nicho", formato="shorts").headers["location"]
     assert kept == "/nichos/ver?etiqueta=otro%2Fnicho&formato=shorts&aviso=decidido"
 
 
@@ -278,3 +281,46 @@ def test_the_detail_notices_come_from_fixed_keys() -> None:
     assert "No se pudo guardar la decisión." in bad
     hostile = web.get(VIEW, params={"aviso": HOSTILE}).text
     assert "evil.test" not in hostile
+
+
+BROKEN = [{}, {"niche": None}, {"niche": {}}, {"niche": {"niche_label": LABEL}, "listings": None}]
+
+
+@pytest.mark.parametrize("broken", BROKEN)
+@pytest.mark.parametrize("failure", ["conflict", "down"])
+def test_a_broken_detail_after_a_failed_save_never_gives_500(broken: object, failure: str) -> None:
+    def down(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down")
+
+    api = api_for(decide=(409, {"detail": "x"}) if failure == "conflict" else down)
+    web = make_client(api)
+    token = csrf_of(web.get(VIEW).text)
+    api.routes[DETAIL] = (200, broken)
+    response = web.post(
+        "/nichos/decidir",
+        data={
+            "csrf": token,
+            "etiqueta": LABEL,
+            "formato": "long",
+            "decision": "tentativo",
+            "nota": "conservar",
+            "volver": VIEW,
+        },
+    )
+    assert response.status_code == 503
+    assert "conservar" in response.text and "Guardar decisión" in response.text
+
+
+def test_the_detail_shows_the_invalid_notice() -> None:
+    text = make_client(api_for()).get(VIEW + "&aviso=invalida").text
+    assert "Revisa la decisión y la nota." in text
+
+
+def test_a_form_that_does_not_match_the_return_is_invalid() -> None:
+    api = api_for()
+    web = make_client(api)
+    for over in ({"etiqueta": "otro"}, {"formato": "shorts"}):
+        response = post(web, **over)
+        assert response.status_code == 303
+        assert response.headers["location"] == f"{VIEW}&aviso=invalida"
+    assert writes(api) == []

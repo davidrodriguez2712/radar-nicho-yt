@@ -8,10 +8,10 @@ from fastapi import APIRouter, Depends, Form, Request
 from starlette.responses import RedirectResponse, Response
 
 from nicheradar.web.client import ApiError
-from nicheradar.web.deps import current_session, is_fragment, render, shape_guard
+from nicheradar.web.deps import SHAPE_ERRORS, current_session, is_fragment, render, shape_guard
 from nicheradar.web.niche_decision import (
-    NOTE_ERROR,
     detail_url,
+    note_problem,
     safe_target,
     target_url,
     valid_label,
@@ -35,6 +35,7 @@ DECISION_FAILED = "No se pudo guardar la decisión."
 DETAIL_NOTICES = {
     "decidido": ("Decisión guardada.", "green"),
     "error": (DECISION_FAILED, "rose"),
+    "invalida": ("Revisa la decisión y la nota.", "amber"),
 }
 RESEARCH_PAGE = 100
 RESEARCH_OLDER = (
@@ -167,7 +168,12 @@ def _detail_page(
         )
     except (ApiError, KeyError, TypeError):
         pilot = UNREADABLE
-    view = detail_view(detail, research, pilot, request.app.state.config.timezone)
+    try:
+        view = detail_view(detail, research, pilot, request.app.state.config.timezone)
+    except SHAPE_ERRORS:
+        if form is None:
+            raise
+        return _bare_decision(request, session, etiqueta, formato, form, status)
     view["form"] = {**view["form"], **(form or {})}
     response = render(
         request,
@@ -258,6 +264,8 @@ def decide(
     target = safe_target(volver) or ("list", [])
     kind, pairs = target
     detail = kind == "detail" and valid_label(etiqueta) and formato in FORMATS
+    if kind == "detail" and dict(pairs) != {"etiqueta": etiqueta, "formato": formato}:
+        return RedirectResponse(target_url(kind, pairs, "invalida"), status_code=303)
     form = {"decision": decision if decision in DECISIONS else "nuevo", "note": nota}
     if decision not in DECISIONS or formato not in FORMATS or not valid_label(etiqueta):
         if detail:
@@ -268,7 +276,7 @@ def decide(
     note = validate_note(nota)
     if note is None:
         if detail:
-            return _fail(request, session, form, etiqueta, formato, NOTE_ERROR, 422)
+            return _fail(request, session, form, etiqueta, formato, note_problem(nota) or "", 422)
         return RedirectResponse(target_url(kind, pairs, "invalida"), status_code=303)
     body: dict[str, str] = {"format": formato, "decision": decision}
     if note:
