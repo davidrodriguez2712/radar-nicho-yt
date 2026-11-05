@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Proponer subnicho · NicheRadar{% endblock %}
+{% block content %}
+<a class="backlink" href="/subnichos">‹ Subnichos</a>
+<h1 class="h1 h1--md">Proponer subnicho</h1>
+<p class="lead">Pega una consulta, el enlace de un video de YouTube, o el @handle o enlace de un canal.</p>
+{% if error %}<div class="note note--rose" id="error" role="alert">{{ error }}</div>{% endif %}
+<form class="stack" method="post" action="/subnichos/proponer" id="proponer-form">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <input type="hidden" name="nonce" value="{{ nonce }}">
+  <div class="field">
+    <label for="input">Consulta, video o canal</label>
+    <input id="input" name="input" type="text" maxlength="{{ input_max }}" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="@nombredelcanal" aria-describedby="input-ayuda" value="{{ values.input }}">
+    <p class="caption" id="input-ayuda">Los enlaces de X (tweets) todavía no se leen.</p>
+  </div>
+  <section class="card">
+    <h2 class="card__heading">Cuánto gasta proponer</h2>
+    <p>Resolver un video gasta 1 unidad de cuota de YouTube; un canal, 1 o 2. Una consulta no gasta nada.</p>
+    <p>La hipótesis no se mide hasta que la apruebes.</p>
+  </section>
+  <button class="btn btn--primary" type="submit">Proponer</button>
+  <section class="card">
+    <h2 class="card__heading">Sin modelo de lenguaje (manual)</h2>
+    <p>Úsalo si el modelo no está disponible o quieres escribir tú la hipótesis.</p>
+    <label class="pill"><input type="checkbox" name="manual" value="1"{% if values.manual %} checked{% endif %}>Propuesta manual</label>
+    <div class="field">
+      <label for="label">Etiqueta</label>
+      <input id="label" name="label" type="text" maxlength="200" autocomplete="off" placeholder="Ancient Rome" value="{{ values.label }}">
+    </div>
+    <div class="field">
+      <label for="family">Familia</label>
+      <input id="family" name="family" type="text" maxlength="100" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="history" aria-describedby="family-ayuda" value="{{ values.family }}">
+      <p class="caption" id="family-ayuda">Entre 2 y 40 caracteres, en minúsculas con guion bajo.</p>
+    </div>
+    <div class="field">
+      <label for="parent">Nicho padre (opcional)</label>
+      <input id="parent" name="parent" type="text" maxlength="100" autocomplete="off" aria-describedby="parent-ayuda" value="{{ values.parent }}">
+      <p class="caption" id="parent-ayuda">Sin nicho padre no hay ingreso estimado.</p>
+    </div>
+    <button class="btn btn--danger" type="submit" name="modo" value="manual">Crear propuesta manual</button>
+  </section>
+</form>
+{% endblock %}

@@ -37,6 +37,7 @@ h2,.h2{margin:0;font-size:18px;line-height:24px;font-weight:700}
 .btn--danger{background:var(--white);color:var(--primary);border-color:var(--rose-line)}
 .btn[disabled]{background:var(--off);color:var(--white);border-color:transparent;cursor:not-allowed}
 .card{display:flex;flex-direction:column;gap:8px;padding:16px;background:var(--white);border:1px solid var(--line);border-radius:16px}
+.card--accent{border-color:var(--primary)}
 .card__title{display:flex;align-items:center;gap:8px}
 .card__name{font-size:16px;font-weight:600;text-decoration:none}
 .rank{font-size:18px;color:var(--faint)}
@@ -56,6 +57,8 @@ h2,.h2{margin:0;font-size:18px;line-height:24px;font-weight:700}
 .pill{position:relative;display:inline-flex;align-items:center;flex:none;min-height:44px;padding:0 14px;border:1px solid var(--line2);border-radius:99px;background:var(--white);font:400 13px/1.2 "Inter",system-ui,sans-serif;color:var(--ink);white-space:nowrap}
 .pill input{position:absolute;opacity:0;pointer-events:none}
 .pill--on,.pill:has(input:checked){background:var(--rose);border-color:var(--primary);color:var(--primary);font-weight:600}
+.confirm{display:flex;align-items:center;gap:10px;min-height:44px;font-size:14px}
+.confirm input{width:20px;height:20px;flex:none}
 .pills{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px;padding:0;border:0;min-width:0}
 .pill--select{appearance:none;-webkit-appearance:none;padding-right:14px}
 .countline{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted)}

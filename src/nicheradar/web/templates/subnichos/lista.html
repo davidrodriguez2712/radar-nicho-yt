@@ -2,7 +2,7 @@
 {% block title %}Subnichos · NicheRadar{% endblock %}
 {% block content %}
 {% set active_tab_segment = "subnichos" %}{% include "_segmento.html" %}
-<h1 class="h1">Subnichos</h1>
+<div class="runline"><h1 class="h1">Subnichos</h1><a class="listing__link" href="/subnichos/proponer">+ Proponer</a></div>
 <p class="caption">Ideas de nicho que medimos en YouTube. El ingreso es una estimación de un canal típico, no lo que ganarías.</p>
 <form class="filters" id="filtros" method="get" action="/subnichos"
       hx-get="/subnichos" hx-trigger="change" hx-target="#contenido" hx-swap="innerHTML" hx-push-url="true">

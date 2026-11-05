@@ -305,6 +305,8 @@ solicitudes, no como dólares.
 
 ## Dashboard e investigación de flujo
 
+- La web móvil permite proponer, aprobar, pausar, reanudar y archivar subnichos, y compartir un enlace de YouTube desde Android: ver `docs/web-movil.md`, sección «Proponer subnicho y Compartir (Android)».
+
 - La página **Subnichos** del dashboard lista las hipótesis (casilla para mostrar pausadas y archivadas) y su ficha
   muestra la medición y los canales relevantes, con el botón «Iniciar investigación de flujo».
 - El ingreso que muestra es la **mediana mensual estimada por canal estable**, con el RPM heredado del nicho padre:

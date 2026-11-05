@@ -20,6 +20,7 @@ if __package__ in (None, ""):  # run as `python scripts/web_preview.py`
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.web_preview_data import (  # noqa: E402
+    APPROVAL,
     CALIBRATING_ID,
     CALIBRATION_DETAIL,
     CALIBRATION_VIDEOS,
@@ -32,6 +33,10 @@ from scripts.web_preview_data import (  # noqa: E402
     PILOT_ID,
     PILOT_VIDEOS,
     PILOTS,
+    PROPOSAL_ID,
+    PROPOSAL_QUEUED,
+    PROPOSAL_READY,
+    PROPOSED_SLUG,
     REPORT,
     RUNS,
     SCHEDULE,
@@ -43,6 +48,11 @@ STATIC = Path(web_app.__file__).parent / "static"
 WIDTH = 390
 MIN_WINDOW = 500
 MAX_HEIGHT = 8000
+QUEUED_ID = "1c2d3e4f-5061-4b7c-8d9e-0f1a2b3c4d5e"
+PROPOSED_CARD = CARD | {
+    "hypothesis": CARD["hypothesis"]
+    | {"slug": PROPOSED_SLUG, "label": "Ancient Rome", "status": "proposed"}
+}
 PREVIEW_NOW = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)  # the sample data is dated around it
 
 
@@ -51,6 +61,14 @@ def _api(request: httpx.Request) -> httpx.Response:
     body: object
     if path == "/api/v1/subniches":
         body = {"items": ITEMS}
+    elif path == f"/api/v1/subniches/proposals/{PROPOSAL_ID}":
+        body = PROPOSAL_READY
+    elif path == f"/api/v1/subniches/proposals/{QUEUED_ID}":
+        body = PROPOSAL_QUEUED
+    elif path == f"/api/v1/subniches/{PROPOSED_SLUG}/approval":
+        body = APPROVAL
+    elif path == f"/api/v1/subniches/{PROPOSED_SLUG}":
+        body = PROPOSED_CARD
     elif path.startswith("/api/v1/subniches/"):
         body = CARD
     elif path == "/api/v1/status":
@@ -112,6 +130,13 @@ def render_pages(out: Path) -> dict[str, Path]:
     pages = {
         "lista": "/subnichos",
         "ficha": f"/subnichos/{slug}",
+        "proponer": "/subnichos/proponer",
+        "propuesta_cola": f"/subnichos/propuestas/{QUEUED_ID}",
+        "propuesta_lista": f"/subnichos/propuestas/{PROPOSAL_ID}",
+        "aprobar": f"/subnichos/{PROPOSED_SLUG}/aprobar",
+        "archivar": f"/subnichos/{slug}/archivar",
+        "compartir": "/compartir?url=" + quote("https://youtu.be/dQw4w9WgXcQ?si=x", safe=""),
+        "compartir_tweet": "/compartir?url=" + quote("https://x.com/u/status/1", safe=""),
         "hoy": "/",
         "nichos": "/nichos",
         "nicho_detalle": f"/nichos/ver?etiqueta={label}&formato=long",

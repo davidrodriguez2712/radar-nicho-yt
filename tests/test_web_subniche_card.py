@@ -130,7 +130,7 @@ def test_a_running_investigation_disables_the_button() -> None:
 def test_a_finished_investigation_shows_its_state_without_a_start_button() -> None:
     text = page(subniche_card(research=research("listo")))
     assert '<span class="chip chip--green">Dossier listo</span>' in text
-    assert start_form(text) is None and "<button" not in text.split("Investigación de flujo")[1]
+    assert start_form(text) is None and "<button" not in text.split("Investigación de flujo")[-1]
 
 
 def test_a_rejected_investigation_can_be_retried() -> None:
@@ -334,7 +334,7 @@ def test_a_failing_pilot_read_still_paints_the_card_with_a_notice() -> None:
         assert "Medimos 29 canales" in text and "Qué encontramos" in text
 
 
-def test_the_decision_card_is_read_only_with_the_current_state_marked() -> None:
+def test_the_decision_card_marks_the_current_state() -> None:
     expected = {
         "active": "Activa",
         "proposed": "Propuesta",
@@ -352,13 +352,13 @@ def test_the_decision_card_is_read_only_with_the_current_state_marked() -> None:
             "Archivada",
         ]
         assert re.findall(r'<span class="pill pill--on"[^>]*>([^<]+)</span>', block) == [name]
-        assert "<button" not in block and "<form" not in block and "<input" not in block
+        assert all('type="hidden"' in tag for tag in re.findall(r"<input[^>]*>", block))
         assert (
             "Activa: se mide sola y se puede investigar. Pausada: deja de medirse. "
             "Archivada: se descarta. Solo una hipótesis activa y con al menos una medición "
             "se puede investigar." in block
         )
-        assert "Aprobar, pausar o archivar se hará desde aquí cuando esté disponible." in block
+        assert "se hará desde aquí cuando esté disponible" not in block
 
 
 def test_a_paused_or_archived_subniche_follows_the_journey_rulings() -> None:

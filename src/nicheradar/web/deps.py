@@ -3,6 +3,7 @@
 
 import functools
 import logging
+import unicodedata
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -21,11 +22,30 @@ def make_templates() -> Jinja2Templates:
     return Jinja2Templates(directory=str(TEMPLATE_DIR))
 
 
+NEXT_MAX = 2048
+# Control, format (RLO, ZWSP), separator and unassigned characters: never in a link or a path.
+UNSAFE_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zs", "Zl", "Zp"})
+
+
 def safe_next(value: str | None) -> str:
-    """Only local paths survive: an open redirect after login must be impossible."""
-    if value and value.startswith("/") and not value.startswith("//") and "\\" not in value:
-        return value
-    return "/"
+    """Only local paths survive: an open redirect after login must be impossible.
+
+    The result is rebuilt from the parsed path and query (no scheme, host or fragment); anything
+    with a control character, a backslash, a leading `//` or more than NEXT_MAX characters is "/".
+    """
+    if not value or len(value) > NEXT_MAX or not value.startswith("/") or value.startswith("//"):
+        return "/"
+    if "\\" in value or any(
+        ord(c) < 33 or unicodedata.category(c) in UNSAFE_CATEGORIES for c in value
+    ):
+        return "/"
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return "/"
+    if parts.scheme or parts.netloc or not parts.path.startswith("/"):
+        return "/"
+    return parts.path + (f"?{parts.query}" if parts.query else "")
 
 
 def _login_target(request: Request) -> str:
