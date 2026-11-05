@@ -184,3 +184,53 @@ def test_the_migration_is_additive_and_reversible(postgres_engine: Engine) -> No
         engine.dispose()
         with postgres_engine.begin() as connection:
             connection.exec_driver_sql(f'DROP SCHEMA "{schema}" CASCADE')
+
+
+@pytest.mark.postgres
+def test_deleting_a_read_deletes_its_candidates(db: Connection) -> None:
+    parent, other = read_row(), read_row()
+    db.execute(sa.insert(reads).values(**parent))
+    db.execute(sa.insert(reads).values(**other))
+    db.execute(sa.insert(candidates).values(**candidate_row(parent["id"])))
+    db.execute(sa.insert(candidates).values(**candidate_row(other["id"])))
+    db.execute(sa.delete(reads).where(reads.c.id == parent["id"]))
+    left = db.execute(sa.select(candidates.c.read_id)).scalars().all()
+    assert left == [other["id"]]
+
+
+@pytest.mark.postgres
+def test_deleting_a_proposal_leaves_the_candidate_with_a_null_link(db: Connection) -> None:
+    from nicheradar.repositories.schema import subniche_proposal_requests as proposals
+
+    parent, proposal_id = read_row(), uuid4()
+    db.execute(sa.insert(reads).values(**parent))
+    db.execute(
+        sa.insert(proposals).values(
+            id=proposal_id,
+            idempotency_key=f"k-{uuid4().hex}",
+            input_text="UC" + "a" * 22,
+            kind="channel",
+            origin="lead",
+            status="queued",
+            created_at=NOW,
+        )
+    )
+    row = candidate_row(parent["id"], proposal_request_id=proposal_id)
+    db.execute(sa.insert(candidates).values(**row))
+    db.execute(sa.delete(proposals).where(proposals.c.id == proposal_id))
+    link = db.execute(
+        sa.select(candidates.c.proposal_request_id).where(candidates.c.id == row["id"])
+    ).one()
+    assert tuple(link) == (None,)
+
+
+@pytest.mark.postgres
+def test_a_position_is_used_once_per_read(db: Connection) -> None:
+    parent = read_row()
+    db.execute(sa.insert(reads).values(**parent))
+    db.execute(sa.insert(candidates).values(**candidate_row(parent["id"])))
+    with pytest.raises(IntegrityError, match="uq_lead_candidate_position"), db.begin_nested():
+        db.execute(sa.insert(candidates).values(**candidate_row(parent["id"], value="@otro_canal")))
+    db.execute(
+        sa.insert(candidates).values(**candidate_row(parent["id"], value="@otro_canal", position=1))
+    )

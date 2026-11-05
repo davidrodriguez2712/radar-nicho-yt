@@ -7,10 +7,12 @@ from pydantic import SecretStr
 
 from nicheradar.config import Settings
 from nicheradar.integrations.anthropic import AnthropicClient
+from nicheradar.integrations.contracts import Channel
 from nicheradar.integrations.policies import Usage
 from nicheradar.integrations.tweets import ImageData, Tweet, TweetReadError, TweetRef
 from nicheradar.repositories.core import insert_record
 from nicheradar.subniche_discovery.mentions import MENTIONS_TOOL, POLICY_DATA_TYPE
+from tests.subniche_samples import FakeReader
 from tests.test_channel_analysis_advertising_match import llm_configuration
 from tests.test_persistence import NOW as LLM_NOW
 
@@ -122,3 +124,16 @@ def seed_lead_policies(connection: Any) -> None:
                 "retention_seconds": 3600,
             },
         )
+
+
+class FakeResolver(FakeReader):
+    """`ChannelResolver` guionizado: canales por id/handle (de `FakeReader`) y por nombre."""
+
+    def __init__(self, by_name: dict[str, list[Channel]] | None = None, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.by_name = by_name or {}
+        self.name_searches: list[str] = []
+
+    async def search_channels(self, name: str, limit: int = 5) -> list[Channel]:
+        self.name_searches.append(name)
+        return self.by_name.get(name, [])[:limit]

@@ -1,5 +1,6 @@
 """Cola de solicitudes de propuesta de subnicho: la API valida y encola, el worker las atiende."""
 
+import re
 from dataclasses import asdict
 from datetime import datetime, timedelta
 from typing import Any
@@ -18,6 +19,8 @@ MAX_INPUT = 500
 MAX_ERROR_CODE = 80
 MAX_SLUG = 60
 _LIMIT_LOCK = 7_302_201  # serializa «contar + insertar» para que el tope no se rebase en carrera
+_LEAD_AUTHOR = re.compile(r"[A-Za-z0-9_]{1,15}")
+_LEAD_TWEET_ID = re.compile(r"[0-9]{1,20}")
 _PUBLIC = [column for column in requests.c if column.name != "idempotency_key"]
 
 
@@ -42,8 +45,16 @@ def enqueue(
     key: str,
     now: datetime,
     per_day: int,
+    lead_author: str | None = None,
+    lead_tweet_id: str | None = None,
 ) -> tuple[UUID, bool]:
     if origin not in ORIGINS or len(raw) > MAX_INPUT or "\x00" in raw:
+        raise ProposalRejected("invalid_input")
+    if (lead_author is not None or lead_tweet_id is not None) and origin != "lead":
+        raise ProposalRejected("invalid_input")
+    if lead_author is not None and not _LEAD_AUTHOR.fullmatch(lead_author):
+        raise ProposalRejected("invalid_input")
+    if lead_tweet_id is not None and not _LEAD_TWEET_ID.fullmatch(lead_tweet_id):
         raise ProposalRejected("invalid_input")
     try:
         parsed = parse_input(raw)
@@ -75,6 +86,8 @@ def enqueue(
             kind=parsed.kind,
             manual=asdict(manual) if manual is not None else None,
             origin=origin,
+            lead_author=lead_author,
+            lead_tweet_id=lead_tweet_id,
             status="queued",
             created_at=now,
         )
