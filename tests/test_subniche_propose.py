@@ -248,3 +248,48 @@ def test_http_failure_settles_without_a_proposal(isolated_engine: Engine) -> Non
     )
     assert result == {"proposal": None, "reason": "llm_failed"}
     assert ledger(isolated_engine) == (["unknown_charge"], ["unknown_charge"])
+
+
+@pytest.mark.postgres
+def test_cancellation_settles_the_reservation_and_propagates(isolated_engine: Engine) -> None:
+    with isolated_engine.begin() as connection:
+        run = seed_run(connection)
+        seed_policies(connection)
+
+    async def slow(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(30)
+        return httpx.Response(200, json=tool_payload(GOOD))
+
+    client = AnthropicClient(SecretStr("x" * 12), transport=httpx.MockTransport(slow))
+
+    async def scenario() -> None:
+        await asyncio.wait_for(
+            propose_hypothesis(
+                isolated_engine, run, enabled_settings(), SOURCE, LABELS, NOW, client=client
+            ),
+            timeout=0.3,
+        )
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(scenario())
+    assert ledger(isolated_engine) == (["unknown_charge"], ["unknown_charge"])
+
+
+@pytest.mark.postgres
+def test_oversized_source_is_refused_before_touching_the_ledger(isolated_engine: Engine) -> None:
+    with isolated_engine.begin() as connection:
+        run = seed_run(connection)
+        seed_policies(connection)
+
+    def forbidden(request: httpx.Request) -> httpx.Response:
+        pytest.fail("no LLM request may be placed")
+
+    client = AnthropicClient(SecretStr("x" * 12), transport=httpx.MockTransport(forbidden))
+    huge = {"kind": "query", "untrusted_query": "x" * 70_000}
+    out = asyncio.run(
+        propose_hypothesis(
+            isolated_engine, run, enabled_settings(), huge, LABELS, NOW, client=client
+        )
+    )
+    assert out == {"proposal": None, "reason": "llm_input_too_large"}
+    assert ledger(isolated_engine) == ([], [])
