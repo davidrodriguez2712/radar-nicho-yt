@@ -46,7 +46,6 @@ class _Draft:
     done_text: str
     now_text: str
     pending_text: str
-    passive: bool = False  # never the current step: it is measured or computed, not acted on
 
 
 def _dict(value: object) -> dict[str, Any]:
@@ -55,7 +54,12 @@ def _dict(value: object) -> dict[str, Any]:
 
 def _score(block: object) -> bool:
     value = _dict(block).get("value")
-    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+    if not isinstance(value, int | float) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:  # an int beyond float range: only this score counts as missing
+        return False
 
 
 def _language(value: object) -> str:
@@ -99,7 +103,8 @@ def _tail(research: object, pilot: object, start_text: str) -> list[_Draft]:
         launch = "Piloto " + (label or "abierto")
     else:
         launch = "Decide si lo lanzas"
-    return [flow, report, _Draft(False, launch, launch, "Autorizas y se produce")]
+    pending_launch = launch if isinstance(pilot, dict) else "Autorizas y se produce"
+    return [flow, report, _Draft(False, launch, launch, pending_launch)]
 
 
 def _build(drafts: list[_Draft]) -> list[Step]:
@@ -108,9 +113,6 @@ def _build(drafts: list[_Draft]) -> list[Step]:
     for name, draft in zip(NAMES, drafts, strict=True):
         if draft.done:
             steps.append(Step(DONE, name, draft.done_text))
-        elif draft.passive:
-            current_found = True
-            steps.append(Step(PENDING, name, draft.pending_text))
         elif not current_found:
             current_found = True
             steps.append(Step(NOW, name, draft.now_text))
@@ -139,7 +141,6 @@ def niche_journey(niche: object, research: object, pilot: object) -> list[Step]:
             "Tiene puntajes de Opportunity y de automatización",
             "Necesita puntajes de Opportunity y de automatización (al menos 3 fichas con ingreso)",
             "Necesita puntajes de Opportunity y de automatización (al menos 3 fichas con ingreso)",
-            passive=True,
         )
         candidate = _Draft(True, "Viene del scraper de mercado", "", "")
         return _build(
@@ -174,7 +175,7 @@ def subniche_journey(item: object, pilot: object, tz: str) -> list[Step]:
                 if status == "paused"
                 else "Se mide sola, a más tardar en 3 días"
             )
-            ready = _Draft(False, "", text, text, passive=True)
+            ready = _Draft(False, "", text, text)
         candidate = _Draft(True, "Propuesta de la hipótesis", "", "")
         return _build(
             [
