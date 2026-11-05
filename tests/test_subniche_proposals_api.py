@@ -204,7 +204,9 @@ def test_list_and_detail_expose_status_error_and_hypothesis(isolated_engine: Eng
         "finished_at",
         "error",
         "hypothesis",
+        "origin",
     }
+    assert queued["origin"] == {"code": "manual", "tweet_author": None, "tweet_url": None}
     ready = items[str(ids["ready"])]
     assert ready["hypothesis"]["slug"] == "history_revenge"
     assert set(ready["hypothesis"]) == {

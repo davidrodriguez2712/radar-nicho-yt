@@ -17,6 +17,7 @@ from nicheradar.config import Settings
 from nicheradar.domain.profile import CreatorProfile, VideoFormat, initial_catalog
 from nicheradar.flow_research_api import flow_research_router
 from nicheradar.integrations.retention import expire
+from nicheradar.lead_api import lead_router
 from nicheradar.market_api import market_router
 from nicheradar.pilots_api import pilots_router
 from nicheradar.repositories import schema_v1 as s
@@ -897,4 +898,5 @@ def create_app(
     app.include_router(
         subniche_router(authenticate=authenticate, db=db, clock=clock, config=config)
     )
+    app.include_router(lead_router(authenticate=authenticate, db=db, clock=clock, config=config))
     return app

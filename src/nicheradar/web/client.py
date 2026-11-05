@@ -27,7 +27,7 @@ CODE_MESSAGES: dict[str, str] = {
     "invalid_input": (
         "No se reconoce esa entrada. Usa una consulta, un video, o un canal con @handle o enlace."
     ),
-    "tweet_not_supported_yet": "Los enlaces de X todavía no se leen.",
+    "tweet_not_supported_yet": "Para un enlace de X usa «Leer tweet».",
     "manual_needs_a_query": "La propuesta manual solo admite una consulta.",
     "daily_limit": "Se llegó al tope diario de propuestas.",
     "duplicate": "Ya existe una hipótesis con esa consulta o con ese canal semilla.",
