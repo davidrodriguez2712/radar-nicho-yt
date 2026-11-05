@@ -18,6 +18,12 @@
   {% endif %}
 </section>
 {%- endmacro %}
+{% macro tu_tiempo(v) -%}
+<section class="card" id="tiempo">
+  <h2 class="h2">Tu tiempo</h2>
+  <div class="rows">{% for label, value in (v.time_lines or v.time_rows) %}<div class="row"><span class="row__label">{{ label }}</span><span class="row__value">{{ value }}</span></div>{% endfor %}</div>
+</section>
+{%- endmacro %}
 {% macro compuertas(v) -%}
 <section class="card" id="compuertas">
   <h2 class="h2">Compuertas</h2>

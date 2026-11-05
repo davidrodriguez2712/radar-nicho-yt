@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
+from nicheradar.pilots.service import default_stop_rules
 from nicheradar.web.format import money_amount
 
 CHANNEL_RE = re.compile(r"^canal-[a-z0-9-]{1,40}$")
@@ -107,3 +108,27 @@ def budget_body(dossier: dict[str, Any], max_videos: int, informe_id: str) -> di
         "max_videos": max_videos,
         "basis": f"Presupuesto del informe {informe_id}: probable {money_amount(float(likely))}.",
     }
+
+
+def stop_rule_lines(format: str) -> list[tuple[str, str]]:
+    """The format's default stop rules as read-only text, derived from the rules the API applies.
+
+    The form never sends rules, so what is authorized is exactly ``default_stop_rules``.
+    Returns (text, who compares it): «se compara sola» or «la juzgas tú».
+    """
+    lines: list[tuple[str, str]] = []
+    for rule in default_stop_rules(format):
+        metric, at = rule["metric"], rule["milestone"]["value"]
+        threshold, cases = rule["threshold"], rule["min_cases"]
+        if metric == "avd_pct":
+            text = f"Retención ≥ {threshold} % en {cases} de los primeros {at} videos"
+        elif metric == "browse_share_pct":
+            text = f"Exploración ≥ {threshold} % al video {at}"
+        elif metric == "revenue_vs_cost":
+            text = f"Ingresos ≥ costos al mes {at}"
+        elif metric == "pipeline_e2e":
+            text = f"Un video publicado de punta a punta a la semana {at}"
+        else:
+            text = str(rule["text"])
+        lines.append((text, "la juzgas tú" if metric == "revenue_vs_cost" else "se compara sola"))
+    return lines

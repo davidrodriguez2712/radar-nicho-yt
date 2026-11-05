@@ -320,6 +320,19 @@ def _time_card(calibration: dict[str, Any], flow: list[dict[str, Any]]) -> dict[
     }
 
 
+def _time_lines(time: dict[str, Any]) -> list[tuple[str, str]]:
+    """The short list of M12 «Tu tiempo»: same labels and numbers as the bars, without them."""
+    calibration, regime = time["calibration"], time["regime"]
+    per_video = calibration["rows"][0][1]
+    setup = calibration["rows"][2][1]
+    steady = regime["rows"][0][1]
+    return [
+        (calibration["title"], per_video if per_video == NO_DATA else f"{per_video} por video"),
+        ("Preparación del canal (una vez)", setup),
+        (regime["title"], steady if steady == NO_DATA else f"{steady} por video"),
+    ]
+
+
 def _firm(evidence: dict[str, Any], timezone: str) -> dict[str, Any] | None:
     confidence = CONFIDENCE.get(str(evidence.get("confidence")))
     rows: list[tuple[str, str]] = []
@@ -438,6 +451,8 @@ def report_view(detail: dict[str, Any], timezone: str) -> dict[str, Any]:
         else OLD_NOTICE,
         "firm": _firm(evidence, timezone),
         "time": time,
+        "time_lines": _time_lines(time) if time else None,
+        "subject": subject,
         "time_rows": time_rows,
         "exit": None
         if not calibration
