@@ -209,3 +209,21 @@ def test_approval_preview_that_fits_and_uses_the_smaller_cap(isolated_engine: En
     )
     body = small.get(f"{BASE}/history_revenge/approval", headers=AUTH).json()
     assert body["daily_cap"] == 50 and body["fits"] is False
+
+
+def test_approval_preview_reads_without_locking_rows(isolated_engine: Engine) -> None:
+    seed(isolated_engine)
+    api = client(isolated_engine)
+    statements: list[str] = []
+
+    def capture(conn: Any, cursor: Any, statement: str, *args: Any) -> None:
+        statements.append(statement)
+
+    sa.event.listen(isolated_engine, "before_cursor_execute", capture)
+    try:
+        response = api.get(f"{BASE}/history_revenge/approval", headers=AUTH)
+    finally:
+        sa.event.remove(isolated_engine, "before_cursor_execute", capture)
+    assert response.status_code == 200
+    assert any("niche_hypotheses" in statement for statement in statements)
+    assert not any("FOR UPDATE" in statement.upper() for statement in statements)

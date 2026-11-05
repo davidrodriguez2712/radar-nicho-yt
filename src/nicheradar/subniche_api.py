@@ -205,10 +205,14 @@ def subniche_router(
 
     @router.get("/{slug}/approval")
     def approval_preview(slug: Slug, connection: Annotated[Connection, Depends(db)]) -> Any:
-        try:
-            hypothesis = store.get_hypothesis(connection, slug)
-        except store.UnknownHypothesis as error:
-            return _lifecycle_error(error)
+        # Lectura sin bloqueo (sin FOR UPDATE): es un GET de solo lectura.
+        hypothesis = (
+            connection.execute(sa.select(nh.c.status, nh.c.queries).where(nh.c.slug == slug))
+            .mappings()
+            .first()
+        )
+        if hypothesis is None:
+            return _lifecycle_error(store.UnknownHypothesis(slug))
         queries = list(hypothesis["queries"])
         needed = search_units_needed(queries, config)
         cap = min(config.subniche_search_units_per_day, config.subniche_search_quota_per_run)
