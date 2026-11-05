@@ -215,3 +215,71 @@ def test_request_text_ignores_a_non_ascii_content_length(declared: str) -> None:
         200, content=b"hola", headers=[(b"content-length", declared.encode())]
     )
     assert client_for(text_api(response)).request_text("GET", "/t") == "hola"
+
+
+def test_extra_headers_reach_the_api_but_never_replace_authorization() -> None:
+    api = Api({("POST", "/api/v1/x"): (202, {"ok": True})})
+    client_for(api).request(
+        "POST",
+        "/x",
+        body={},
+        headers={"Idempotency-Key": "nr-abc12345", "Authorization": "Bearer otro"},
+    )
+    call = api.calls[0]
+    assert call.headers["idempotency-key"] == "nr-abc12345"
+    assert call.headers["authorization"] == f"Bearer {TOKEN}"
+
+
+def test_a_domain_rejection_with_code_and_message_at_the_root_exposes_its_code() -> None:
+    api = Api(
+        {
+            ("POST", "/api/v1/x"): (
+                429,
+                {"code": "daily_limit", "message": "Texto arbitrario del servidor."},
+            )
+        }
+    )
+    with pytest.raises(ApiError) as error:
+        client_for(api).request("POST", "/x", body={})
+    assert error.value.kind == "error" and error.value.status == 429
+    assert error.value.code == "daily_limit"
+    assert error.value.message == "Se llegó al tope diario de propuestas."
+    assert "arbitrario" not in error.value.message
+
+
+def test_a_lifecycle_conflict_at_the_root_keeps_kind_and_uses_the_fixed_text() -> None:
+    api = Api({("POST", "/api/v1/x"): (409, {"code": "invalid_transition", "message": "<b>x</b>"})})
+    with pytest.raises(ApiError) as error:
+        client_for(api).request("POST", "/x", body={})
+    assert error.value.kind == "conflict" and error.value.code == "invalid_transition"
+    assert error.value.message == "Esa hipótesis no puede pasar a ese estado."
+
+
+def test_a_detail_wrapped_code_is_also_exposed_and_unknown_codes_never_show_their_text() -> None:
+    api = Api(
+        {
+            ("GET", "/api/v1/x"): (404, {"detail": {"code": "not_found", "message": "Hola"}}),
+            ("POST", "/api/v1/y"): (422, {"code": "algo_raro", "message": "Texto del servidor"}),
+        }
+    )
+    with pytest.raises(ApiError) as missing:
+        client_for(api).request("GET", "/x")
+    assert missing.value.kind == "not_found" and missing.value.code == "not_found"
+    with pytest.raises(ApiError) as odd:
+        client_for(api).request("POST", "/y", body={})
+    assert odd.value.kind == "invalid" and odd.value.code == "algo_raro"
+    assert "Texto del servidor" not in odd.value.message
+
+
+def test_code_is_none_without_a_code_or_with_a_hostile_one() -> None:
+    api = Api(
+        {
+            ("GET", "/api/v1/a"): (500, {"detail": "boom"}),
+            ("GET", "/api/v1/b"): (500, {"code": 7, "message": "m"}),
+            ("GET", "/api/v1/c"): (500, {"code": "x" * 500, "message": "m"}),
+        }
+    )
+    for path in ("/a", "/b", "/c"):
+        with pytest.raises(ApiError) as error:
+            client_for(api).request("GET", path)
+        assert error.value.code is None

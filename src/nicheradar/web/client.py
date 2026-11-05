@@ -19,6 +19,51 @@ MESSAGES = {
     "invalid": "Revisa los valores: la solicitud no cumple el formato esperado.",
     "error": "No se pudo completar la solicitud. Revisa la API y la base de datos.",
 }
+LLM_UNAVAILABLE = "El modelo de lenguaje no está disponible: usa la propuesta manual."
+# Closed list of domain codes the web knows. The text shown is the web's own, never the API's:
+# an unknown code (or any `message` the server sends) is not displayed. `not_found` is left out
+# because its meaning depends on the endpoint; the `kind` already has a message for it.
+CODE_MESSAGES: dict[str, str] = {
+    "invalid_input": (
+        "No se reconoce esa entrada. Usa una consulta, un video, o un canal con @handle o enlace."
+    ),
+    "tweet_not_supported_yet": "Los enlaces de X todavía no se leen.",
+    "manual_needs_a_query": "La propuesta manual solo admite una consulta.",
+    "daily_limit": "Se llegó al tope diario de propuestas.",
+    "duplicate": "Ya existe una hipótesis con esa consulta o con ese canal semilla.",
+    "unknown_parent_niche": "Ese nicho padre no existe en el catálogo.",
+    "invalid_proposal": "La propuesta no es válida.",
+    "youtube_not_configured": "YouTube no está configurado en el servidor.",
+    "youtube_quota_exhausted": (
+        "La cuota de búsqueda de YouTube de hoy está agotada; "
+        "inténtalo mañana o usa una consulta manual."
+    ),
+    "youtube_unreachable": "No se pudo consultar YouTube; vuelve a intentarlo.",
+    "abandoned": "La preparación se interrumpió; vuelve a intentarlo.",
+    "invalid_transition": "Esa hipótesis no puede pasar a ese estado.",
+    **dict.fromkeys(
+        (
+            "llm_disabled",
+            "synthetic_mode",
+            "configuration_missing",
+            "llm_tariff_not_current",
+            "policy_not_enabled",
+            "llm_failed",
+            "invalid_response",
+            "incomplete_response",
+        ),
+        LLM_UNAVAILABLE,
+    ),
+}
+CODE_MAX = 80
+
+
+def code_of(detail: object) -> str | None:
+    """The domain `code` of an error detail, or None when absent, not text or absurdly long."""
+    code = detail.get("code") if isinstance(detail, dict) else None
+    if isinstance(code, str) and 0 < len(code) <= CODE_MAX:
+        return code
+    return None
 
 
 class ApiError(Exception):
@@ -29,7 +74,16 @@ class ApiError(Exception):
         self.detail = detail
 
     @property
+    def code(self) -> str | None:
+        return code_of(self.detail)
+
+    @property
     def message(self) -> str:
+        code = self.code
+        if code is not None:
+            known = CODE_MESSAGES.get("duplicate" if code.startswith("duplicate") else code)
+            if known is not None:
+                return known
         if self.kind == "conflict" and isinstance(self.detail, dict):
             text = self.detail.get("message")
             if isinstance(text, str) and text:
@@ -46,6 +100,8 @@ def _error_detail(raw: bytes) -> object:
     detail = body_json.get("detail") if isinstance(body_json, dict) else None
     if detail is None and isinstance(body_json, dict) and "problems" in body_json:
         detail = body_json  # the API's `{accepted: false, problems: [...]}` 422
+    if detail is None and isinstance(body_json, dict) and "code" in body_json:
+        detail = body_json  # a domain rejection: `{code, message}` at the root of the body
     return detail
 
 
@@ -67,6 +123,7 @@ class ApiClient:
         *,
         params: dict[str, str] | None = None,
         body: object = None,
+        headers: dict[str, str] | None = None,
         timeout: float = TIMEOUT_SECONDS,
     ) -> dict[str, Any]:
         token = self._config.service_token
@@ -77,7 +134,7 @@ class ApiClient:
                 base_url=self._config.api_url,
                 timeout=timeout,
                 transport=self._transport,
-                headers={"Authorization": f"Bearer {token.get_secret_value()}"},
+                headers={**(headers or {}), "Authorization": f"Bearer {token.get_secret_value()}"},
             ) as client:
                 response = client.request(method, "/api/v1" + path, params=params, json=body)
         except (httpx.HTTPError, httpx.InvalidURL) as error:

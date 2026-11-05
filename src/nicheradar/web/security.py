@@ -44,6 +44,10 @@ class SessionSigner:
     def _mac(self, message: str) -> str:
         return hmac.new(self._key, message.encode(), hashlib.sha256).hexdigest()
 
+    def derive(self, message: str) -> str:
+        """A keyed digest of `message` for other web features (e.g. idempotency keys)."""
+        return self._mac(message)
+
     def issue(self) -> str:
         payload = f"{int(self._clock()) + SESSION_SECONDS}.{secrets.token_urlsafe(16)}"
         return f"{payload}.{self._mac(payload)}"
