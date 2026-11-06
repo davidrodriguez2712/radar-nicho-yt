@@ -1,5 +1,7 @@
 """Lectura acotada de un tweet público vía FxTwitter (gratuito) y de sus fotos de X.
 
+La lectura con la API oficial de X vive en `x_api.py` y comparte `BoundedReader`.
+
 Anti-SSRF: solo dos hosts fijos, rutas construidas por código, sin seguir redirecciones, sin
 variables de entorno de proxy y con cuerpos acotados. Todo lo que devuelve es de terceros.
 """
@@ -131,7 +133,9 @@ def _clean_text(text: str) -> str:
     return text.replace("\x00", "").encode("utf-8", "replace").decode("utf-8")
 
 
-class FxTwitterReader:
+class BoundedReader:
+    """Descarga acotada y fotos de X: lo común de los lectores (FxTwitter y API oficial)."""
+
     def __init__(self, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self.transport = transport
 
@@ -144,13 +148,20 @@ class FxTwitterReader:
         )
 
     async def _bounded(
-        self, url: httpx.URL, limit: int, error: str, too_large: str, total: float
+        self,
+        url: httpx.URL,
+        limit: int,
+        error: str,
+        too_large: str,
+        total: float,
+        extra_headers: dict[str, str] | None = None,
     ) -> tuple[int, str, bytes]:
+        headers = {**(extra_headers or {}), "Accept-Encoding": "identity"}
         try:
             async with asyncio.timeout(total):
                 async with (
                     self._client() as client,
-                    client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response,
+                    client.stream("GET", url, headers=headers) as response,
                 ):
                     encoding = response.headers.get("content-encoding", "identity")
                     if encoding.strip().lower() not in ("", "identity"):
@@ -168,6 +179,25 @@ class FxTwitterReader:
         except (httpx.HTTPError, TimeoutError):
             raise TweetReadError(error) from None
 
+    async def photo(self, url: str) -> ImageData:
+        if not _CANONICAL_MEDIA.fullmatch(url):
+            raise TweetReadError("photo_failed")
+        status, _, raw = await self._bounded(
+            httpx.URL(url),
+            MAX_IMAGE_BYTES,
+            "photo_failed",
+            "photo_too_large",
+            TOTAL_PHOTO_TIMEOUT_SECONDS,
+        )
+        if status != 200:
+            raise TweetReadError("photo_failed")
+        media_type = sniff_image_type(raw)
+        if media_type is None:
+            raise TweetReadError("photo_invalid")
+        return ImageData(media_type, raw)
+
+
+class FxTwitterReader(BoundedReader):
     async def read(self, ref: TweetRef) -> Tweet:
         if not _ID.fullmatch(ref.tweet_id) or (
             ref.author is not None and not _AUTHOR.fullmatch(ref.author)
@@ -177,7 +207,9 @@ class FxTwitterReader:
         status, content_type, raw = await self._bounded(
             url, MAX_JSON_BYTES, "reader_failed", "reader_failed", TOTAL_JSON_TIMEOUT_SECONDS
         )
-        if status in (401, 403, 404):
+        if status == 403:  # Cloudflare rechaza la IP del servidor: no es culpa del tweet
+            raise TweetReadError("reader_blocked")
+        if status in (401, 404):
             raise TweetReadError("tweet_unavailable")
         if status != 200 or content_type.split(";")[0].strip().lower() != "application/json":
             raise TweetReadError("reader_failed")
@@ -199,20 +231,3 @@ class FxTwitterReader:
         return Tweet(
             author, ref.tweet_id, _clean_text(text)[:MAX_TEXT], _photo_urls(tweet.get("media"))
         )
-
-    async def photo(self, url: str) -> ImageData:
-        if not _CANONICAL_MEDIA.fullmatch(url):
-            raise TweetReadError("photo_failed")
-        status, _, raw = await self._bounded(
-            httpx.URL(url),
-            MAX_IMAGE_BYTES,
-            "photo_failed",
-            "photo_too_large",
-            TOTAL_PHOTO_TIMEOUT_SECONDS,
-        )
-        if status != 200:
-            raise TweetReadError("photo_failed")
-        media_type = sniff_image_type(raw)
-        if media_type is None:
-            raise TweetReadError("photo_invalid")
-        return ImageData(media_type, raw)

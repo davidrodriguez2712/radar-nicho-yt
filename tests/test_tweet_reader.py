@@ -689,3 +689,12 @@ def test_content_type_is_case_insensitive_and_ignores_parameters(content_type: s
 )
 def test_sniff_requires_a_minimal_structure(data: bytes) -> None:
     assert sniff_image_type(data) is None
+
+
+def test_fxtwitter_403_from_cloudflare_is_reader_blocked_not_tweet_unavailable() -> None:
+    blocked = httpx.Response(
+        403, content=b"<html>cloudflare</html>", headers={"content-type": "text/html"}
+    )
+    with pytest.raises(TweetReadError) as caught:
+        asyncio.run(reader(lambda r: blocked).read(TweetRef("autor_x", TWEET_ID)))
+    assert caught.value.code == "reader_blocked"
