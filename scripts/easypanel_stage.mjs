@@ -130,6 +130,9 @@ const sessionDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:4947be7
 const followupsBackend = 'davidrodriguez2712/nicheradar-backend@sha256:e3e2cd0e85253153e03201d0a2ac80b4450895850b9a7b91c2881a20ebc39206';
 const followupsWorker = 'davidrodriguez2712/nicheradar-worker@sha256:623ecf830d0c4d5a9d4d399fb49251b790261e80f0b2c1096e23cf43d107be72';
 const followupsDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:938328abe50a8f6ed282850f0a3daf0e696c2d73c55b8036ba96872ba4053884';
+const xapiBackend = 'davidrodriguez2712/nicheradar-backend@sha256:56ce6355ac7a1c3cbb767d93a7a9d415d6b10c1c011ea2a3265c5b1ba41875e4';
+const xapiWorker = 'davidrodriguez2712/nicheradar-worker@sha256:2d7c57c61215673f61b6648e4dea80fc2d6daada1ddef053001a3a0c962f2819';
+const xapiDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:a1868f538dc8c48706971ab1135d8816045e74c33b023b8816ae14875d7facef';
 function requireLeadsDigests() {
   if([leadsBackend,leadsWorker,leadsDashboard].some(image=>image.endsWith(PENDING_DIGEST)))
     throw new Error('Release 037 digests are not set; publish the images and fill them in first');
@@ -863,6 +866,27 @@ try {
     if(after.source?.image!==image) throw new Error('Image setting not persisted');
     cli(['app','deploy',`${project}/${name}`,'--yes']);
     console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='deploy-xapi-code') {
+    // Release 040: lector de tweets con la API oficial de X (NR_TWEET_READER, NR_X_API_BEARER_TOKEN) y 403 de FxTwitter como
+    // reader_blocked. Sin migración. Uso: deploy-xapi-code <app>. Las variables del worker las carga el propietario en Easypanel.
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?followupsDashboard:name==='nicheradar-worker'?followupsWorker:followupsBackend;
+    if(before.source?.image!==expected || before.ports?.length || before.deploy?.replicas!==1 ||
+       before.resources?.memoryLimit!==512 || (!isDashboard && (env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')))
+      throw new Error('X API release preconditions failed');
+    const image=isDashboard?xapiDashboard:name==='nicheradar-worker'?xapiWorker:xapiBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true}));
   } else if(action==='deploy-followups-code') {
     // Release 039: slugs reservados, límite de cuerpo antes de autenticar y cancelación en propose_hypothesis. Sin migración.
     const name=process.argv[3];
