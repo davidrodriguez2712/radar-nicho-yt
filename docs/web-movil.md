@@ -229,8 +229,7 @@ Plan: `docs/superpowers/plans/2026-11-05-lectura-de-tweets-e-imagenes.md`. Solo 
 - **Un tweet:** en X, «Compartir» y elegir NicheRadar → «Compartido contigo» (M31) con «Leer tweet» → «Leyendo el tweet»
   (sondeo acotado) → «Canales encontrados» (M32: marcar, «Buscar por nombre (100 u.)» aparte) → «Proponer los canales
   marcados» → propuestas (M34). Cada paso es un POST con CSRF; compartir nunca crea nada solo.
-- **Quién lee el tweet:** FxTwitter (gratis) o, con `NR_TWEET_READER=xapi` en el worker, la API oficial de X (≈ US$0,005
-  por lectura, tope de 50 al día). Si falla, la pantalla muestra un aviso fijo que distingue tweet no disponible, lector sin
+- **Quién lee el tweet:** FxTwitter (gratis) o, con `NR_TWEET_READER=xapi` en el worker, la API oficial de X (≈ US$0,005 por lectura (hasta ≈ US$0,015 si hay que expandir el autor; confirmar en el panel de uso de X tras la primera lectura); techo diario en el peor caso: 50 × US$0,015 = US$0,75/día (≈ US$22/mes); se recomienda fijar un límite de gasto en el Developer Console; tope de 50 lecturas al día). Si falla, la pantalla muestra un aviso fijo que distingue tweet no disponible, lector sin
   configurar, credencial rechazada, límite de tasa, créditos agotados o servicio bloqueado; la ayuda «Si no se puede leer»
   ya no culpa solo al tweet. Detalle en `docs/subniche-discovery.md`.
 - **Una imagen (respaldo):** si el tweet no se puede leer, mantener pulsada la imagen y compartirla con NicheRadar. El

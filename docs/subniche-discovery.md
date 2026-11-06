@@ -149,8 +149,10 @@ El worker lee el tweet con uno de dos lectores (misma interfaz `TweetReader`, mi
   ese 403 ahora es `reader_blocked` («El servicio de lectura rechazó la solicitud desde el servidor.»), ya no
   `tweet_unavailable`.
 - `xapi`: API oficial de X, `GET https://api.x.com/2/tweets/:id` con Bearer token app-only. Pide `tweet.fields`
-  (`text,note_tweet,entities,attachments,author_id`), `expansions=attachments.media_keys,author_id`,
-  `media.fields=type,url,width,height` y `user.fields=username`. El texto largo sale de `note_tweet.text`; el autor, de
+  (`text,note_tweet,entities,attachments`), `expansions=attachments.media_keys` y
+  `media.fields=type,url,width,height`; **solo si la URL no trae el autor** (`/i/status/<id>`) añade `author_id` y
+  `user.fields=username`, porque X cobra por recurso devuelto (Post US$0,005; User US$0,010). Con autor en la URL se usa ese
+  autor. La expansión de medios se mantiene (no está claro que sea gratis; sin adjuntos X no devuelve media). El texto largo sale de `note_tweet.text`; el autor, de la URL o, si falta, de
   `includes.users`; las fotos, de `includes.media` (solo `type=photo` adjuntas al tweet y de `pbs.twimg.com/media`, ≤ 4).
   Las fotos se descargan del CDN **sin** el token. El token solo viaja en la cabecera `Authorization`.
 
@@ -163,13 +165,12 @@ Códigos de error (texto fijo en español; nada del proveedor llega al usuario; 
 | `reader_rate_limited` | 429 |
 | `reader_credits_depleted` | 402 (créditos agotados; ver nota) |
 | `tweet_unavailable` | 404, o 200 con `errors` de recurso no encontrado/no autorizado/no disponible |
-| `reader_blocked` | FxTwitter: 403 |
+| `reader_blocked` | FxTwitter: 403; API de X: 403 con contenido HTML (Cloudflare) |
 
 **Precio y límites vigentes (consultados el 2026-11-06 en docs.x.com):** pago por uso, **US$0,005 por post leído**; los
 créditos se compran por adelantado en el Developer Console y, con saldo negativo, las peticiones se bloquean hasta recargar;
 un post ya cobrado no se vuelve a cobrar el mismo día UTC (garantía «blanda»); tope de 3 millones de lecturas por ciclo.
-Límite de tasa de `GET /2/tweets/:id` con Bearer app-only: 450 por 15 minutos (429 con código 88). Con `lead_reads_per_day`
-= 50, el gasto máximo es **≈ US$0,25/día**; ese tope diario sigue siendo el límite y no hay contabilidad nueva en la base.
+Límite de tasa de `GET /2/tweets/:id` con Bearer app-only: 450 por 15 minutos (429 con código 88). Costo: ≈ US$0,005 por lectura (hasta ≈ US$0,015 si hay que expandir el autor; confirmar en el panel de uso de X tras la primera lectura). Con `lead_reads_per_day` = 50 (24 h móviles, incluidas lecturas fallidas e imágenes; X deduplica por día UTC), el gasto típico es ≈ US$0,25/día y el techo diario en el peor caso: 50 × US$0,015 = US$0,75/día (≈ US$22/mes); se recomienda fijar un límite de gasto en el Developer Console. Ese tope diario sigue siendo el límite y no hay contabilidad nueva en la base.
 Nota: la documentación no menciona el HTTP 402 ni un error de créditos agotados; el código lo trata como créditos agotados
 si llega, y un 429 puede ser también un tope de uso. Se verificará con la primera lectura real.
 
