@@ -473,3 +473,22 @@ def test_a_provider_error_while_resolving_stores_only_its_code(isolated_engine: 
     )
     assert out["failed"] == 1
     assert get(isolated_engine, read_id)["error_code"] == "youtube_quota_exceeded"
+
+
+def test_xapi_without_token_fails_without_spending_anything(isolated_engine: Engine) -> None:
+    ready_world(isolated_engine)
+    read_id = put_tweet(isolated_engine)
+    seen: list[Any] = []
+    found = resolver()
+    out = tick_leads(
+        vision_settings(tweet_reader="xapi"),
+        isolated_engine,
+        resolver=found,
+        client=mentions_client([], seen),
+        clock=lambda: LLM_NOW,
+    )
+    assert (out["processed"], out["ready"], out["failed"]) == (1, 0, 1)
+    read = get(isolated_engine, read_id)
+    assert read["status"] == "failed" and read["error_code"] == "reader_not_configured"
+    assert seen == [] and found.search_calls == 0 and found.name_searches == []
+    assert "xapi" not in str(out) and "token" not in str(out).lower()
