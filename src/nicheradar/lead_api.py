@@ -47,6 +47,15 @@ LEAD_MESSAGES: dict[str, str] = {
     ),
     "vision_not_configured": IMAGE_VISION_MISSING,
     "reader_failed": "El servicio de lectura de tweets no respondió. Comparte la imagen.",
+    "reader_not_configured": "La lectura con la API de X no está configurada en el servidor.",
+    "reader_unauthorized": (
+        "La API de X rechazó la credencial del servidor: el token no es válido o no tiene permiso."
+    ),
+    "reader_rate_limited": (
+        "La API de X pidió esperar por demasiadas lecturas; vuelve a intentarlo más tarde."
+    ),
+    "reader_credits_depleted": "Se agotaron los créditos de la API de X en el servidor.",
+    "reader_blocked": "El servicio de lectura rechazó la solicitud desde el servidor.",
     "expired": "La lectura caducó sin atenderse; vuelve a intentarla.",
     "cancelled": "La lectura se canceló; vuelve a intentarlo.",
     "abandoned": "La lectura se interrumpió; vuelve a intentarlo.",

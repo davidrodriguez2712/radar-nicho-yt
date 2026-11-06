@@ -18,7 +18,7 @@
 </section>
 {% if not view.is_image %}<section class="note note--amber">
   <span class="note__title">Si no se puede leer</span>
-  <p>A veces el tweet ya no existe o el servicio de lectura falla. Mantén pulsada la imagen del tweet y compártela con NicheRadar.</p>
+  <p>A veces el tweet ya no existe o el servicio de lectura del servidor no puede leerlo. Mantén pulsada la imagen del tweet y compártela con NicheRadar.</p>
   {% if view.tweet_url %}<a class="btn btn--secondary" href="{{ view.tweet_url }}" rel="noopener noreferrer nofollow">Abrir el tweet en X</a>{% endif %}
 </section>{% endif %}
 {% elif view.state == "fallida" %}
@@ -26,7 +26,7 @@
 <div class="note note--rose" id="falla" role="alert">{{ view.error }}</div>
 {% if not view.is_image %}<section class="note note--amber">
   <span class="note__title">Si no se puede leer</span>
-  <p>A veces el tweet ya no existe o el servicio de lectura falla. Mantén pulsada la imagen del tweet y compártela con NicheRadar.</p>
+  <p>A veces el tweet ya no existe o el servicio de lectura del servidor no puede leerlo. Mantén pulsada la imagen del tweet y compártela con NicheRadar.</p>
   {% if view.tweet_url %}<a class="btn btn--secondary" href="{{ view.tweet_url }}" rel="noopener noreferrer nofollow">Abrir el tweet en X</a>{% endif %}
 </section>{% endif %}
 {% if view.tweet_url %}{{ button("Volver a intentar", "primary", href="/compartir?" ~ ({"url": view.tweet_url}|urlencode)) }}{% endif %}

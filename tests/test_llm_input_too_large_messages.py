@@ -25,3 +25,33 @@ def test_the_error_helpers_return_the_code_not_unknown() -> None:
 
 def test_web_text_is_not_the_generic_one() -> None:
     assert error_text(CODE) != error_text("no_existe")
+
+
+NEW_READER_CODES = (
+    "reader_not_configured",
+    "reader_unauthorized",
+    "reader_rate_limited",
+    "reader_credits_depleted",
+    "reader_blocked",
+)
+
+
+def test_reader_codes_have_mirrored_fixed_texts() -> None:
+    for code in NEW_READER_CODES:
+        assert LEAD_MESSAGES[code] == error_text(code) != error_text(None)
+        assert lead_error(code) == {"code": code, "message": LEAD_MESSAGES[code]}
+        assert "borrado" not in LEAD_MESSAGES[code]
+    assert LEAD_MESSAGES["reader_not_configured"] == (
+        "La lectura con la API de X no está configurada en el servidor."
+    )
+    assert LEAD_MESSAGES["reader_blocked"] == (
+        "El servicio de lectura rechazó la solicitud desde el servidor."
+    )
+
+
+def test_help_does_not_blame_only_the_tweet() -> None:
+    from pathlib import Path
+
+    html = Path("src/nicheradar/web/templates/lecturas/_lectura.html").read_text()
+    assert "el servicio de lectura del servidor no puede leerlo" in html
+    assert "ya no existe o el servicio de lectura falla" not in html
