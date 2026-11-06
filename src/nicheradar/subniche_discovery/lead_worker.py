@@ -19,6 +19,7 @@ from nicheradar.integrations.tweets import (
     TweetReadError,
     TweetRef,
 )
+from nicheradar.integrations.x_api import XApiReader
 from nicheradar.market_intel.context import utcnow
 from nicheradar.repositories.core import insert_record, seed_profile
 from nicheradar.repositories.database import database_engine
@@ -29,6 +30,13 @@ from nicheradar.subniche_discovery.resolve import ChannelResolver, pick_by_name,
 
 LEAD_BATCH = 2
 NAME_BATCH = 2
+
+
+def make_tweet_reader(config: Settings) -> TweetReader:
+    """El lector según `tweet_reader`; `xapi` sin token falla tipado al leer, sin llamar a nadie."""
+    if config.tweet_reader == "xapi":
+        return XApiReader(config.x_api_bearer_token)
+    return FxTwitterReader()
 
 
 def _run(engine: Engine, config: Settings) -> dict[str, Any]:
@@ -188,7 +196,7 @@ def tick_leads(
     if config.database_url is None and engine is None:
         return status | {"status": "not_configured"}
     database = engine or database_engine(config)
-    reader = tweet_reader or FxTwitterReader()
+    reader = tweet_reader or make_tweet_reader(config)
     processed = ready = names = 0
     try:
         with database.begin() as connection:

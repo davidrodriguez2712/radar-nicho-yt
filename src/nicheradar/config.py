@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
     anthropic_configuration: LLMConfiguration | None = None
     lead_reads_per_day: int = Field(default=50, ge=1, le=500)
+    tweet_reader: Literal["fxtwitter", "xapi"] = "fxtwitter"
+    x_api_bearer_token: SecretStr | None = None
     anthropic_vision_configuration: LLMConfiguration | None = None
     api_url: str = "http://127.0.0.1:8000"
     api_host: str = "127.0.0.1"
