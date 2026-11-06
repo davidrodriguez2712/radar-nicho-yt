@@ -229,6 +229,10 @@ Plan: `docs/superpowers/plans/2026-11-05-lectura-de-tweets-e-imagenes.md`. Solo 
 - **Un tweet:** en X, «Compartir» y elegir NicheRadar → «Compartido contigo» (M31) con «Leer tweet» → «Leyendo el tweet»
   (sondeo acotado) → «Canales encontrados» (M32: marcar, «Buscar por nombre (100 u.)» aparte) → «Proponer los canales
   marcados» → propuestas (M34). Cada paso es un POST con CSRF; compartir nunca crea nada solo.
+- **Quién lee el tweet:** FxTwitter (gratis) o, con `NR_TWEET_READER=xapi` en el worker, la API oficial de X (≈ US$0,005
+  por lectura, tope de 50 al día). Si falla, la pantalla muestra un aviso fijo que distingue tweet no disponible, lector sin
+  configurar, credencial rechazada, límite de tasa, créditos agotados o servicio bloqueado; la ayuda «Si no se puede leer»
+  ya no culpa solo al tweet. Detalle en `docs/subniche-discovery.md`.
 - **Una imagen (respaldo):** si el tweet no se puede leer, mantener pulsada la imagen y compartirla con NicheRadar. El
   manifiesto declara un único `share_target` `POST` multipart (`/compartir`, campo `imagen`: PNG, JPEG o WEBP). El service worker
   (`sw.js`) guarda la imagen **solo en la caché del teléfono** `nicheradar-share-v1` bajo `/compartir/imagen/archivo`
