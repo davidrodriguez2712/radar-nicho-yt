@@ -245,7 +245,20 @@ def test_derive_is_domain_separated() -> None:
     assert signer.derive("idem", "m") == signer.derive("idem", "m")
 
 
-@pytest.mark.parametrize("label", ["proponer", "Proponer", " PROPONER ", "proponer!", "_proponer_"])
+@pytest.mark.parametrize(
+    "label",
+    [
+        "proponer",
+        "Proponer",
+        " PROPONER ",
+        "proponer!",
+        "_proponer_",
+        "propuestas",
+        "Propuestas",
+        "proposals",
+        "Proposals",
+    ],
+)
 def test_reserved_slug_is_rejected_in_the_manual_label(label: str) -> None:
     assert parse_form("dinosaurios", True, label, "animales", "") == ({}, "manual_invalid")
     assert parse_form("dinosaurios", False, label, "animales", "")[1] is None
@@ -274,3 +287,10 @@ def test_proposal_view_origin_line(origin: object, line: str | None) -> None:
 
 def test_proposal_view_without_origin_has_no_line() -> None:
     assert proposal_view(item(), NOW)["origin_line"] is None
+
+
+def test_web_reserved_slugs_match_the_api_ones() -> None:
+    from nicheradar.subniche_discovery.store import RESERVED_SLUGS as API_RESERVED
+    from nicheradar.web.proposals import RESERVED_SLUGS as WEB_RESERVED
+
+    assert set(WEB_RESERVED) == set(API_RESERVED)

@@ -13,6 +13,7 @@ from sqlalchemy import Connection, Engine, func, select, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from nicheradar import __version__
+from nicheradar.api_limits import ApiBodyLimitMiddleware
 from nicheradar.config import Settings
 from nicheradar.domain.profile import CreatorProfile, VideoFormat, initial_catalog
 from nicheradar.flow_research_api import flow_research_router
@@ -114,6 +115,7 @@ def create_app(
     app = FastAPI(
         title="NicheRadar", version=__version__, docs_url=None, redoc_url=None, openapi_url=None
     )
+    app.add_middleware(ApiBodyLimitMiddleware)  # antes de autenticar: corta cuerpos enormes
     bearer = HTTPBearer(auto_error=False)
 
     def authenticate(

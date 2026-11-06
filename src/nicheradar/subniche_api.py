@@ -42,6 +42,9 @@ MESSAGES: dict[str, str] = {
     ),
     "youtube_unreachable": "No se pudo consultar YouTube; vuelve a intentarlo.",
     "abandoned": "La preparación se interrumpió; vuelve a intentarlo.",
+    "llm_input_too_large": (
+        "La entrada es demasiado grande para el modelo; usa una consulta más corta."
+    ),
     **{
         code: LLM_UNAVAILABLE
         for code in (
