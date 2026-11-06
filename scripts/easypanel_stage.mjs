@@ -127,6 +127,9 @@ const leadsBackend = 'davidrodriguez2712/nicheradar-backend@sha256:56ecfa363b762
 const leadsWorker = 'davidrodriguez2712/nicheradar-worker@sha256:504c704482345f1ca9a7734f619ba93353e109dd4a18df8cb2cd4f467bfececb';
 const leadsDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:32ff665246c281664cc1861047dfd2406d968fdd4a45b9d79d70c463ab846741';
 const sessionDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:4947be7ee939943d32e8c9aeeaf009a9e99d602b8c922061be1d8ec88f1bcdf4';
+const followupsBackend = 'davidrodriguez2712/nicheradar-backend@sha256:e3e2cd0e85253153e03201d0a2ac80b4450895850b9a7b91c2881a20ebc39206';
+const followupsWorker = 'davidrodriguez2712/nicheradar-worker@sha256:623ecf830d0c4d5a9d4d399fb49251b790261e80f0b2c1096e23cf43d107be72';
+const followupsDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:938328abe50a8f6ed282850f0a3daf0e696c2d73c55b8036ba96872ba4053884';
 function requireLeadsDigests() {
   if([leadsBackend,leadsWorker,leadsDashboard].some(image=>image.endsWith(PENDING_DIGEST)))
     throw new Error('Release 037 digests are not set; publish the images and fill them in first');
@@ -860,6 +863,26 @@ try {
     if(after.source?.image!==image) throw new Error('Image setting not persisted');
     cli(['app','deploy',`${project}/${name}`,'--yes']);
     console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='deploy-followups-code') {
+    // Release 039: slugs reservados, límite de cuerpo antes de autenticar y cancelación en propose_hypothesis. Sin migración.
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?sessionDashboard:name==='nicheradar-worker'?leadsWorker:leadsBackend;
+    if(before.source?.image!==expected || before.ports?.length || before.deploy?.replicas!==1 ||
+       before.resources?.memoryLimit!==512 || (!isDashboard && (env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')))
+      throw new Error('Followups release preconditions failed');
+    const image=isDashboard?followupsDashboard:name==='nicheradar-worker'?followupsWorker:followupsBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true}));
   } else if(action==='deploy-session-code') {
     // Release 038: solo cambia la imagen del dashboard (sesión de 50 días). Uso: deploy-session-code.
     const name='nicheradar-dashboard';
