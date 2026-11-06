@@ -87,16 +87,19 @@ class XApiReader(BoundedReader):
             ref.author is not None and not _AUTHOR.fullmatch(ref.author)
         ):
             raise TweetReadError("reader_failed")
+        # X cobra por recurso devuelto: expandir el autor suma un recurso User (US$0,010). Solo se
+        # pide cuando la URL no trae el autor (`/i/status/<id>`).
+        params = {
+            "tweet.fields": "text,note_tweet,entities,attachments",
+            "expansions": "attachments.media_keys",
+            "media.fields": "type,url,width,height",
+        }
+        if ref.author is None:
+            params["tweet.fields"] += ",author_id"
+            params["expansions"] += ",author_id"
+            params["user.fields"] = "username"
         url = httpx.URL(
-            scheme="https",
-            host=X_API_HOST,
-            path=f"/2/tweets/{ref.tweet_id}",
-            params={
-                "tweet.fields": "text,note_tweet,entities,attachments,author_id",
-                "expansions": "attachments.media_keys,author_id",
-                "media.fields": "type,url,width,height",
-                "user.fields": "username",
-            },
+            scheme="https", host=X_API_HOST, path=f"/2/tweets/{ref.tweet_id}", params=params
         )
         status, content_type, raw = await self._bounded(
             url,
@@ -106,6 +109,8 @@ class XApiReader(BoundedReader):
             tweets.TOTAL_JSON_TIMEOUT_SECONDS,
             {"Authorization": f"Bearer {secret}"},
         )
+        if status == 403 and content_type.split(";")[0].strip().lower() == "text/html":
+            raise TweetReadError("reader_blocked")  # Cloudflare, no la API de X
         if status in _STATUS_CODES:
             raise TweetReadError(_STATUS_CODES[status])
         if status != 200 or content_type.split(";")[0].strip().lower() != "application/json":
@@ -124,10 +129,14 @@ class XApiReader(BoundedReader):
             long_text = note.get("text") if isinstance(note, dict) else None
             if isinstance(long_text, str) and long_text:
                 text = long_text
-            author = next(
-                user["username"]
-                for user in includes["users"]
-                if isinstance(user, dict) and user.get("id") == data.get("author_id")
+            author = (
+                ref.author
+                if ref.author is not None
+                else next(
+                    user["username"]
+                    for user in includes["users"]
+                    if isinstance(user, dict) and user.get("id") == data.get("author_id")
+                )
             )
             if (
                 str(data["id"]) != ref.tweet_id

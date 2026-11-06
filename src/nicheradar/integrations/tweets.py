@@ -2,7 +2,8 @@
 
 La lectura con la API oficial de X vive en `x_api.py` y comparte `BoundedReader`.
 
-Anti-SSRF: solo dos hosts fijos, rutas construidas por código, sin seguir redirecciones, sin
+Anti-SSRF: solo tres hosts fijos (FxTwitter, la API de X en `x_api.py` y el CDN de fotos),
+rutas construidas por código, sin seguir redirecciones, sin
 variables de entorno de proxy y con cuerpos acotados. Todo lo que devuelve es de terceros.
 """
 
@@ -177,7 +178,8 @@ class BoundedReader:
                     content_type = response.headers.get("content-type", "")
                     return response.status_code, content_type, bytes(raw)
         except (httpx.HTTPError, TimeoutError):
-            raise TweetReadError(error) from None
+            pass  # se eleva abajo, fuera del `except`: sin `__context__` que alcance la petición
+        raise TweetReadError(error)
 
     async def photo(self, url: str) -> ImageData:
         if not _CANONICAL_MEDIA.fullmatch(url):

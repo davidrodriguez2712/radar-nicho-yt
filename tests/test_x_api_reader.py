@@ -14,6 +14,7 @@ from tests.lead_samples import PNG, TWEET_ID
 
 TOKEN = "SENTINEL-bearer-9f3c1d7a-do-not-leak"
 REF = TweetRef("autor_x", TWEET_ID)
+NO_AUTHOR = TweetRef(None, TWEET_ID)
 MEDIA = "https://pbs.twimg.com/media/BhxWutnCEAAtEQ6.jpg"
 
 
@@ -60,20 +61,21 @@ def code_of(handler: Any, ref: TweetRef = REF) -> str:
     return caught.value.code
 
 
-def test_request_is_fixed_host_path_and_token_only_in_authorization() -> None:
+def test_request_with_author_in_url_does_not_expand_the_author() -> None:
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request)
-        return jr(payload(photos=(MEDIA,)))
+        return jr(payload(photos=(MEDIA,), username=None))
 
     tweet = read(handler)
     (request,) = seen
     assert request.url.scheme == "https" and request.url.host == "api.x.com"
     assert request.url.path == f"/2/tweets/{TWEET_ID}"
     params = dict(request.url.params)
-    assert params["expansions"] == "attachments.media_keys,author_id"
-    assert "note_tweet" in params["tweet.fields"] and params["user.fields"] == "username"
+    assert params["expansions"] == "attachments.media_keys"
+    assert "author_id" not in str(request.url) and "user.fields" not in params
+    assert "note_tweet" in params["tweet.fields"]
     assert params["media.fields"] == "type,url,width,height"
     assert request.headers["authorization"] == f"Bearer {TOKEN}"
     assert request.headers["accept-encoding"] == "identity"
@@ -81,13 +83,22 @@ def test_request_is_fixed_host_path_and_token_only_in_authorization() -> None:
     assert tweet == Tweet("autor_x", TWEET_ID, tweet.text, (MEDIA + "?name=large",))
 
 
-def test_author_comes_from_includes_users_and_ref_author_is_ignored() -> None:
-    tweet = read(lambda r: jr(payload(username="otro_autor")))
+def test_request_without_author_expands_the_author_and_reads_it() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return jr(payload(username="otro_autor"))
+
+    tweet = asyncio.run(reader(handler).read(NO_AUTHOR))
+    params = dict(seen[0].url.params)
+    assert params["expansions"] == "attachments.media_keys,author_id"
+    assert params["user.fields"] == "username" and "author_id" in params["tweet.fields"]
     assert tweet.author == "otro_autor"
-    tweet = asyncio.run(
-        reader(lambda r: jr(payload(username="otro_autor"))).read(TweetRef(None, TWEET_ID))
-    )
-    assert tweet.author == "otro_autor"
+
+
+def test_author_from_the_url_is_used_even_if_the_reply_names_another() -> None:
+    assert read(lambda r: jr(payload(username="otro_autor"))).author == "autor_x"
 
 
 def test_long_text_prefers_note_tweet_and_is_truncated_and_cleaned() -> None:
@@ -173,7 +184,19 @@ def test_status_codes_map_to_fixed_codes(status: int, code: str) -> None:
     ],
 )
 def test_hostile_or_error_bodies(body: object, code: str) -> None:
-    assert code_of(lambda r: jr(body)) == code
+    assert code_of(lambda r: jr(body), NO_AUTHOR) == code
+
+
+def test_403_with_html_is_blocked_but_json_403_and_401_are_unauthorized() -> None:
+    html = httpx.Response(403, content=b"<html>cf</html>", headers={"content-type": "text/html"})
+    assert code_of(lambda r: html) == "reader_blocked"
+    assert code_of(lambda r: jr({"title": "Forbidden"}, 403)) == "reader_unauthorized"
+    assert (
+        code_of(
+            lambda r: httpx.Response(401, content=b"<html/>", headers={"content-type": "text/html"})
+        )
+        == "reader_unauthorized"
+    )
 
 
 def test_deep_json_and_huge_body_and_wrong_content_type() -> None:
@@ -230,7 +253,7 @@ def test_token_never_leaks() -> None:
     with pytest.raises(TweetReadError) as caught:
         asyncio.run(instance.read(REF))
     error = caught.value
-    assert error.code == "reader_failed" and error.__cause__ is None and error.__suppress_context__
+    assert error.code == "reader_failed" and error.__cause__ is None and error.__context__ is None
     for shown in (str(error), repr(error), repr(instance), str(instance), repr(vars(instance))):
         assert TOKEN not in shown
     assert TOKEN not in repr(error.args)
@@ -266,3 +289,29 @@ def test_read_has_a_total_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(tweets, "TOTAL_JSON_TIMEOUT_SECONDS", 0.2)
     started = time.monotonic()
     assert code_of(handler) == "reader_failed" and time.monotonic() - started < 3
+
+
+def _chain(error: BaseException | None) -> list[BaseException]:
+    found: list[BaseException] = []
+    while error is not None and error not in found:
+        found.append(error)
+        error = error.__cause__ or error.__context__
+    return found
+
+
+@pytest.mark.parametrize("kind", ["connect", "timeout", "redirect"])
+def test_no_exception_chain_reaches_the_token(kind: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if kind == "connect":
+            raise httpx.ConnectError("x", request=request)
+        if kind == "timeout":
+            raise httpx.ReadTimeout("x", request=request)
+        return httpx.Response(302, headers={"location": "https://evil.test/"})
+
+    with pytest.raises(TweetReadError) as caught:
+        asyncio.run(reader(handler).read(REF))
+    assert _chain(caught.value) == [caught.value]
+    assert caught.value.__context__ is None and caught.value.__cause__ is None
+    with pytest.raises(TweetReadError) as photo:
+        asyncio.run(reader(handler).photo("https://pbs.twimg.com/media/a1234.png?name=large"))
+    assert photo.value.__context__ is None and photo.value.__cause__ is None
