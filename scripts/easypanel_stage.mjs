@@ -925,6 +925,31 @@ try {
       cli(['app','deploy',`${project}/${name}`,'--yes']);
       console.log(JSON.stringify({...result,deployRequested:true}));
     }
+  } else if(action==='set-api-subniche-enabled') {
+    // Enciende o apaga NR_SUBNICHE_ENABLED en la API: la API solo lo usa para aceptar lecturas de tweets e imágenes
+    // (`/api/v1/leads`: con `false` responde 503 `reading_disabled` y no encola). Exige modo live y el worker con el
+    // descubrimiento ya encendido. Uso: set-api-subniche-enabled <true|false> [dry]. Nunca imprime el entorno.
+    const name='nicheradar-api';
+    const value=process.argv[3];
+    if(value!=='true' && value!=='false') throw new Error('Usage: set-api-subniche-enabled <true|false> [dry]');
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const workerEnv=appEnv('nicheradar-worker');
+    if(env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true') throw new Error('API subniche preconditions failed');
+    if(value==='true' && workerEnv.NR_SUBNICHE_ENABLED!=='true') throw new Error('The worker must have NR_SUBNICHE_ENABLED=true first');
+    const result={name,before:env.NR_SUBNICHE_ENABLED ?? 'unset',after:value,dryRun:process.argv[4]==='dry'};
+    if(result.dryRun) {
+      console.log(JSON.stringify(result));
+    } else {
+      const next={...env,NR_SUBNICHE_ENABLED:value};
+      cli(['app','update-env',`${project}/${name}`,'--yes'],{env:Object.entries(next).map(([k,v])=>`${k}=${v}`).join('\n')});
+      const after=cli(['app','inspect',`${project}/${name}`]);
+      for(const field of ['source','resources','deploy','ports','mounts','basicAuth']) {
+        if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected non-environment change');
+      }
+      cli(['app','deploy',`${project}/${name}`,'--yes']);
+      console.log(JSON.stringify({...result,deployRequested:true}));
+    }
   } else if(action==='set-subniche-enabled') {
     // Enciende o apaga el descubrimiento de subnichos en el worker. Uso: set-subniche-enabled <true|false> [dry].
     // Exige la configuración de Anthropic y los topes ya cargados (set-subniche-env). Nunca imprime el entorno.
