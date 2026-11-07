@@ -54,11 +54,13 @@ GOOD = {
 }
 
 
-def test_request_body_forces_the_tool_and_marks_third_party_text() -> None:
+def test_request_body_asks_for_the_tool_and_marks_third_party_text() -> None:
     body = proposal_request_body(SOURCE, LABELS, TARIFF)
     assert body["model"] == TARIFF.model
     assert body["max_tokens"] == TARIFF.output_tokens
-    assert body["tool_choice"] == {"type": "tool", "name": PROPOSAL_TOOL}
+    assert body["tool_choice"] == {"type": "auto"}
+    assert f"ONLY by calling the tool '{PROPOSAL_TOOL}'" in body["system"]
+    assert "no free text" in body["system"]
     schema = body["tools"][0]["input_schema"]
     assert schema["properties"]["parent_niche"]["enum"] == [*LABELS, None]
     content = json.loads(body["messages"][0]["content"])
@@ -89,6 +91,28 @@ def test_parse_valid_proposal_prices_the_call() -> None:
 )
 def test_parse_rejects_anything_outside_the_contract(bad: dict[str, Any]) -> None:
     result = parse_proposal_response(tool_payload(bad), TARIFF, LABELS)
+    assert result.proposal is None and result.reason == "invalid_response"
+
+
+THINKING = {"type": "thinking", "thinking": "Pienso.", "signature": "sig"}
+
+
+def test_parse_tolerates_thinking_and_text_before_the_tool_use() -> None:
+    block = {"type": "tool_use", "id": "toolu_1", "name": PROPOSAL_TOOL, "input": GOOD}
+    payload = tool_payload(GOOD, content=[THINKING, {"type": "text", "text": "ok"}, block])
+    result = parse_proposal_response(payload, TARIFF, LABELS)
+    assert result.reason == "response_received" and result.proposal is not None
+
+
+@pytest.mark.parametrize("kind", ["only_text", "two_tool_use", "other_name"])
+def test_parse_without_exactly_one_expected_tool_use_is_invalid(kind: str) -> None:
+    block = {"type": "tool_use", "id": "toolu_1", "name": PROPOSAL_TOOL, "input": GOOD}
+    content = {
+        "only_text": [THINKING, {"type": "text", "text": "sin herramienta"}],
+        "two_tool_use": [THINKING, block, block],
+        "other_name": [THINKING, {**block, "name": "otra"}],
+    }[kind]
+    result = parse_proposal_response(tool_payload(GOOD, content=content), TARIFF, LABELS)
     assert result.proposal is None and result.reason == "invalid_response"
 
 

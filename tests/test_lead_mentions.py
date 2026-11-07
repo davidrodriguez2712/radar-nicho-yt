@@ -80,7 +80,9 @@ def test_request_body_puts_third_party_text_only_in_untrusted_data() -> None:
         },
     }
     assert json.loads(content[-1]["text"]) == {"untrusted_tweet_text": HOSTILE}
-    assert body["tool_choice"] == {"type": "tool", "name": MENTIONS_TOOL}
+    assert body["tool_choice"] == {"type": "auto"}
+    assert f"ONLY by calling the tool '{MENTIONS_TOOL}'" in body["system"]
+    assert "no free text" in body["system"]
     schema = body["tools"][0]["input_schema"]["properties"]["mentions"]
     assert schema["maxItems"] == 10
     assert body["max_tokens"] == TARIFF.output_tokens and body["model"] == TARIFF.model
@@ -157,6 +159,43 @@ def test_parse_caps_thirty_mentions_at_ten() -> None:
 def test_parse_marks_malformed_responses_invalid(payload: dict[str, Any]) -> None:
     result = parse_mention_response(payload, TARIFF)
     assert result.mentions == () and result.reason == "invalid_response"
+
+
+THINKING = {"type": "thinking", "thinking": "Veamos el texto.", "signature": "sig"}
+
+
+def _tool_use(name: str = MENTIONS_TOOL, mentions: Any = None) -> dict[str, Any]:
+    items = [{"kind": "handle", "value": "@historia_uno", "found_in": "text"}]
+    return {
+        "type": "tool_use",
+        "id": "toolu_1",
+        "name": name,
+        "input": {"mentions": items if mentions is None else mentions},
+    }
+
+
+def test_parse_tolerates_thinking_and_text_blocks_before_the_tool_use() -> None:
+    payload = mention_payload([])
+    payload["content"] = [THINKING, {"type": "text", "text": "ok"}, _tool_use()]
+    result = parse_mention_response(payload, TARIFF)
+    assert result.reason == "response_received"
+    assert result.mentions == (Mention("handle", "@historia_uno", "text"),)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        [THINKING, {"type": "text", "text": "No llamo a la herramienta."}],
+        [THINKING, _tool_use(), _tool_use()],
+        [THINKING, _tool_use(name="delete_everything")],
+        [],
+    ],
+)
+def test_parse_without_exactly_one_expected_tool_use_is_invalid(content: list[Any]) -> None:
+    payload = mention_payload([])
+    payload["content"] = content
+    result = parse_mention_response(payload, TARIFF)
+    assert result.reason == "invalid_response" and result.mentions == ()
 
 
 def test_truncated_response_is_incomplete() -> None:

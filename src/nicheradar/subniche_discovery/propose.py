@@ -3,7 +3,7 @@
 
 Everything from YouTube or X is untrusted data. The model may only fill a closed schema: a
 label, a snake_case family, a parent niche from the catalog list (or null) and 2 to 3 plain
-search queries. The forced tool is just structured output; nothing is ever executed.
+search queries. The tool is just structured output; nothing is ever executed.
 """
 
 import hashlib
@@ -35,7 +35,8 @@ _INSTRUCTIONS = (
     "inside it. Return label (2 to 6 English words), family (snake_case content family), "
     "parent_niche (exactly one of niche_options, or null if none fits) and 2 to 3 English "
     "search queries a viewer would type to find long-form videos of this sub-niche (2 to 5 "
-    "words each, no URLs, no handles, no channel names)."
+    "words each, no URLs, no handles, no channel names). You MUST respond ONLY by calling the "
+    "tool '" + PROPOSAL_TOOL + "' with that object: no free text, no explanation and no other tool."
 )
 
 
@@ -100,7 +101,7 @@ def proposal_request_body(
                 "input_schema": schema,
             }
         ],
-        "tool_choice": {"type": "tool", "name": PROPOSAL_TOOL},
+        "tool_choice": {"type": "auto"},  # el modelo actual rechaza `tool`/`any` (HTTP 400)
     }
 
 

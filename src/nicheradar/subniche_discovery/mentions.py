@@ -52,7 +52,8 @@ _INSTRUCTIONS = (
     "'name' (a channel name as written, 2 to 60 characters), and found_in 'text' or 'image'. An "
     "@name in the tweet text is an X account: return it only if the text says it is a YouTube "
     "channel. Do not guess, translate or invent channels; return an empty list when none is "
-    "mentioned."
+    "mentioned. You MUST respond ONLY by calling the tool '" + MENTIONS_TOOL + "' with that "
+    "list: no free text, no explanation and no other tool."
 )
 
 Kind = Literal["handle", "channel_id", "video", "name"]
@@ -182,7 +183,7 @@ def mention_request_body(
                 },
             }
         ],
-        "tool_choice": {"type": "tool", "name": MENTIONS_TOOL},
+        "tool_choice": {"type": "auto"},  # el modelo actual rechaza `tool`/`any` (HTTP 400)
     }
 
 
