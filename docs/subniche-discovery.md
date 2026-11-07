@@ -264,20 +264,28 @@ aunque la API rechazó la petición sin procesarla.
   «modelo no disponible» y un `llm_http_*` mal formado en el texto genérico. Textos fijos en `lead_api.LEAD_MESSAGES`,
   `subniche_api.MESSAGES`, `web/leads.py::TEXTS` y `web/client.py::CODE_MESSAGES`.
 
-**Qué mirar si falla.** `error_code` de la lectura o propuesta: `llm_http_400_invalid_request_error` (petición inválida:
-modelo, parámetros, `ANTHROPIC_VERSION`), `llm_http_401_*` (clave), `llm_http_403_*` (permiso de la cuenta), `llm_http_429_*`
+**Qué mirar si falla.** (Texto fijo de `llm_rejected`: «El modelo de lenguaje rechazó la solicitud. Revisa la configuración del modelo y el saldo de la cuenta de Anthropic.»)  `error_code` de la lectura o propuesta: `llm_http_400_invalid_request_error` (petición inválida:
+modelo, parámetros, `ANTHROPIC_VERSION`, o saldo de la cuenta de Anthropic), `llm_http_401_*` (clave), `llm_http_403_*` (permiso de la cuenta), `llm_http_429_*`
 (límite), `llm_http_5xx`/`529` (el proveedor falló; el cargo es incierto). Las reservas `unknown_charge` anteriores a esta
 corrección (US$0,056 de la lectura fallida del 2026-11-06) siguen contando contra el tope semanal hasta que el propietario
 decida limpiarlas; no se tocaron en la base.
 
-**`max_tokens` y `thinking` (riesgo abierto).** La respuesta real con `tool_choice` automático trae un bloque `thinking`
-antes del `tool_use`, y el pensamiento consume tokens de salida. Con `output_tokens: 800` (`max_tokens`) una imagen difícil
-podría terminar en `stop_reason: max_tokens` (ya mapeado a `incomplete_response`, que se cobra y no da menciones). La
-documentación consultada (SDK de Anthropic vía ctx7) lista `thinking: {"type": "disabled"}`, pero no confirma que
-`claude-sonnet-5-5` lo acepte junto con herramientas, y no se hicieron llamadas reales; por eso **no se aplicó**.
-Recomendación: subir `output_tokens` de `NR_ANTHROPIC_VISION_CONFIGURATION` (p. ej. a 2000; el contrato admite 128 a 2048)
-y revisar el `usage` de las primeras lecturas reales; la reserva sube a ≈ US$0,068 por lectura. Si se confirma que se puede
-desactivar el pensamiento, añadir `thinking` al cuerpo es un cambio de una línea.
+**Auditoría del libro:** al liberar un rechazo 4xx, `record_not_sent` escribe `provider_requests.error_code = "transport_not_sent"` aunque la petición sí se transmitió; para esos rechazos significa «rechazado por la API, sin cargo». El motivo real (`llm_http_<estado>[_<tipo>]`) está en `lead_read_requests.error_code` (lecturas) o en el `error_code` de la propuesta.
+
+**`max_tokens` y `thinking` (riesgo abierto, sin cambios en la petición).** La respuesta real con `tool_choice` automático
+trae un bloque `thinking` antes del `tool_use`, y el pensamiento consume tokens de salida. Con `output_tokens: 800`
+(`max_tokens`) una imagen difícil podría terminar en `stop_reason: max_tokens` (ya mapeado a `incomplete_response`, que se
+cobra y no da menciones). Según la guía de migración vigente de `claude-sonnet-5-5`, `thinking: {"type": "disabled"}`
+**devuelve 400**: NO se aplica ni debe añadirse. El ajuste más bajo es `thinking: {"type": "between_tools"}` (solo con
+esfuerzo `high` o menor) y el esfuerzo se controla con `output_config: {"effort": "low" | "medium" | "high"}` (por defecto
+`high`). El cuerpo de la petición no lleva `thinking` ni `output_config`: no se verificó nada contra la API real.
+Recomendación, tras la primera lectura real y revisando su `usage`: (1) probar `output_config: {"effort": "low"}` (lo menos
+arriesgado); (2) si hace falta, subir `output_tokens` de `NR_ANTHROPIC_VISION_CONFIGURATION` a 2000 (el contrato admite 128 a
+2048; la reserva sube a ≈ US$0,068). Matiz: con esfuerzo `high` y `timeout_seconds` ≤ 30 pueden aparecer timeouts
+(`unknown_charge` por el máximo), por eso conviene bajar el esfuerzo antes que solo subir `max_tokens`.
+
+**Mejoras a probar tras la primera lectura real (no aplicadas, no verificadas con este modelo):** `strict: true` en la
+herramienta y `disable_parallel_tool_use: true` en `tool_choice`.
 
 ### Qué necesita producción (no ejecutado)
 
