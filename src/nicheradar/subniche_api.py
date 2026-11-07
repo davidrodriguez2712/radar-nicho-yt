@@ -14,6 +14,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 from sqlalchemy import Connection
 
 from nicheradar.config import Settings
+from nicheradar.llm_codes import normalize_llm_code
 from nicheradar.repositories.schema import hypothesis_seed_channels as seeds
 from nicheradar.repositories.schema import niche_hypotheses as nh
 from nicheradar.subniche_discovery import proposals, store, worker
@@ -44,6 +45,19 @@ MESSAGES: dict[str, str] = {
     "abandoned": "La preparación se interrumpió; vuelve a intentarlo.",
     "llm_input_too_large": (
         "La entrada es demasiado grande para el modelo; usa una consulta más corta."
+    ),
+    "llm_rejected": (
+        "El modelo de lenguaje rechazó la solicitud. Revisa la configuración del modelo."
+    ),
+    "llm_auth": (
+        "El modelo de lenguaje rechazó la credencial del servidor. Revisa la clave de Anthropic."
+    ),
+    "llm_permission": (
+        "La cuenta del modelo de lenguaje no tiene permiso o saldo para esta solicitud. "
+        "Revisa la cuenta de Anthropic."
+    ),
+    "llm_rate_limited": (
+        "El modelo de lenguaje alcanzó su límite de uso; vuelve a intentarlo más tarde."
     ),
     **{
         code: LLM_UNAVAILABLE
@@ -98,7 +112,9 @@ class ProposalBody(BaseModel):
 def error_message(code: str | None) -> dict[str, str] | None:
     if code is None:
         return None
-    normalized = "duplicate" if code.startswith("duplicate") else PROVIDER_CODES.get(code, code)
+    normalized = normalize_llm_code(
+        "duplicate" if code.startswith("duplicate") else PROVIDER_CODES.get(code, code)
+    )
     if normalized not in MESSAGES:
         return {"code": "unknown", "message": GENERIC}
     return {"code": normalized, "message": MESSAGES[normalized]}

@@ -22,6 +22,7 @@ from nicheradar.integrations.tweets import (
     parse_tweet_url,
     sniff_image_type,
 )
+from nicheradar.llm_codes import normalize_llm_code
 from nicheradar.subniche_api import IDEMPOTENCY_KEY, MESSAGES, PROVIDER_CODES, Clean
 from nicheradar.subniche_discovery import leads
 from nicheradar.subniche_discovery.leads import LeadRejected
@@ -66,6 +67,19 @@ LEAD_MESSAGES: dict[str, str] = {
     "youtube_not_configured": MESSAGES["youtube_not_configured"],
     "youtube_quota_exhausted": MESSAGES["youtube_quota_exhausted"],
     "youtube_unreachable": MESSAGES["youtube_unreachable"],
+    "llm_rejected": (
+        "El modelo de lenguaje rechazó la solicitud. Revisa la configuración del modelo."
+    ),
+    "llm_auth": (
+        "El modelo de lenguaje rechazó la credencial del servidor. Revisa la clave de Anthropic."
+    ),
+    "llm_permission": (
+        "La cuenta del modelo de lenguaje no tiene permiso o saldo para esta solicitud. "
+        "Revisa la cuenta de Anthropic."
+    ),
+    "llm_rate_limited": (
+        "El modelo de lenguaje alcanzó su límite de uso; vuelve a intentarlo más tarde."
+    ),
     **dict.fromkeys(
         (
             "llm_disabled",
@@ -85,7 +99,7 @@ LEAD_MESSAGES: dict[str, str] = {
 def lead_error(code: str | None) -> dict[str, str] | None:
     if code is None:
         return None
-    normalized = PROVIDER_CODES.get(code, code)
+    normalized = normalize_llm_code(PROVIDER_CODES.get(code, code))
     if normalized not in LEAD_MESSAGES:
         return {"code": "unknown", "message": GENERIC}
     return {"code": normalized, "message": LEAD_MESSAGES[normalized]}
