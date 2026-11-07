@@ -19,6 +19,11 @@ def settle_failed_call(
     404, 413 o 422) libera la reserva con el mecanismo existente `record_not_sent`. Todo lo
     demás (timeouts, cancelación, 429, 5xx, respuestas ambiguas) sigue como `unknown_charge`.
     El motivo es el código cerrado `llm_http_*` del adaptador o `llm_failed`.
+
+    Auditoría: `record_not_sent` escribe `provider_requests.error_code = "transport_not_sent"`.
+    Para un rechazo 4xx sin cargo la petición SÍ se transmitió; ahí ese código del libro significa
+    «rechazado por la API, sin cargo». El motivo real (`llm_http_<estado>[_<tipo>]`) queda en
+    `lead_read_requests.error_code` (lectura) o en el `error_code` de la propuesta.
     """
     with engine.begin() as connection:
         if isinstance(error, ProviderError) and error.not_sent:

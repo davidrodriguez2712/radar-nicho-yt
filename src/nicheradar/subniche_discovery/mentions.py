@@ -236,7 +236,12 @@ async def extract_mentions(
     *,
     client: AnthropicClient | None = None,
 ) -> dict[str, Any]:
-    """Una llamada acotada; cada rechazo lleva un motivo estable y nada se persiste aquí."""
+    """Una llamada acotada; cada rechazo lleva un motivo estable y nada se persiste aquí.
+
+    Un rechazo 4xx de la API libera la reserva con `record_not_sent` (ver `llm_failure`): el
+    `error_code` del libro queda en `transport_not_sent`, que aquí significa «rechazado por la
+    API, sin cargo»; el motivo real `llm_http_*` se guarda en `lead_read_requests.error_code`.
+    """
     configuration, api_key = config.anthropic_vision_configuration, config.anthropic_api_key
     if not config.anthropic_enabled:
         return _declined("llm_disabled")

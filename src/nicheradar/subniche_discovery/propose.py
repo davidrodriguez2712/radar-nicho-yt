@@ -154,7 +154,12 @@ async def propose_hypothesis(
     *,
     client: AnthropicClient | None = None,
 ) -> dict[str, Any]:
-    """One bounded LLM call; every decline carries a stable reason and nothing is persisted."""
+    """One bounded LLM call; every decline carries a stable reason and nothing is persisted.
+
+    An API 4xx rejection releases the reservation via `record_not_sent` (see `llm_failure`): the
+    ledger `error_code` stays `transport_not_sent`, meaning here "rejected by the API, no charge";
+    the real `llm_http_*` reason is what the proposal's `error_code` stores.
+    """
     configuration, api_key = config.anthropic_configuration, config.anthropic_api_key
     if not config.anthropic_enabled:
         return {"proposal": None, "reason": "llm_disabled"}
