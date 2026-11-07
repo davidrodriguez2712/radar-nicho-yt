@@ -281,8 +281,34 @@ def test_http_failure_settles_as_unknown_charge(isolated_engine: Engine) -> None
     out = asyncio.run(
         extract_mentions(isolated_engine, run, vision_settings(), "t", [], LLM_NOW, client=failing)
     )
-    assert out["reason"] == "llm_failed" and out["mentions"] == ()
+    assert out["reason"] == "llm_http_529" and out["mentions"] == ()
     assert ledger(isolated_engine) == (["unknown_charge"], ["unknown_charge"])
+
+
+@pytest.mark.postgres
+def test_rejected_request_releases_the_reservation_and_leaks_no_provider_text(
+    isolated_engine: Engine,
+) -> None:
+    secret_text = "tool_choice: type tool is not supported TEXTO-DEL-PROVEEDOR"
+    body = {"type": "error", "error": {"type": "invalid_request_error", "message": secret_text}}
+    with isolated_engine.begin() as connection:
+        run = seed_run(connection)
+        seed_lead_policies(connection)
+    rejecting = AnthropicClient(
+        SecretStr("x" * 12), transport=httpx.MockTransport(lambda r: httpx.Response(400, json=body))
+    )
+    out = asyncio.run(
+        extract_mentions(
+            isolated_engine, run, vision_settings(), "t", [], LLM_NOW, client=rejecting
+        )
+    )
+    assert out == {
+        "mentions": (),
+        "reason": "llm_http_400_invalid_request_error",
+        "actual_usd": None,
+    }
+    assert "PROVEEDOR" not in repr(out)
+    assert ledger(isolated_engine) == (["released"], ["released"])
 
 
 def test_four_five_megabyte_images_fit_the_body_limit() -> None:

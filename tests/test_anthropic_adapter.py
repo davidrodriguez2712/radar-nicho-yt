@@ -79,14 +79,79 @@ def test_message_sends_headers_and_parses_with_the_given_function() -> None:
     assert seen["headers"]["anthropic-version"] == ANTHROPIC_VERSION
 
 
-def test_non_200_may_have_charged() -> None:
+def _failure(response: httpx.Response) -> ProviderError:
     with pytest.raises(ProviderError) as caught:
         asyncio.run(
-            client(lambda r: httpx.Response(529, json={})).message(
+            client(lambda r: response).message(
                 {"model": "m"}, CONFIGURATION, parse_fn=lambda p, t: p
             )
         )
-    assert caught.value.code == "llm_http_error" and caught.value.may_have_charged
+    return caught.value
+
+
+def _error_json(kind: str, message: str = "texto del proveedor") -> dict[str, Any]:
+    return {"type": "error", "error": {"type": kind, "message": message}}
+
+
+@pytest.mark.parametrize(
+    ("status", "kind", "code"),
+    [
+        (400, "invalid_request_error", "llm_http_400_invalid_request_error"),
+        (401, "authentication_error", "llm_http_401_authentication_error"),
+        (403, "permission_error", "llm_http_403_permission_error"),
+        (404, "not_found_error", "llm_http_404_not_found_error"),
+        (413, "request_too_large", "llm_http_413_request_too_large"),
+    ],
+)
+def test_rejected_statuses_carry_the_closed_code_and_were_not_charged(
+    status: int, kind: str, code: str
+) -> None:
+    error = _failure(httpx.Response(status, json=_error_json(kind)))
+    assert error.code == code
+    assert not error.may_have_charged and error.not_sent
+    assert "proveedor" not in str(error) and "proveedor" not in error.code
+
+
+@pytest.mark.parametrize(
+    ("status", "kind", "code"),
+    [
+        (429, "rate_limit_error", "llm_http_429_rate_limit_error"),
+        (500, "api_error", "llm_http_500_api_error"),
+        (529, "overloaded_error", "llm_http_529_overloaded_error"),
+        (402, "billing_error", "llm_http_402_billing_error"),
+    ],
+)
+def test_other_statuses_keep_the_possible_charge(status: int, kind: str, code: str) -> None:
+    error = _failure(httpx.Response(status, json=_error_json(kind)))
+    assert error.code == code and error.may_have_charged and not error.not_sent
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(400, json=_error_json("inventado_por_el_proveedor")),
+        httpx.Response(400, json={"error": "texto"}),
+        httpx.Response(400, json={"error": {"type": ["invalid_request_error"]}}),
+        httpx.Response(400, content=b"<html>oops</html>"),
+        httpx.Response(400, content=b"[1, 2]"),
+        httpx.Response(400, content=b""),
+    ],
+)
+def test_unknown_or_unparseable_error_types_fall_back_to_the_status(
+    response: httpx.Response,
+) -> None:
+    error = _failure(response)
+    assert error.code == "llm_http_400" and not error.may_have_charged
+
+
+def test_an_unknown_status_is_charged_conservatively() -> None:
+    error = _failure(httpx.Response(418, json=_error_json("api_error")))
+    assert error.code == "llm_http_418_api_error" and error.may_have_charged
+
+
+def test_a_huge_error_body_is_not_read_in_full() -> None:
+    error = _failure(httpx.Response(400, content=b"x" * 5_000_000))
+    assert error.code == "llm_http_400"
 
 
 def test_oversized_request_is_refused_before_any_call() -> None:

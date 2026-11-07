@@ -24,6 +24,7 @@ from nicheradar.integrations.policies import Usage, require_usage
 from nicheradar.services.budget import reserve, settle
 from nicheradar.services.requests import mark_sent, prepare_request
 from nicheradar.subniche_discovery.contracts import _FAMILY, clean_queries
+from nicheradar.subniche_discovery.llm_failure import settle_failed_call
 
 PROMPT_VERSION = "subniche-proposal-v1"
 POLICY_DATA_TYPE = "subniche_hypothesis"
@@ -220,11 +221,10 @@ async def propose_hypothesis(
         )
     except BaseException as error:
         # También la cancelación (asyncio.wait_for): sin esto la reserva queda huérfana.
-        with engine.begin() as connection:
-            settle(connection, request_id, run["profile_id"], None, now)
+        reason = settle_failed_call(engine, request_id, run["profile_id"], error, now)
         if not isinstance(error, Exception):
             raise
-        return {"proposal": None, "reason": "llm_failed"}
+        return {"proposal": None, "reason": reason}
     with engine.begin() as connection:
         settle(
             connection,

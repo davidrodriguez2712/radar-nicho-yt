@@ -270,8 +270,30 @@ def test_http_failure_settles_without_a_proposal(isolated_engine: Engine) -> Non
             isolated_engine, run, enabled_settings(), SOURCE, LABELS, NOW, client=failing
         )
     )
-    assert result == {"proposal": None, "reason": "llm_failed"}
+    assert result == {"proposal": None, "reason": "llm_http_529"}
     assert ledger(isolated_engine) == (["unknown_charge"], ["unknown_charge"])
+
+
+@pytest.mark.postgres
+def test_rejected_request_releases_the_reservation_and_leaks_no_provider_text(
+    isolated_engine: Engine,
+) -> None:
+    secret_text = "tool_choice: type tool is not supported TEXTO-DEL-PROVEEDOR"
+    body = {"type": "error", "error": {"type": "invalid_request_error", "message": secret_text}}
+    with isolated_engine.begin() as connection:
+        run = seed_run(connection)
+        seed_policies(connection)
+    rejecting = AnthropicClient(
+        SecretStr("x" * 12), transport=httpx.MockTransport(lambda r: httpx.Response(400, json=body))
+    )
+    result = asyncio.run(
+        propose_hypothesis(
+            isolated_engine, run, enabled_settings(), SOURCE, LABELS, NOW, client=rejecting
+        )
+    )
+    assert result == {"proposal": None, "reason": "llm_http_400_invalid_request_error"}
+    assert "PROVEEDOR" not in repr(result)
+    assert ledger(isolated_engine) == (["released"], ["released"])
 
 
 @pytest.mark.postgres

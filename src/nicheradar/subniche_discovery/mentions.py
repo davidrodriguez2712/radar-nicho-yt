@@ -26,6 +26,7 @@ from nicheradar.integrations.tweets import ImageData
 from nicheradar.services.budget import reserve, settle
 from nicheradar.services.requests import mark_sent, prepare_request
 from nicheradar.subniche_discovery.inputs import parse_input
+from nicheradar.subniche_discovery.llm_failure import settle_failed_call
 
 MENTIONS_TOOL = "record_channel_mentions"
 PROMPT_VERSION = "lead-mentions-v1"
@@ -303,11 +304,10 @@ async def extract_mentions(
         )
     except BaseException as error:
         # También la cancelación (asyncio.wait_for): sin esto la reserva queda huérfana.
-        with engine.begin() as connection:
-            settle(connection, request_id, run["profile_id"], None, now)
+        reason = settle_failed_call(engine, request_id, run["profile_id"], error, now)
         if not isinstance(error, Exception):
             raise
-        return {"mentions": (), "reason": "llm_failed", "actual_usd": None}
+        return {"mentions": (), "reason": reason, "actual_usd": None}
     with engine.begin() as connection:
         settle(
             connection,
