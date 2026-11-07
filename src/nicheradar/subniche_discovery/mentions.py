@@ -26,6 +26,7 @@ from nicheradar.integrations.tweets import ImageData
 from nicheradar.services.budget import reserve, settle
 from nicheradar.services.requests import mark_sent, prepare_request
 from nicheradar.subniche_discovery.inputs import parse_input
+from nicheradar.subniche_discovery.llm_failure import settle_failed_call
 
 MENTIONS_TOOL = "record_channel_mentions"
 PROMPT_VERSION = "lead-mentions-v1"
@@ -52,7 +53,8 @@ _INSTRUCTIONS = (
     "'name' (a channel name as written, 2 to 60 characters), and found_in 'text' or 'image'. An "
     "@name in the tweet text is an X account: return it only if the text says it is a YouTube "
     "channel. Do not guess, translate or invent channels; return an empty list when none is "
-    "mentioned."
+    "mentioned. You MUST respond ONLY by calling the tool '" + MENTIONS_TOOL + "' with that "
+    "list: no free text, no explanation and no other tool."
 )
 
 Kind = Literal["handle", "channel_id", "video", "name"]
@@ -182,7 +184,7 @@ def mention_request_body(
                 },
             }
         ],
-        "tool_choice": {"type": "tool", "name": MENTIONS_TOOL},
+        "tool_choice": {"type": "auto"},  # el modelo actual rechaza `tool`/`any` (HTTP 400)
     }
 
 
@@ -234,7 +236,12 @@ async def extract_mentions(
     *,
     client: AnthropicClient | None = None,
 ) -> dict[str, Any]:
-    """Una llamada acotada; cada rechazo lleva un motivo estable y nada se persiste aquí."""
+    """Una llamada acotada; cada rechazo lleva un motivo estable y nada se persiste aquí.
+
+    Un rechazo 4xx de la API libera la reserva con `record_not_sent` (ver `llm_failure`): el
+    `error_code` del libro queda en `transport_not_sent`, que aquí significa «rechazado por la
+    API, sin cargo»; el motivo real `llm_http_*` se guarda en `lead_read_requests.error_code`.
+    """
     configuration, api_key = config.anthropic_vision_configuration, config.anthropic_api_key
     if not config.anthropic_enabled:
         return _declined("llm_disabled")
@@ -302,11 +309,10 @@ async def extract_mentions(
         )
     except BaseException as error:
         # También la cancelación (asyncio.wait_for): sin esto la reserva queda huérfana.
-        with engine.begin() as connection:
-            settle(connection, request_id, run["profile_id"], None, now)
+        reason = settle_failed_call(engine, request_id, run["profile_id"], error, now)
         if not isinstance(error, Exception):
             raise
-        return {"mentions": (), "reason": "llm_failed", "actual_usd": None}
+        return {"mentions": (), "reason": reason, "actual_usd": None}
     with engine.begin() as connection:
         settle(
             connection,

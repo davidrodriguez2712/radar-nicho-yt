@@ -53,6 +53,20 @@ TEXTS: dict[str, str] = {
         "inténtalo mañana o usa una consulta manual."
     ),
     "youtube_unreachable": "No se pudo consultar YouTube; vuelve a intentarlo.",
+    "llm_rejected": (
+        "El modelo de lenguaje rechazó la solicitud. "
+        "Revisa la configuración del modelo y el saldo de la cuenta de Anthropic."
+    ),
+    "llm_auth": (
+        "El modelo de lenguaje rechazó la credencial del servidor. Revisa la clave de Anthropic."
+    ),
+    "llm_permission": (
+        "La cuenta del modelo de lenguaje no tiene permiso o saldo para esta solicitud. "
+        "Revisa la cuenta de Anthropic."
+    ),
+    "llm_rate_limited": (
+        "El modelo de lenguaje alcanzó su límite de uso; vuelve a intentarlo más tarde."
+    ),
     **dict.fromkeys(
         (
             "llm_disabled",

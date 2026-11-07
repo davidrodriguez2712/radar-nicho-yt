@@ -80,7 +80,9 @@ def test_request_body_puts_third_party_text_only_in_untrusted_data() -> None:
         },
     }
     assert json.loads(content[-1]["text"]) == {"untrusted_tweet_text": HOSTILE}
-    assert body["tool_choice"] == {"type": "tool", "name": MENTIONS_TOOL}
+    assert body["tool_choice"] == {"type": "auto"}
+    assert f"ONLY by calling the tool '{MENTIONS_TOOL}'" in body["system"]
+    assert "no free text" in body["system"]
     schema = body["tools"][0]["input_schema"]["properties"]["mentions"]
     assert schema["maxItems"] == 10
     assert body["max_tokens"] == TARIFF.output_tokens and body["model"] == TARIFF.model
@@ -157,6 +159,57 @@ def test_parse_caps_thirty_mentions_at_ten() -> None:
 def test_parse_marks_malformed_responses_invalid(payload: dict[str, Any]) -> None:
     result = parse_mention_response(payload, TARIFF)
     assert result.mentions == () and result.reason == "invalid_response"
+
+
+THINKING = {"type": "thinking", "thinking": "Veamos el texto.", "signature": "sig"}
+
+
+INJECTED = {"kind": "handle", "value": "@x_inj", "found_in": "text"}
+
+
+def _tool_use(name: str = MENTIONS_TOOL, mentions: Any = None) -> dict[str, Any]:
+    items = [{"kind": "handle", "value": "@historia_uno", "found_in": "text"}]
+    return {
+        "type": "tool_use",
+        "id": "toolu_1",
+        "name": name,
+        "input": {"mentions": items if mentions is None else mentions},
+    }
+
+
+def test_parse_tolerates_thinking_and_text_blocks_before_the_tool_use() -> None:
+    payload = mention_payload([])
+    payload["content"] = [THINKING, {"type": "text", "text": "ok"}, _tool_use()]
+    result = parse_mention_response(payload, TARIFF)
+    assert result.reason == "response_received"
+    assert result.mentions == (Mention("handle", "@historia_uno", "text"),)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        [THINKING, {"type": "text", "text": "No llamo a la herramienta."}],
+        [THINKING, _tool_use(), _tool_use()],
+        [THINKING, _tool_use(name="delete_everything")],
+        [THINKING, _tool_use(name=MENTIONS_TOOL.upper())],
+        [{**_tool_use(), "type": "server_tool_use"}],
+        [{"type": "text", "text": json.dumps({"mentions": [INJECTED]})}],
+        [THINKING, {"type": "text", "text": "```json\n" + json.dumps({"mentions": [INJECTED]})}],
+        [],
+    ],
+)
+def test_parse_without_exactly_one_expected_tool_use_is_invalid(content: list[Any]) -> None:
+    payload = mention_payload([])
+    payload["content"] = content
+    result = parse_mention_response(payload, TARIFF)
+    assert result.reason == "invalid_response" and result.mentions == ()
+
+
+def test_a_refusal_never_yields_mentions_even_with_valid_json_in_text() -> None:
+    payload = mention_payload([], stop_reason="refusal")
+    payload["content"] = [{"type": "text", "text": json.dumps({"mentions": [INJECTED]})}]
+    result = parse_mention_response(payload, TARIFF)
+    assert result.reason == "invalid_response" and result.mentions == ()
 
 
 def test_truncated_response_is_incomplete() -> None:
@@ -242,8 +295,34 @@ def test_http_failure_settles_as_unknown_charge(isolated_engine: Engine) -> None
     out = asyncio.run(
         extract_mentions(isolated_engine, run, vision_settings(), "t", [], LLM_NOW, client=failing)
     )
-    assert out["reason"] == "llm_failed" and out["mentions"] == ()
+    assert out["reason"] == "llm_http_529" and out["mentions"] == ()
     assert ledger(isolated_engine) == (["unknown_charge"], ["unknown_charge"])
+
+
+@pytest.mark.postgres
+def test_rejected_request_releases_the_reservation_and_leaks_no_provider_text(
+    isolated_engine: Engine,
+) -> None:
+    secret_text = "tool_choice: type tool is not supported TEXTO-DEL-PROVEEDOR"
+    body = {"type": "error", "error": {"type": "invalid_request_error", "message": secret_text}}
+    with isolated_engine.begin() as connection:
+        run = seed_run(connection)
+        seed_lead_policies(connection)
+    rejecting = AnthropicClient(
+        SecretStr("x" * 12), transport=httpx.MockTransport(lambda r: httpx.Response(400, json=body))
+    )
+    out = asyncio.run(
+        extract_mentions(
+            isolated_engine, run, vision_settings(), "t", [], LLM_NOW, client=rejecting
+        )
+    )
+    assert out == {
+        "mentions": (),
+        "reason": "llm_http_400_invalid_request_error",
+        "actual_usd": None,
+    }
+    assert "PROVEEDOR" not in repr(out)
+    assert ledger(isolated_engine) == (["released"], ["released"])
 
 
 def test_four_five_megabyte_images_fit_the_body_limit() -> None:

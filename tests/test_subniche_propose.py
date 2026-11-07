@@ -54,11 +54,13 @@ GOOD = {
 }
 
 
-def test_request_body_forces_the_tool_and_marks_third_party_text() -> None:
+def test_request_body_asks_for_the_tool_and_marks_third_party_text() -> None:
     body = proposal_request_body(SOURCE, LABELS, TARIFF)
     assert body["model"] == TARIFF.model
     assert body["max_tokens"] == TARIFF.output_tokens
-    assert body["tool_choice"] == {"type": "tool", "name": PROPOSAL_TOOL}
+    assert body["tool_choice"] == {"type": "auto"}
+    assert f"ONLY by calling the tool '{PROPOSAL_TOOL}'" in body["system"]
+    assert "no free text" in body["system"]
     schema = body["tools"][0]["input_schema"]
     assert schema["properties"]["parent_niche"]["enum"] == [*LABELS, None]
     content = json.loads(body["messages"][0]["content"])
@@ -89,6 +91,49 @@ def test_parse_valid_proposal_prices_the_call() -> None:
 )
 def test_parse_rejects_anything_outside_the_contract(bad: dict[str, Any]) -> None:
     result = parse_proposal_response(tool_payload(bad), TARIFF, LABELS)
+    assert result.proposal is None and result.reason == "invalid_response"
+
+
+THINKING = {"type": "thinking", "thinking": "Pienso.", "signature": "sig"}
+
+
+def test_parse_tolerates_thinking_and_text_before_the_tool_use() -> None:
+    block = {"type": "tool_use", "id": "toolu_1", "name": PROPOSAL_TOOL, "input": GOOD}
+    payload = tool_payload(GOOD, content=[THINKING, {"type": "text", "text": "ok"}, block])
+    result = parse_proposal_response(payload, TARIFF, LABELS)
+    assert result.reason == "response_received" and result.proposal is not None
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "only_text",
+        "json_in_text",
+        "two_tool_use",
+        "other_name",
+        "upper_name",
+        "server_tool_use",
+    ],
+)
+def test_parse_without_exactly_one_expected_tool_use_is_invalid(kind: str) -> None:
+    block = {"type": "tool_use", "id": "toolu_1", "name": PROPOSAL_TOOL, "input": GOOD}
+    content = {
+        "only_text": [THINKING, {"type": "text", "text": "sin herramienta"}],
+        "json_in_text": [{"type": "text", "text": json.dumps(GOOD)}],
+        "two_tool_use": [THINKING, block, block],
+        "other_name": [THINKING, {**block, "name": "otra"}],
+        "upper_name": [THINKING, {**block, "name": PROPOSAL_TOOL.upper()}],
+        "server_tool_use": [{**block, "type": "server_tool_use"}],
+    }[kind]
+    result = parse_proposal_response(tool_payload(GOOD, content=content), TARIFF, LABELS)
+    assert result.proposal is None and result.reason == "invalid_response"
+
+
+def test_a_refusal_never_yields_a_proposal_even_with_valid_json_in_text() -> None:
+    payload = tool_payload(
+        GOOD, content=[{"type": "text", "text": json.dumps(GOOD)}], stop_reason="refusal"
+    )
+    result = parse_proposal_response(payload, TARIFF, LABELS)
     assert result.proposal is None and result.reason == "invalid_response"
 
 
@@ -246,8 +291,30 @@ def test_http_failure_settles_without_a_proposal(isolated_engine: Engine) -> Non
             isolated_engine, run, enabled_settings(), SOURCE, LABELS, NOW, client=failing
         )
     )
-    assert result == {"proposal": None, "reason": "llm_failed"}
+    assert result == {"proposal": None, "reason": "llm_http_529"}
     assert ledger(isolated_engine) == (["unknown_charge"], ["unknown_charge"])
+
+
+@pytest.mark.postgres
+def test_rejected_request_releases_the_reservation_and_leaks_no_provider_text(
+    isolated_engine: Engine,
+) -> None:
+    secret_text = "tool_choice: type tool is not supported TEXTO-DEL-PROVEEDOR"
+    body = {"type": "error", "error": {"type": "invalid_request_error", "message": secret_text}}
+    with isolated_engine.begin() as connection:
+        run = seed_run(connection)
+        seed_policies(connection)
+    rejecting = AnthropicClient(
+        SecretStr("x" * 12), transport=httpx.MockTransport(lambda r: httpx.Response(400, json=body))
+    )
+    result = asyncio.run(
+        propose_hypothesis(
+            isolated_engine, run, enabled_settings(), SOURCE, LABELS, NOW, client=rejecting
+        )
+    )
+    assert result == {"proposal": None, "reason": "llm_http_400_invalid_request_error"}
+    assert "PROVEEDOR" not in repr(result)
+    assert ledger(isolated_engine) == (["released"], ["released"])
 
 
 @pytest.mark.postgres

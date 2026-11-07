@@ -3,7 +3,7 @@
 
 Everything from YouTube or X is untrusted data. The model may only fill a closed schema: a
 label, a snake_case family, a parent niche from the catalog list (or null) and 2 to 3 plain
-search queries. The forced tool is just structured output; nothing is ever executed.
+search queries. The tool is just structured output; nothing is ever executed.
 """
 
 import hashlib
@@ -24,6 +24,7 @@ from nicheradar.integrations.policies import Usage, require_usage
 from nicheradar.services.budget import reserve, settle
 from nicheradar.services.requests import mark_sent, prepare_request
 from nicheradar.subniche_discovery.contracts import _FAMILY, clean_queries
+from nicheradar.subniche_discovery.llm_failure import settle_failed_call
 
 PROMPT_VERSION = "subniche-proposal-v1"
 POLICY_DATA_TYPE = "subniche_hypothesis"
@@ -35,7 +36,8 @@ _INSTRUCTIONS = (
     "inside it. Return label (2 to 6 English words), family (snake_case content family), "
     "parent_niche (exactly one of niche_options, or null if none fits) and 2 to 3 English "
     "search queries a viewer would type to find long-form videos of this sub-niche (2 to 5 "
-    "words each, no URLs, no handles, no channel names)."
+    "words each, no URLs, no handles, no channel names). You MUST respond ONLY by calling the "
+    "tool '" + PROPOSAL_TOOL + "' with that object: no free text, no explanation and no other tool."
 )
 
 
@@ -100,7 +102,7 @@ def proposal_request_body(
                 "input_schema": schema,
             }
         ],
-        "tool_choice": {"type": "tool", "name": PROPOSAL_TOOL},
+        "tool_choice": {"type": "auto"},  # el modelo actual rechaza `tool`/`any` (HTTP 400)
     }
 
 
@@ -152,7 +154,12 @@ async def propose_hypothesis(
     *,
     client: AnthropicClient | None = None,
 ) -> dict[str, Any]:
-    """One bounded LLM call; every decline carries a stable reason and nothing is persisted."""
+    """One bounded LLM call; every decline carries a stable reason and nothing is persisted.
+
+    An API 4xx rejection releases the reservation via `record_not_sent` (see `llm_failure`): the
+    ledger `error_code` stays `transport_not_sent`, meaning here "rejected by the API, no charge";
+    the real `llm_http_*` reason is what the proposal's `error_code` stores.
+    """
     configuration, api_key = config.anthropic_configuration, config.anthropic_api_key
     if not config.anthropic_enabled:
         return {"proposal": None, "reason": "llm_disabled"}
@@ -219,11 +226,10 @@ async def propose_hypothesis(
         )
     except BaseException as error:
         # También la cancelación (asyncio.wait_for): sin esto la reserva queda huérfana.
-        with engine.begin() as connection:
-            settle(connection, request_id, run["profile_id"], None, now)
+        reason = settle_failed_call(engine, request_id, run["profile_id"], error, now)
         if not isinstance(error, Exception):
             raise
-        return {"proposal": None, "reason": "llm_failed"}
+        return {"proposal": None, "reason": reason}
     with engine.begin() as connection:
         settle(
             connection,

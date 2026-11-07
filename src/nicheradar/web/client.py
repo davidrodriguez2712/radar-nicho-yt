@@ -43,6 +43,20 @@ CODE_MESSAGES: dict[str, str] = {
     "llm_input_too_large": (
         "La entrada es demasiado grande para el modelo; usa una consulta más corta."
     ),
+    "llm_rejected": (
+        "El modelo de lenguaje rechazó la solicitud. "
+        "Revisa la configuración del modelo y el saldo de la cuenta de Anthropic."
+    ),
+    "llm_auth": (
+        "El modelo de lenguaje rechazó la credencial del servidor. Revisa la clave de Anthropic."
+    ),
+    "llm_permission": (
+        "La cuenta del modelo de lenguaje no tiene permiso o saldo para esta solicitud. "
+        "Revisa la cuenta de Anthropic."
+    ),
+    "llm_rate_limited": (
+        "El modelo de lenguaje alcanzó su límite de uso; vuelve a intentarlo más tarde."
+    ),
     "invalid_transition": "Esa hipótesis no puede pasar a ese estado.",
     **dict.fromkeys(
         (

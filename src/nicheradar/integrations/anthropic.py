@@ -21,6 +21,41 @@ ANTHROPIC_VERSION = "2023-06-01"
 
 ParsedResult = TypeVar("ParsedResult")
 
+# Lista cerrada: nunca se copia texto del proveedor a un código, solo el estado y estos tipos.
+ERROR_TYPES = frozenset(
+    {
+        "invalid_request_error",
+        "authentication_error",
+        "permission_error",
+        "not_found_error",
+        "request_too_large",
+        "rate_limit_error",
+        "api_error",
+        "overloaded_error",
+        "billing_error",
+    }
+)
+# Estados con los que la API rechaza la petición sin procesarla: no hay cargo.
+REJECTED_STATUSES = frozenset({400, 401, 403, 404, 413, 422})
+MAX_ERROR_BODY_BYTES = 4096
+
+
+def http_error(status: int, raw: bytes) -> ProviderError:
+    """Código cerrado `llm_http_<estado>[_<tipo>]` a partir de un no-200."""
+    kind: object = None
+    try:
+        payload = json.loads(raw)
+        error = payload.get("error") if isinstance(payload, dict) else None
+        kind = error.get("type") if isinstance(error, dict) else None
+    except ValueError:
+        pass
+    code = f"llm_http_{status}"
+    if isinstance(kind, str) and kind in ERROR_TYPES:
+        code += f"_{kind}"
+    if status in REJECTED_STATUSES:
+        return ProviderError(code, not_sent=True)
+    return ProviderError(code, may_have_charged=True)
+
 
 def anthropic_actual_usd(payload: dict[str, Any], tariff: LLMTariff) -> Decimal | None:
     """Real cost from the response's usage, or None when the billing scope is unverified."""
@@ -83,7 +118,14 @@ class AnthropicClient:
                 content=encoded,
             ) as response:
                 if response.status_code != 200:
-                    raise ProviderError("llm_http_error", may_have_charged=True)
+                    # Solo se lee el comienzo: el cuerpo de error no puede ser grande.
+                    head = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        head.extend(chunk)
+                        if len(head) > MAX_ERROR_BODY_BYTES:
+                            head = bytearray()  # truncado: no es JSON confiable
+                            break
+                    raise http_error(response.status_code, bytes(head))
                 raw = bytearray()
                 async for chunk in response.aiter_bytes():
                     raw.extend(chunk)

@@ -239,6 +239,54 @@ lectura); volver a verificar la tarifa en la página de precios antes de cargarl
 {"auth_scope": "anthropic-owner", "tariff": {"version": "anthropic-sonnet-5-5-vision-2026-11-05", "model": "claude-sonnet-5-5", "source": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-11-05T00:00:00Z", "valid_until": "2027-02-03T00:00:00Z", "context_window_tokens": 24000, "output_tokens": 800, "input_usd_per_million": "2", "cached_input_usd_per_million": "0.10", "output_usd_per_million": "10"}, "limits": {"operation": "100", "run": "1000", "week": "10000", "period": "100000"}, "timeout_seconds": 30}
 ```
 
+### Error HTTP 400 del modelo y `tool_choice` (corregido, 2026-11-06)
+
+**Causa.** Con `claude-sonnet-5-5` la API responde HTTP 400 `invalid_request_error` («tool_choice: type "tool" and "any"
+are not supported for this model») a todo `tool_choice` forzado. La lectura de menciones y la propuesta de hipótesis lo
+usaban: toda lectura con modelo fallaba como `llm_failed` y dejaba una reserva `unknown_charge` (≈ US$0,056 por intento)
+aunque la API rechazó la petición sin procesarla.
+
+**Corrección.**
+
+- Ambas peticiones envían `"tool_choice": {"type": "auto"}`. El `system` (constante, nunca datos del tweet) exige responder
+  SOLO llamando a la herramienta (`record_channel_mentions` o `propose_hypothesis`) con el JSON pedido, sin texto libre.
+  Los parsers ya filtraban por bloques `tool_use` con el nombre esperado: toleran bloques `thinking` o `text` previos, y la
+  falta de un único `tool_use` válido (solo texto, dos, otro nombre) da `invalid_response`, nunca una excepción.
+- El adaptador (`integrations/anthropic.py`) ya no devuelve `llm_http_error`: devuelve `llm_http_<estado>` o
+  `llm_http_<estado>_<tipo>`, donde `<tipo>` es el `error.type` de la respuesta solo si pertenece a la lista cerrada
+  (`invalid_request_error`, `authentication_error`, `permission_error`, `not_found_error`, `request_too_large`,
+  `rate_limit_error`, `api_error`, `overloaded_error`, `billing_error`). Nunca se copia texto del proveedor.
+- **Gasto.** Con 400, 401, 403, 404, 413 y 422 la API rechaza sin procesar: el error sale con `not_sent` y la reserva se
+  **libera** (`services/requests.py::record_not_sent`, estado `released`, error `transport_not_sent`), sin `unknown_charge`.
+  Con 429, 5xx, 402 y cualquier otro estado, y con timeouts o cancelación, sigue `unknown_charge` por el máximo.
+- El motivo (`reason`/`error_code`) es ese código `llm_http_*`. La API lo agrupa en `llm_rejected` (400, 404, 413, 422),
+  `llm_auth` (401), `llm_permission` (402, 403, billing) y `llm_rate_limited` (429); 5xx y el resto caen en el texto de
+  «modelo no disponible» y un `llm_http_*` mal formado en el texto genérico. Textos fijos en `lead_api.LEAD_MESSAGES`,
+  `subniche_api.MESSAGES`, `web/leads.py::TEXTS` y `web/client.py::CODE_MESSAGES`.
+
+**Qué mirar si falla.** (Texto fijo de `llm_rejected`: «El modelo de lenguaje rechazó la solicitud. Revisa la configuración del modelo y el saldo de la cuenta de Anthropic.»)  `error_code` de la lectura o propuesta: `llm_http_400_invalid_request_error` (petición inválida:
+modelo, parámetros, `ANTHROPIC_VERSION`, o saldo de la cuenta de Anthropic), `llm_http_401_*` (clave), `llm_http_403_*` (permiso de la cuenta), `llm_http_429_*`
+(límite), `llm_http_5xx`/`529` (el proveedor falló; el cargo es incierto). Las reservas `unknown_charge` anteriores a esta
+corrección (US$0,056 de la lectura fallida del 2026-11-06) siguen contando contra el tope semanal hasta que el propietario
+decida limpiarlas; no se tocaron en la base.
+
+**Auditoría del libro:** al liberar un rechazo 4xx, `record_not_sent` escribe `provider_requests.error_code = "transport_not_sent"` aunque la petición sí se transmitió; para esos rechazos significa «rechazado por la API, sin cargo». El motivo real (`llm_http_<estado>[_<tipo>]`) está en `lead_read_requests.error_code` (lecturas) o en el `error_code` de la propuesta.
+
+**`max_tokens` y `thinking` (riesgo abierto, sin cambios en la petición).** La respuesta real con `tool_choice` automático
+trae un bloque `thinking` antes del `tool_use`, y el pensamiento consume tokens de salida. Con `output_tokens: 800`
+(`max_tokens`) una imagen difícil podría terminar en `stop_reason: max_tokens` (ya mapeado a `incomplete_response`, que se
+cobra y no da menciones). Según la guía de migración vigente de `claude-sonnet-5-5`, `thinking: {"type": "disabled"}`
+**devuelve 400**: NO se aplica ni debe añadirse. El ajuste más bajo es `thinking: {"type": "between_tools"}` (solo con
+esfuerzo `high` o menor) y el esfuerzo se controla con `output_config: {"effort": "low" | "medium" | "high"}` (por defecto
+`high`). El cuerpo de la petición no lleva `thinking` ni `output_config`: no se verificó nada contra la API real.
+Recomendación, tras la primera lectura real y revisando su `usage`: (1) probar `output_config: {"effort": "low"}` (lo menos
+arriesgado); (2) si hace falta, subir `output_tokens` de `NR_ANTHROPIC_VISION_CONFIGURATION` a 2000 (el contrato admite 128 a
+2048; la reserva sube a ≈ US$0,068). Matiz: con esfuerzo `high` y `timeout_seconds` ≤ 30 pueden aparecer timeouts
+(`unknown_charge` por el máximo), por eso conviene bajar el esfuerzo antes que solo subir `max_tokens`.
+
+**Mejoras a probar tras la primera lectura real (no aplicadas, no verificadas con este modelo):** `strict: true` en la
+herramienta y `disable_parallel_tool_use: true` en `tool_choice`.
+
 ### Qué necesita producción (no ejecutado)
 
 1. Release con aprobación del propietario: migración `0023` **primero** (aditiva: `lead_read_requests`, `lead_candidates` y dos
@@ -383,7 +431,7 @@ Ejemplo **validado** con `LLMConfiguration.model_validate_json` (reserva por pro
 - Cabecera `anthropic-version: 2023-06-01` (versión estable documentada; el SDK más nuevo envía
   2026-10-21). **Si la primera llamada real devuelve un error HTTP, revisar primero la constante
   `ANTHROPIC_VERSION` en `src/nicheradar/integrations/anthropic.py`.**
-- **Cada `llm_http_error` / `llm_invalid_response` deja una reserva `unknown_charge` por el máximo de la propuesta**
+- **Cada `llm_invalid_response`, 429 o 5xx deja una reserva `unknown_charge` (los rechazos 400, 401, 403, 404, 413 y 422 la liberan; ver «Error HTTP 400 del modelo») por el máximo de la propuesta**
   (US$0,04 con la tarifa documentada), que cuenta como pasivo sin límite de período hasta conciliarse. Por eso
   intentos repetidos de `add` que fallan (p. ej. depurando la cabecera de versión) consumen el tope semanal en
   dólares del perfil (US$5/semana) hasta que alguien concilie. Es el mismo comportamiento que el adaptador de OpenAI.
