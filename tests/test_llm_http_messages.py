@@ -49,7 +49,8 @@ def test_every_map_has_a_clear_text_per_category_and_they_mirror() -> None:
         assert MESSAGES[code] != MESSAGES["llm_failed"]
         assert LEAD_MESSAGES[code] != LEAD_MESSAGES["llm_failed"]
     assert MESSAGES["llm_rejected"] == (
-        "El modelo de lenguaje rechazó la solicitud. Revisa la configuración del modelo."
+        "El modelo de lenguaje rechazó la solicitud. "
+        "Revisa la configuración del modelo y el saldo de la cuenta de Anthropic."
     )
 
 

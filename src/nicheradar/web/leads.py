@@ -54,7 +54,8 @@ TEXTS: dict[str, str] = {
     ),
     "youtube_unreachable": "No se pudo consultar YouTube; vuelve a intentarlo.",
     "llm_rejected": (
-        "El modelo de lenguaje rechazó la solicitud. Revisa la configuración del modelo."
+        "El modelo de lenguaje rechazó la solicitud. "
+        "Revisa la configuración del modelo y el saldo de la cuenta de Anthropic."
     ),
     "llm_auth": (
         "El modelo de lenguaje rechazó la credencial del servidor. Revisa la clave de Anthropic."
