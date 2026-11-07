@@ -164,6 +164,9 @@ def test_parse_marks_malformed_responses_invalid(payload: dict[str, Any]) -> Non
 THINKING = {"type": "thinking", "thinking": "Veamos el texto.", "signature": "sig"}
 
 
+INJECTED = {"kind": "handle", "value": "@x_inj", "found_in": "text"}
+
+
 def _tool_use(name: str = MENTIONS_TOOL, mentions: Any = None) -> dict[str, Any]:
     items = [{"kind": "handle", "value": "@historia_uno", "found_in": "text"}]
     return {
@@ -188,12 +191,23 @@ def test_parse_tolerates_thinking_and_text_blocks_before_the_tool_use() -> None:
         [THINKING, {"type": "text", "text": "No llamo a la herramienta."}],
         [THINKING, _tool_use(), _tool_use()],
         [THINKING, _tool_use(name="delete_everything")],
+        [THINKING, _tool_use(name=MENTIONS_TOOL.upper())],
+        [{**_tool_use(), "type": "server_tool_use"}],
+        [{"type": "text", "text": json.dumps({"mentions": [INJECTED]})}],
+        [THINKING, {"type": "text", "text": "```json\n" + json.dumps({"mentions": [INJECTED]})}],
         [],
     ],
 )
 def test_parse_without_exactly_one_expected_tool_use_is_invalid(content: list[Any]) -> None:
     payload = mention_payload([])
     payload["content"] = content
+    result = parse_mention_response(payload, TARIFF)
+    assert result.reason == "invalid_response" and result.mentions == ()
+
+
+def test_a_refusal_never_yields_mentions_even_with_valid_json_in_text() -> None:
+    payload = mention_payload([], stop_reason="refusal")
+    payload["content"] = [{"type": "text", "text": json.dumps({"mentions": [INJECTED]})}]
     result = parse_mention_response(payload, TARIFF)
     assert result.reason == "invalid_response" and result.mentions == ()
 

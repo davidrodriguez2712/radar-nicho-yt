@@ -104,15 +104,36 @@ def test_parse_tolerates_thinking_and_text_before_the_tool_use() -> None:
     assert result.reason == "response_received" and result.proposal is not None
 
 
-@pytest.mark.parametrize("kind", ["only_text", "two_tool_use", "other_name"])
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "only_text",
+        "json_in_text",
+        "two_tool_use",
+        "other_name",
+        "upper_name",
+        "server_tool_use",
+    ],
+)
 def test_parse_without_exactly_one_expected_tool_use_is_invalid(kind: str) -> None:
     block = {"type": "tool_use", "id": "toolu_1", "name": PROPOSAL_TOOL, "input": GOOD}
     content = {
         "only_text": [THINKING, {"type": "text", "text": "sin herramienta"}],
+        "json_in_text": [{"type": "text", "text": json.dumps(GOOD)}],
         "two_tool_use": [THINKING, block, block],
         "other_name": [THINKING, {**block, "name": "otra"}],
+        "upper_name": [THINKING, {**block, "name": PROPOSAL_TOOL.upper()}],
+        "server_tool_use": [{**block, "type": "server_tool_use"}],
     }[kind]
     result = parse_proposal_response(tool_payload(GOOD, content=content), TARIFF, LABELS)
+    assert result.proposal is None and result.reason == "invalid_response"
+
+
+def test_a_refusal_never_yields_a_proposal_even_with_valid_json_in_text() -> None:
+    payload = tool_payload(
+        GOOD, content=[{"type": "text", "text": json.dumps(GOOD)}], stop_reason="refusal"
+    )
+    result = parse_proposal_response(payload, TARIFF, LABELS)
     assert result.proposal is None and result.reason == "invalid_response"
 
 
