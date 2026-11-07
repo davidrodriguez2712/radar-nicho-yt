@@ -133,6 +133,9 @@ const followupsDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:93832
 const xapiBackend = 'davidrodriguez2712/nicheradar-backend@sha256:56ce6355ac7a1c3cbb767d93a7a9d415d6b10c1c011ea2a3265c5b1ba41875e4';
 const xapiWorker = 'davidrodriguez2712/nicheradar-worker@sha256:2d7c57c61215673f61b6648e4dea80fc2d6daada1ddef053001a3a0c962f2819';
 const xapiDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:a1868f538dc8c48706971ab1135d8816045e74c33b023b8816ae14875d7facef';
+const toolChoiceBackend = 'davidrodriguez2712/nicheradar-backend@sha256:401b8d3e2fc19d40ce4378b71b9fb4657875a35c216b3b203795a33bc38379f5';
+const toolChoiceWorker = 'davidrodriguez2712/nicheradar-worker@sha256:66a767540aa6ed8bf6a82e396c1b001bb1c30adc0088cbcfffd5a5312344a051';
+const toolChoiceDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:f6803dddc8e4349308d357514769e382ced6b0227e9a0bed81ff58e8ebb36a30';
 function requireLeadsDigests() {
   if([leadsBackend,leadsWorker,leadsDashboard].some(image=>image.endsWith(PENDING_DIGEST)))
     throw new Error('Release 037 digests are not set; publish the images and fill them in first');
@@ -866,6 +869,27 @@ try {
     if(after.source?.image!==image) throw new Error('Image setting not persisted');
     cli(['app','deploy',`${project}/${name}`,'--yes']);
     console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='deploy-toolchoice-code') {
+    // Release 041: tool_choice automático (el modelo rechazaba el forzado), códigos llm_http_* y reserva liberada en rechazos
+    // sin cargo. Sin migración. Uso: deploy-toolchoice-code <app>.
+    const name=process.argv[3];
+    if(!names.slice(1).includes(name)) throw new Error('Only NicheRadar apps can be updated');
+    const isDashboard=name==='nicheradar-dashboard';
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    const expected=isDashboard?xapiDashboard:name==='nicheradar-worker'?xapiWorker:xapiBackend;
+    if(before.source?.image!==expected || before.ports?.length || before.deploy?.replicas!==1 ||
+       before.resources?.memoryLimit!==512 || (!isDashboard && (env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')))
+      throw new Error('Tool choice release preconditions failed');
+    const image=isDashboard?toolChoiceDashboard:name==='nicheradar-worker'?toolChoiceWorker:toolChoiceBackend;
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==image) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image,deployRequested:true}));
   } else if(action==='deploy-xapi-code') {
     // Release 040: lector de tweets con la API oficial de X (NR_TWEET_READER, NR_X_API_BEARER_TOKEN) y 403 de FxTwitter como
     // reader_blocked. Sin migración. Uso: deploy-xapi-code <app>. Las variables del worker las carga el propietario en Easypanel.
