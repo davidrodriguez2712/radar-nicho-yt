@@ -72,6 +72,25 @@ def test_fetch_rejects_a_package_whose_hash_does_not_match(
     assert status == "autorizado"  # no se confirmó la entrega de un paquete dudoso
 
 
+def test_fetch_does_not_keep_a_package_whose_delivery_was_refused(
+    isolated_engine: Engine, tmp_path: Path
+) -> None:
+    api, pilot_id, token = launched(isolated_engine, target_channel=None)
+    real = adapter(api, token)
+
+    def busy(method: str, path: str, body: Any = None) -> tuple[int, Any]:
+        if path.endswith("/delivery"):
+            return 409, {"detail": {"code": "channel_busy"}}
+        return real(method, path, body)
+
+    canal = tmp_path / CHANNEL
+    canal.mkdir()
+    lines: list[str] = []
+    assert sync.fetch(busy, canal, CHANNEL, lines.append) == 1
+    assert not (canal / ".nicheradar" / "inbox" / f"{pilot_id}.json").exists()
+    assert "channel_busy" in lines[0]
+
+
 def test_fetch_reports_a_bad_token_instead_of_crashing(
     isolated_engine: Engine, tmp_path: Path
 ) -> None:
