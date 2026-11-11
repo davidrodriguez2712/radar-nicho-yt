@@ -218,6 +218,7 @@ un piloto acotado separado antes de dejar la programación activa.
 
 - `[INICIO]` [`README.md`](README.md): visión general, desarrollo, pruebas e índice corto.
 - `[PILOTOS]` [`docs/pilots.md`](docs/pilots.md) y [`docs/ecosistema-youtube.md`](docs/ecosistema-youtube.md): pilotos de canal, contratos en `docs/contracts/`.
+- `[CANAL-NUEVO]` [`docs/kit-identidad-canal.md`](docs/kit-identidad-canal.md): todo lo que un canal nuevo necesita; el agente entrega el kit completo (nombre, handle, logo, banner, textos, voz, loops) en la carpeta del canal antes de que el propietario lo cree.
 - `[AGENTES]` [`AGENTS.md`](AGENTS.md): contexto y reglas para continuar el proyecto.
 - `[ESTADO-ACTUAL]` [`docs/implementation-status.md`](docs/implementation-status.md):
   inventario de lo implementado, evidencia y pendientes.

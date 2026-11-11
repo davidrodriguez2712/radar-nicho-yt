@@ -31,13 +31,18 @@ _CANAL_HISTORIAS: dict[str, str] = {
     "FALLO_QA": "blocked",
 }
 
-# `canal-speedrun-ledger` copia la máquina de estados de `canal-historias` (receta del foundry),
-# así que su tabla es la misma. Si el canal cambia su vocabulario, se separa aquí con una prueba.
+# Estos canales copian la máquina de estados de `canal-historias` (receta del foundry), así que
+# su tabla es la misma. Si un canal cambia su vocabulario, se separa aquí con una prueba.
+_COPIED_FROM_CANAL_HISTORIAS = (
+    "canal-speedrun-ledger",
+    "canal-testedoftime",
+    "canal-prehistoric-creatures",
+)
 TABLES: dict[str, dict[str, str]] = {
     "canal-historias": _CANAL_HISTORIAS,
-    "canal-speedrun-ledger": _CANAL_HISTORIAS,
+    **{channel: _CANAL_HISTORIAS for channel in _COPIED_FROM_CANAL_HISTORIAS},
 }
-PUBLISHED_STATE = {"canal-historias": "PUBLICADO", "canal-speedrun-ledger": "PUBLICADO"}
+PUBLISHED_STATE = {channel: "PUBLICADO" for channel in TABLES}
 
 
 def translate(channel_id: str, source_state: str, visibility: str) -> str:
