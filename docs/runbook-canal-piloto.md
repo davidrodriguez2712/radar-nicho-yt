@@ -35,6 +35,14 @@ uv run python scripts/youtube_oauth.py check          # debe informar data_api_o
 
 Con el token solo de lectura, `check` muestra `upload_scope: false`: es lo esperado hasta el paso 2 de tu parte.
 
+## Fase 0.5: kit de identidad (canal nuevo)
+
+Si el canal no existe todavía, el agente prepara **antes** de que el propietario lo cree todo lo que el canal
+necesita: nombre y handle libres, descripción, palabras clave, logo, banner, ajustes de Studio, logo del video,
+voz del narrador y biblioteca de loops, más `GUIA-CREAR-CANAL.md` rellenada en la carpeta del canal. Inventario y
+especificaciones: [`kit-identidad-canal.md`](kit-identidad-canal.md). Si el piloto usa un canal existente, solo
+se preparan las piezas de producción (logo del video, voz y loops).
+
 ## Fase 1: conectar el canal a NicheRadar
 
 1. **Carpeta del canal** (agente): crearla con el comando del Foundry (`DEC-YT-0006`, `DEC-CORE-0023`):
