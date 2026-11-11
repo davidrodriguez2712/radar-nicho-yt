@@ -35,7 +35,7 @@ piloto autorizado (NicheRadar)
 | 1.1 | Nombre del canal | Inglés, corto, dice el tema; no tiene que ser único | Agente (3 opciones, 1 recomendada) | `GUIA-CREAR-CANAL.md` |
 | 1.2 | Handle | Debe estar libre: `https://www.youtube.com/@<handle>` responde 404. Comprobarlo el mismo día; puede ocuparse | Agente | `GUIA-CREAR-CANAL.md` |
 | 1.3 | Descripción | Inglés, máx. 1.000 caracteres; qué se ve, cada cuánto y por qué verlo; sin promesas falsas | Agente | `kit-canal/descripcion.txt` |
-| 1.4 | Palabras clave | Inglés, separadas por espacios, frases entre comillas | Agente | `kit-canal/palabras-clave.txt` |
+| 1.4 | Palabras clave | Inglés, separadas por comas (`dinosaur documentary, paleontology, ice age`), sin comillas: así las pidió el propietario el 2026-11-10 | Agente | `kit-canal/palabras-clave.txt` |
 | 1.5 | Ajustes de Studio | País, idioma, audiencia (no para niños), categoría, valores de carga, divulgación de contenido sintético | Agente (valores exactos) | `GUIA-CREAR-CANAL.md` |
 | 2.1 | Logo | PNG cuadrado de 800×800; se ve a 98×98 y recortado en círculo; JPG/PNG/BMP/GIF sin animar, ≤15 MB; sin texto pequeño | Agente (generado en local) | `kit-canal/logo.png` |
 | 2.2 | Banner | 2560×1440 recomendado (mín. 2048×1152, 16:9). Texto y logo solo en la zona segura central: 1235×338 a 2048 de ancho (1544×423 a 2560). ≤6 MB | Agente | `kit-canal/banner.png` |
