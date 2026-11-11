@@ -136,6 +136,7 @@ const xapiDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:a1868f538d
 const toolChoiceBackend = 'davidrodriguez2712/nicheradar-backend@sha256:401b8d3e2fc19d40ce4378b71b9fb4657875a35c216b3b203795a33bc38379f5';
 const toolChoiceWorker = 'davidrodriguez2712/nicheradar-worker@sha256:66a767540aa6ed8bf6a82e396c1b001bb1c30adc0088cbcfffd5a5312344a051';
 const toolChoiceDashboard = 'davidrodriguez2712/nicheradar-dashboard@sha256:f6803dddc8e4349308d357514769e382ced6b0227e9a0bed81ff58e8ebb36a30';
+const channelsBackend = 'davidrodriguez2712/nicheradar-backend@sha256:73408d0e1accc8c962ae9bea31d5c1b1ca619c7c0d393a268c310cbd431f4745';
 function requireLeadsDigests() {
   if([leadsBackend,leadsWorker,leadsDashboard].some(image=>image.endsWith(PENDING_DIGEST)))
     throw new Error('Release 037 digests are not set; publish the images and fill them in first');
@@ -869,6 +870,24 @@ try {
     if(after.source?.image!==image) throw new Error('Image setting not persisted');
     cli(['app','deploy',`${project}/${name}`,'--yes']);
     console.log(JSON.stringify({name,image,deployRequested:true,mode:'live',paused:true}));
+  } else if(action==='deploy-channels-code') {
+    // Release 042: canal-testedoftime y canal-prehistoric-creatures en la tabla de estados de pilotos. Solo la API, sobre
+    // la 041 desplegada (la imagen incluye su código). Sin migración ni variables. Uso: deploy-channels-code nicheradar-api.
+    const name=process.argv[3];
+    if(name!=='nicheradar-api') throw new Error('Release 042 only updates nicheradar-api');
+    const before=cli(['app','inspect',`${project}/${name}`]);
+    const env=appEnv(name);
+    if(before.source?.image!==toolChoiceBackend || before.ports?.length || before.deploy?.replicas!==1 ||
+       before.resources?.memoryLimit!==512 || env.NR_MODE!=='live' || env.NR_RADAR_PAUSED!=='true')
+      throw new Error('Channels release preconditions failed');
+    cli(['app','update-source-image',`${project}/${name}`,'--yes'],{image:channelsBackend});
+    const after=cli(['app','inspect',`${project}/${name}`]);
+    for(const field of ['env','resources','deploy','ports','mounts','basicAuth']) {
+      if(JSON.stringify(before[field])!==JSON.stringify(after[field])) throw new Error('Unexpected configuration change; deployment not requested');
+    }
+    if(after.source?.image!==channelsBackend) throw new Error('Image setting not persisted');
+    cli(['app','deploy',`${project}/${name}`,'--yes']);
+    console.log(JSON.stringify({name,image:channelsBackend,deployRequested:true}));
   } else if(action==='deploy-toolchoice-code') {
     // Release 041: tool_choice automático (el modelo rechazaba el forzado), códigos llm_http_* y reserva liberada en rechazos
     // sin cargo. Sin migración. Uso: deploy-toolchoice-code <app>.
