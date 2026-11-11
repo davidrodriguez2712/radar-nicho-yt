@@ -43,14 +43,16 @@ piloto autorizado (NicheRadar)
 | 3.1 | Logo del video | El pipeline lo superpone en el video (`RUTA_LOGO_REL`) | Agente | `datos/logo/channels4_profile.jpg` y `_circular.png` |
 | 3.2 | Voz del narrador | `referencia.wav` de 5 a 15 s + `referencia.txt` con el texto exacto; la clona Qwen3-TTS (`TTS_LOCAL_*`). Voz propia del canal, diseñada con Qwen3-TTS VoiceDesign (Apache 2.0); no se reutiliza la de otro canal | Agente | `datos/voz_narrador/` |
 | 3.3 | Biblioteca de loops | Clips de fondo de 8 s, 1920×1080, 30 fps, H.264, sin audio, con `manifiesto.json` (`archivo`, `categoria`). Con 2-3 segmentos por video y ventana de 12 videos, conviene ≥24 clips en ≥4 categorías. Hechos con imágenes locales y paneo que vuelve al inicio (sin salto al repetir) | Agente | `datos/assets/loops/` |
-| 3.4 | Fuentes tipográficas | Licencia OFL, copiadas con el pipeline | (copiadas) | `assets/fonts/` |
+| 3.4 | Onda de audio | `onda_audio.mp4` (720×1280, 10 s), superpuesta en el video (`RUTA_ONDA_AUDIO_REL`). Genérica: se copia de `canal-historias` | Agente | `datos/assets/overlays/` |
+| 3.5 | Fuentes tipográficas | Licencia OFL, copiadas con el pipeline | (copiadas) | `assets/fonts/` |
 | 4 | Cuenta, canal y teléfono | Cuenta de Google dedicada con verificación en dos pasos; canal; verificación del teléfono (videos de más de 15 min) | **Propietario** | — |
 | 5 | OAuth de YouTube | Reutilizar el proyecto de Google Cloud ya publicado; autorizar con la cuenta dueña del canal ([guía](guia-oauth-youtube-permanente.md)) | **Propietario** | `credentials/` del canal (0600) |
 | 6 | Conexión con NicheRadar | Canal en `pilots/translation.py` + despliegue de la API; token del canal; `channel_sync.py fetch` | Agente (con aprobación) | Producción y `.nicheradar/inbox/` |
-| 7 | Derechos y adaptación | `rights_cleared` en `ok`; prompts, estilos y receta adaptados al nicho | Agente | Repo del canal |
+| 7 | Derechos y adaptación | `rights_cleared` en `ok`; prompts, estilos y receta adaptados al nicho. Lo heredado de `canal-historias` que es de su nicho: `scripts/nicho.yaml`, `scripts/competidores.yaml` y sus CSV (inteligencia de competidores), `datos/assets/rostros/` (rostros de miniaturas) y la prueba `tests/test_loops.py`, que fija categorías y número de loops de la biblioteca | Agente | Repo del canal |
 
-Las piezas 3.1 a 3.3 no son opcionales: sin ellas fallan el ensamblado y sus pruebas
-(`tests/test_ensamblar.py`, `test_loops.py`, `test_voz_narrador_asset.py`).
+Las piezas 3.1 a 3.4 no son opcionales: sin ellas fallan el ensamblado y sus pruebas
+(`tests/test_ensamblar.py`, `test_etapa_ensamblado.py`, `test_loops.py`, `test_voz_narrador_asset.py`).
+El kit está completo cuando la suite del canal pasa entera.
 
 ## Cómo se genera (sin gasto)
 
@@ -58,7 +60,7 @@ Las piezas 3.1 a 3.3 no son opcionales: sin ellas fallan el ensamblado y sus pru
   lo dibuja el modelo: se compone con Pillow y las fuentes OFL de `assets/fonts/`.
 - **Voz**: `Qwen3TTSModel.generate_voice_design` con `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign` y una descripción
   del narrador; el resultado es la referencia que luego clona el modelo `Base`.
-- **Loops**: `ffmpeg` sobre cada imagen: escala a 2112×1188 y recorte 1920×1080 que se desplaza con
+- **Loops**: `scripts/crear_loops_desde_imagenes.py` del canal (`ffmpeg` sobre cada imagen `<categoria>_<n>.png`, escribe también `manifiesto.json`): escala a 2112×1188 y recorte 1920×1080 que se desplaza con
   `(1-cos(2πt/8))/2`, así el último fotograma coincide con el primero.
 
 ## Fuentes
