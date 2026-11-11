@@ -8,6 +8,10 @@ manda lo que veas en pantalla.
 
 **Plazo:** el paquete del piloto vence el **2026-11-09**. Los pasos 1 a 5 se hacen en una tarde.
 
+> **Desde el 2026-11-10 el agente entrega el kit listo** en la carpeta del canal (`GUIA-CREAR-CANAL.md` y
+> `kit-canal/`: nombre, handle, textos, logo, banner y ajustes). Esta guía queda como referencia general; usa la
+> del canal. Inventario: [`kit-identidad-canal.md`](kit-identidad-canal.md).
+
 ## 1. Cuenta de Google del canal
 
 1. Usa una cuenta de Google **dedicada** al canal (no la personal). Crear una: <https://accounts.google.com/signup>.

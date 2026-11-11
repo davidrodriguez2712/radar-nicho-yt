@@ -17,6 +17,8 @@ se marca como `(existe)`.
 > todo lo que no exige identidad ni un clic interactivo, incluida la subida por API. El reparto, las
 > compuertas y los criterios están en [`contracts/channel-onboarding-v1.md`](contracts/channel-onboarding-v1.md) y
 > los pasos en [`runbook-canal-piloto.md`](runbook-canal-piloto.md). Primer caso: `canal-speedrun-ledger`.
+> Todo lo que un canal nuevo necesita (nombre, handle, logo, banner, textos, voz, loops) lo prepara el agente
+> antes de crear el canal: [`kit-identidad-canal.md`](kit-identidad-canal.md).
 
 Reglas del core de foundries que se respetan: un canal es un proyecto (repo propio, claves y base
 de datos propias); un proyecto referencia al foundry por `nombre@versión` y nunca copia sus

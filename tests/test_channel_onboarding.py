@@ -1,4 +1,6 @@
-"""Onboarding de `canal-speedrun-ledger`: su tabla de estados copia la de `canal-historias`."""
+"""Onboarding de los canales que copian el pipeline de `canal-historias` y su tabla de estados."""
+
+import pytest
 
 from nicheradar.pilots.translation import PUBLISHED_STATE, TABLES, translate
 
@@ -21,25 +23,29 @@ CHANNEL_STATE_MACHINE = (
     "BLOQUEADO_POLITICA",
     "FALLO_QA",
 )
-CHANNEL = "canal-speedrun-ledger"
+# Canales cuyo pipeline es copia de `canal-historias` (receta faceless-storytelling).
+COPIED_CHANNELS = ("canal-speedrun-ledger", "canal-testedoftime", "canal-prehistoric-creatures")
 
 
-def test_every_state_of_the_copied_state_machine_has_a_stage() -> None:
+@pytest.mark.parametrize("channel", COPIED_CHANNELS)
+def test_every_state_of_the_copied_state_machine_has_a_stage(channel: str) -> None:
     for state in CHANNEL_STATE_MACHINE:
         for visibility in ("public", "private"):
-            assert translate(CHANNEL, state, visibility) != "unknown", state
-            assert translate(CHANNEL, state, visibility) == translate(
+            assert translate(channel, state, visibility) != "unknown", state
+            assert translate(channel, state, visibility) == translate(
                 "canal-historias", state, visibility
             )
 
 
-def test_the_published_state_depends_on_visibility_and_is_never_guessed() -> None:
-    assert translate(CHANNEL, "PUBLICADO", "public") == "published"
-    assert translate(CHANNEL, "PUBLICADO", "private") == "uploaded"
-    assert translate(CHANNEL, "PUBLICADO", "unknown") == "unknown"
-    assert translate(CHANNEL, "ESTADO_NUEVO", "public") == "unknown"
+@pytest.mark.parametrize("channel", COPIED_CHANNELS)
+def test_the_published_state_depends_on_visibility_and_is_never_guessed(channel: str) -> None:
+    assert translate(channel, "PUBLICADO", "public") == "published"
+    assert translate(channel, "PUBLICADO", "private") == "uploaded"
+    assert translate(channel, "PUBLICADO", "unknown") == "unknown"
+    assert translate(channel, "ESTADO_NUEVO", "public") == "unknown"
 
 
-def test_the_channel_table_and_its_published_state_are_registered_together() -> None:
-    assert CHANNEL in TABLES and PUBLISHED_STATE[CHANNEL] == "PUBLICADO"
-    assert set(TABLES[CHANNEL]) | {PUBLISHED_STATE[CHANNEL]} == set(CHANNEL_STATE_MACHINE)
+@pytest.mark.parametrize("channel", COPIED_CHANNELS)
+def test_the_channel_table_and_its_published_state_are_registered_together(channel: str) -> None:
+    assert channel in TABLES and PUBLISHED_STATE[channel] == "PUBLICADO"
+    assert set(TABLES[channel]) | {PUBLISHED_STATE[channel]} == set(CHANNEL_STATE_MACHINE)
