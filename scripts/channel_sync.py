@@ -133,15 +133,22 @@ def fetch(
             failures += 1
             continue
         target = inbox / f"{pilot_id}.json"
-        if (
-            not target.exists()
-            or json.loads(target.read_text("utf-8")).get("package_sha256") != digest
-        ):
+        previous = target.read_bytes() if target.exists() else None
+        if previous is None or json.loads(previous).get("package_sha256") != digest:
             _atomic_write(target, package)
         sent = {"channel_id": channel_id, "package_sha256": digest}
         status, answer = http("POST", f"/api/v1/pilots/{pilot_id}/delivery", sent)
         if status != 200:
-            out(f"{pilot_id}: sin confirmar entrega (HTTP {status}: {_detail(answer)})")
+            # La API no lo entregó a este canal (p. ej. 409 channel_busy): el paquete no es
+            # suyo, así que no se queda en inbox/; se restaura lo que hubiera antes.
+            if previous is None:
+                target.unlink(missing_ok=True)
+            else:
+                target.write_bytes(previous)
+            out(
+                f"{pilot_id}: sin confirmar entrega (HTTP {status}: {_detail(answer)}); "
+                "no se guarda"
+            )
             failures += 1
             continue
         out(f"{pilot_id}: entregado y guardado en .nicheradar/inbox/")
