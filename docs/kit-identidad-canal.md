@@ -35,7 +35,7 @@ piloto autorizado (NicheRadar)
 | 1.1 | Nombre del canal | Inglés, corto, dice el tema; no tiene que ser único | Agente (3 opciones, 1 recomendada) | `GUIA-CREAR-CANAL.md` |
 | 1.2 | Handle | Debe estar libre: `https://www.youtube.com/@<handle>` responde 404. Comprobarlo el mismo día; puede ocuparse | Agente | `GUIA-CREAR-CANAL.md` |
 | 1.3 | Descripción | Inglés, máx. 1.000 caracteres; qué se ve, cada cuánto y por qué verlo; sin promesas falsas | Agente | `kit-canal/descripcion.txt` |
-| 1.4 | Palabras clave | Inglés, separadas por espacios, frases entre comillas | Agente | `kit-canal/palabras-clave.txt` |
+| 1.4 | Palabras clave | Inglés, separadas por comas (`dinosaur documentary, paleontology, ice age`), sin comillas: así las pidió el propietario el 2026-11-10 | Agente | `kit-canal/palabras-clave.txt` |
 | 1.5 | Ajustes de Studio | País, idioma, audiencia (no para niños), categoría, valores de carga, divulgación de contenido sintético | Agente (valores exactos) | `GUIA-CREAR-CANAL.md` |
 | 2.1 | Logo | PNG cuadrado de 800×800; se ve a 98×98 y recortado en círculo; JPG/PNG/BMP/GIF sin animar, ≤15 MB; sin texto pequeño | Agente (generado en local) | `kit-canal/logo.png` |
 | 2.2 | Banner | 2560×1440 recomendado (mín. 2048×1152, 16:9). Texto y logo solo en la zona segura central: 1235×338 a 2048 de ancho (1544×423 a 2560). ≤6 MB | Agente | `kit-canal/banner.png` |
@@ -43,7 +43,7 @@ piloto autorizado (NicheRadar)
 | 3.1 | Logo del video | El pipeline lo superpone en el video (`RUTA_LOGO_REL`) | Agente | `datos/logo/channels4_profile.jpg` y `_circular.png` |
 | 3.2 | Voz del narrador | `referencia.wav` de 5 a 15 s + `referencia.txt` con el texto exacto; la clona Qwen3-TTS (`TTS_LOCAL_*`). Voz propia del canal, diseñada con Qwen3-TTS VoiceDesign (Apache 2.0); no se reutiliza la de otro canal | Agente | `datos/voz_narrador/` |
 | 3.3 | Biblioteca de loops | Clips de fondo de 8 s, 1920×1080, 30 fps, H.264, sin audio, con `manifiesto.json` (`archivo`, `categoria`). Con 2-3 segmentos por video y ventana de 12 videos, conviene ≥24 clips en ≥4 categorías. Hechos con imágenes locales y paneo que vuelve al inicio (sin salto al repetir) | Agente | `datos/assets/loops/` |
-| 3.4 | Onda de audio | `onda_audio.mp4` (720×1280, 10 s), superpuesta en el video (`RUTA_ONDA_AUDIO_REL`). Genérica: se copia de `canal-historias` | Agente | `datos/assets/overlays/` |
+| 3.4 | Onda de audio | `onda_audio.mp4` (720×1280, 10 s), superpuesta en el video (`RUTA_ONDA_AUDIO_REL`). Se genera en local con `scripts/generar_onda_audio.py` (está en `canal-prehistoric-creatures`; salida propia). No copiar la de `canal-historias`: se hizo con Veo y sus términos no están verificados | Agente | `datos/assets/overlays/` |
 | 3.5 | Fuentes tipográficas | Licencia OFL, copiadas con el pipeline | (copiadas) | `assets/fonts/` |
 | 4 | Cuenta, canal y teléfono | Cuenta de Google dedicada con verificación en dos pasos; canal; verificación del teléfono (videos de más de 15 min) | **Propietario** | — |
 | 5 | OAuth de YouTube | Reutilizar el proyecto de Google Cloud ya publicado; autorizar con la cuenta dueña del canal ([guía](guia-oauth-youtube-permanente.md)) | **Propietario** | `credentials/` del canal (0600) |
